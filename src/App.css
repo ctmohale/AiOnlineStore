@@ -1,7 +1,7 @@
-:root { --ink:#16392f; --forest:#173e32; --deep:#102f27; --mint:#dcebe1; --cream:#faf7f0; --paper:#fffdf8; --coral:#e8694a; --gold:#d8a640; --line:#deded5; --muted:#6b756f; --shadow:0 18px 50px rgba(21,55,45,.09); font-family:Inter,Avenir,'Segoe UI',Arial,sans-serif; color:var(--ink); background:var(--cream); font-synthesis:none; }
+:root { --ink:#16392f; --forest:#173e32; --deep:#102f27; --mint:#dcebe1; --cream:#faf7f0; --paper:#fffdf8; --coral:#e8694a; --gold:#d8a640; --line:#deded5; --muted:#6b756f; --shadow:0 18px 50px rgba(21,55,45,.09); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif; color:var(--ink); background:var(--cream); font-synthesis:none; }
 * { box-sizing:border-box; }
 html { scroll-behavior:smooth; }
-body { margin:0; min-width:320px; background:var(--cream); }
+body { margin:0; min-width:320px; background:var(--cream); font-size:16px; line-height:1.5; font-weight:400; }
 button,input,select,textarea { font:inherit; }
 button,a { -webkit-tap-highlight-color:transparent; }
 a { color:inherit; text-decoration:none; }
@@ -517,4 +517,132 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .product-form-grid { grid-template-columns:1fr; }
   .product-form-grid .full-field { grid-column:auto; }
   .product-modal>header,.product-modal form { padding-left:17px; padding-right:17px; }
+}
+
+/* Readability pass: larger type and a clean, restrained weight scale. */
+body,button,input,select,textarea { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Arial,sans-serif; }
+body * { font-weight:400!important; }
+h1,h2,h3,h4,h5,h6,strong,b,button,label,.brand,.kicker,.eyebrow { font-weight:500!important; }
+em { font-family:inherit; font-style:normal; font-weight:400!important; }
+
+.announcement { font-size:13px; }
+.brand small { font-size:10px; }
+.main-nav a,.account-link,.cart-link { font-size:14px; }
+.kicker,.eyebrow { font-size:12px; }
+.button,.text-link,.back-link { font-size:14px; }
+.hero-trust { font-size:13px; }
+.hero-product-placeholder small { font-size:10px; }
+.hero-product-placeholder em { font-size:12px; }
+.deal-card small,.deal-card span,.check-card strong,.check-card span { font-size:12px; }
+.check-card span { font-size:11px; }
+.category-strip>p { font-size:12px; }
+.category-strip strong { font-size:15px; }
+.category-strip span { font-size:12px; }
+.product-badge { font-size:11px; }
+.view-product { font-size:12px; }
+.product-placeholder small { font-size:10px; }
+.product-placeholder em { font-size:12px; }
+.product-copy .eyebrow { font-size:11px; }
+.product-model { font-size:13px; }
+.stock-line { font-size:12px; }
+.quick-add { min-height:46px; font-size:13px; }
+.demo-note { font-size:12px; }
+.steps>div>span { font-size:12px; }
+.steps p { font-size:13px; }
+.delivery-banner p:last-child { font-size:14px; }
+footer h4 { font-size:14px; }
+footer a,footer p { font-size:13px; }
+.footer-bottom { font-size:11px; }
+
+.filter-pills button { font-size:12px; }
+.shop-toolbar select,.results-count { font-size:13px; }
+.detail-model { font-size:14px; }
+.availability strong { font-size:13px; }
+.availability span { font-size:12px; }
+.detail-description { font-size:15px; }
+.spec-list>div { font-size:13px; }
+.detail-benefits { font-size:12px; }
+.cart-name>span { font-size:11px; }
+.cart-name p,.cart-name button { font-size:12px; }
+.order-summary>div:not(.delivery-progress) { font-size:14px; }
+.delivery-progress p,.summary-note,.no-charge { font-size:12px; }
+.request-form label { font-size:13px; }
+.request-form input,.request-form select,.request-form textarea { font-size:14px; }
+.form-security { font-size:12px; }
+.form-error { font-size:13px; }
+.item-count { font-size:11px; }
+.checkout-item strong,.checkout-item span,.checkout-item b { font-size:13px; }
+.checkout-item span { font-size:12px; }
+.checkout-summary>div:not(.checkout-item):not(.check-message) { font-size:13px; }
+.check-message strong { font-size:13px; }
+.check-message span { font-size:12px; }
+.reference span { font-size:11px; }
+.next-steps strong { font-size:13px; }
+.next-steps span { font-size:12px; }
+
+.account-benefits>div span { font-size:13px; }
+.account-tabs button { font-size:13px; }
+.account-form>p { font-size:13px; }
+.account-form label { font-size:13px; }
+.account-form input { font-size:14px; }
+.account-form>small { font-size:11px; }
+.account-form .guest-note { font-size:12px; }
+.customer-orders article>div strong { font-size:14px; }
+.customer-orders article>div span { font-size:12px; }
+.account-empty p { font-size:13px; }
+
+.login-brand>span { font-size:13px; }
+.login-panel form>p:not(.kicker):not(.form-error) { font-size:14px; }
+.login-panel label { font-size:13px; }
+.login-panel input { font-size:14px; }
+.login-panel form>small { font-size:11px; }
+.admin-shell { grid-template-columns:255px 1fr; }
+.admin-sidebar { padding-left:20px; padding-right:20px; }
+.admin-sidebar nav>small { font-size:11px; }
+.admin-sidebar nav button { font-size:14px; padding:13px 12px; }
+.admin-sidebar nav button b { font-size:11px; }
+.admin-user>span { font-size:12px; }
+.admin-user strong { font-size:13px; }
+.admin-user small { font-size:11px; }
+.admin-topbar h1 { font-size:25px; }
+.admin-topbar p { font-size:13px; }
+.admin-actions input { font-size:13px; }
+.view-store { font-size:13px; }
+.admin-notice { font-size:13px; }
+.attention-banner strong { font-size:14px; }
+.attention-banner span { font-size:13px; }
+.attention-banner button,.card-heading button { font-size:13px; }
+.metric-grid p { font-size:13px; }
+.metric-grid strong { font-size:28px; }
+.metric-grid small { font-size:12px; }
+.card-heading .kicker { font-size:11px; }
+.card-heading h2 { font-size:21px; }
+.order-avatar { font-size:11px; }
+.order-person strong,.order-value strong { font-size:13px; }
+.order-person span,.order-value span { font-size:11px; }
+.status { font-size:11px; padding:6px 8px; }
+.review-card article>div strong,.review-card article>div span { font-size:13px; }
+.review-card article>div small { font-size:11px; }
+.card-heading>span { font-size:11px; }
+.pulse-grid strong { font-size:18px; }
+.pulse-grid span { font-size:12px; }
+.solid-button,.outline-button { min-height:38px; padding:10px 15px; font-size:13px; }
+.table-head { font-size:11px; }
+.table-row { font-size:13px; padding-top:14px; padding-bottom:14px; }
+.table-row b { font-size:13px; }
+.table-row b small { font-size:11px; }
+.table-loading { font-size:13px; }
+.product-table-grid { min-width:960px; }
+.product-form-grid label { font-size:13px; }
+.product-form-grid input,.product-form-grid textarea { font-size:14px; }
+.review-table article strong,.review-table article span,.review-table article b { font-size:13px; }
+.review-table article small { font-size:11px; }
+.quote-fields label,.profit-box span,.profit-box small,.quote-warning { font-size:12px; }
+.quote-fields input { font-size:14px; }
+.settings-grid label { font-size:13px; }
+.settings-grid small { font-size:12px; }
+
+@media (max-width:780px) {
+  .admin-shell { grid-template-columns:1fr; }
+  .announcement { font-size:11px; }
 }
