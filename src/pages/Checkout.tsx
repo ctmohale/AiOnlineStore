@@ -23,9 +23,11 @@ export default function Checkout() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!settings) return notify('Store delivery settings are still loading. Please try again in a moment.', 'warning');
+    // React clears currentTarget after the first await. Capture the form and its
+    // values before opening the asynchronous confirmation dialog.
+    const fields = new FormData(event.currentTarget);
     if (!await confirm({ title: testMode ? 'Create a test order?' : 'Send this order request?', message: testMode ? `Simulate an order for ${money(subtotal + delivery)}? No real payment or fulfilment will take place.` : `Submit your request for ${money(subtotal + delivery)}? You will not be charged now; stock, price and delivery will be confirmed first.`, confirmLabel: testMode ? 'Create test order' : 'Send request' })) return;
     setSubmitting(true); setError('');
-    const fields = new FormData(event.currentTarget);
     const text = (name: string) => String(fields.get(name) || '').trim();
     try {
       const { reference } = await createOrder({ testMode, customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
