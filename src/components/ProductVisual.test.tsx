@@ -20,8 +20,9 @@ describe('ProductVisual', () => {
   it('falls back to the illustration when a photo fails to load', () => {
     render(<ProductVisual product={{ ...product, image: 'https://example.com/missing.jpg' }} />);
     const image = screen.getByRole('img', { name: product.name });
+    expect(screen.getByText('Product photo')).toBeInTheDocument();
     fireEvent.error(image);
-    expect(image).toHaveAttribute('hidden');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.getByText('Product illustration')).toBeInTheDocument();
   });
 });

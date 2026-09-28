@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Product } from '../data/products';
 
 type VisualKind = 'mixer' | 'whisk' | 'blender' | 'clipper' | 'dryer' | 'diapers';
@@ -56,9 +57,11 @@ function Illustration({ kind }: { kind: VisualKind }) {
 }
 
 export default function ProductVisual({ product, large = false }: { product: Product; large?: boolean }) {
+  const [failedImage, setFailedImage] = useState('');
+  const hasPhoto = Boolean(product.image && failedImage !== product.image);
   return <span className={`product-visual${large ? ' large' : ''}`}>
     <Illustration kind={kindFor(product)} />
-    <span className="product-visual-caption"><small>Product illustration</small><strong>{product.brand}</strong><em>{product.model}</em></span>
-    {product.image && <img className="product-photo" src={product.image} alt={product.name} loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} />}
+    <span className="product-visual-caption"><small>{hasPhoto ? 'Product photo' : 'Product illustration'}</small><strong>{product.brand}</strong><em>{product.model}</em></span>
+    {hasPhoto && <img className="product-photo" src={product.image} alt={product.name} loading="lazy" onError={() => setFailedImage(product.image)} />}
   </span>;
 }
