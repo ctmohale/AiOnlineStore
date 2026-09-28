@@ -62,6 +62,6 @@ export default function ProductVisual({ product, large = false }: { product: Pro
   return <span className={`product-visual${large ? ' large' : ''}`}>
     <Illustration kind={kindFor(product)} />
     <span className="product-visual-caption"><small>{hasPhoto ? 'Product photo' : 'Product illustration'}</small><strong>{product.brand}</strong><em>{product.model}</em></span>
-    {hasPhoto && <img className="product-photo" src={product.image} alt={product.name} loading="lazy" onError={() => setFailedImage(product.image)} />}
+    {hasPhoto && <img className="product-photo" src={product.image} alt={product.name} loading={large ? 'eager' : 'lazy'} decoding="async" fetchPriority={large ? 'high' : 'auto'} draggable={false} onError={() => setFailedImage(product.image)} />}
   </span>;
 }

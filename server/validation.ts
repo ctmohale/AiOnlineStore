@@ -57,6 +57,29 @@ export const customerRegisterSchema = z.object({
 
 export const customerLoginSchema = z.object({ email: z.email().max(190), password: z.string().min(1).max(128) });
 
+const customerPhoneSchema = z.preprocess(
+  (value) => value === '' ? null : value,
+  z.string().trim().regex(/^[0-9+ ]{9,15}$/).nullable().optional(),
+);
+
+export const customerProfileUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  email: z.email().max(190),
+  phone: customerPhoneSchema,
+});
+
+export const customerPasswordUpdateSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(10).max(128),
+}).refine((value) => value.currentPassword !== value.newPassword, { message: 'Choose a password different from your current password', path: ['newPassword'] });
+
+export const adminCustomerUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  email: z.email().max(190),
+  phone: customerPhoneSchema,
+  newPassword: z.union([z.string().min(10).max(128), z.literal('')]).optional(),
+});
+
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 const optionalMoney = z.number().nonnegative().max(10_000_000).nullable().optional();
 const optionalDate = z.preprocess((value) => value === '' || value === null ? null : value, z.coerce.date().nullable()).optional();

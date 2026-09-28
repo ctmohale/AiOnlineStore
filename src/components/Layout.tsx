@@ -31,7 +31,6 @@ export default function Layout() {
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
         <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => setMenu(false)}>Shop</Link>
         {categories.map((category) => { const active = isStoreNavigationActive(location.pathname, selectedCategory, category); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} key={category} to={`/shop?category=${encodeURIComponent(category)}`} onClick={() => setMenu(false)}>{category}</Link>; })}
-        <Link to="/#how" onClick={() => setMenu(false)}>How it works</Link>
       </nav>
       <Link className="account-link" to="/account" aria-label="Customer account"><UserRound size={20} /><span>Sign in</span></Link>
       <Link className="cart-link" to="/cart" aria-label={`Cart with ${count} items`}><ShoppingBag size={21} /><span>Cart</span>{count > 0 && <b>{count}</b>}</Link>

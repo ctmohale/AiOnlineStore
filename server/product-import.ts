@@ -14,6 +14,17 @@ export const isSupportedProductUrl = (value: string) => {
   }
 };
 
+export const highResolutionImageUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    if (['makro.co.za', 'www.makro.co.za'].includes(url.hostname.toLowerCase()) && url.pathname.includes('/asset/rukmini/fccp/')) {
+      url.pathname = url.pathname.replace(/\/asset\/rukmini\/fccp\/\d+\/\d+\//, '/asset/rukmini/fccp/1200/1200/');
+      url.searchParams.set('q', '95');
+    }
+    return url.toString();
+  } catch { return value; }
+};
+
 const decodeText = (value: string) => value
   .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
@@ -106,7 +117,7 @@ export async function importProductUrl(rawUrl: string) {
   const images = Array.isArray(product?.image) ? product.image : [product?.image];
   const title = plainText(product?.name || metaValue(html, 'og:title'));
   const description = plainText(product?.description || metaValue(html, 'og:description'));
-  const imageUrl = String(images.find(Boolean) || metaValue(html, 'og:image') || '');
+  const imageUrl = highResolutionImageUrl(String(images.find(Boolean) || metaValue(html, 'og:image') || ''));
   const price = numberValue(offer.price ?? offer.lowPrice ?? metaValue(html, 'product:price:amount'));
   const model = plainText(product?.model || product?.mpn || product?.sku || '');
   const sku = plainText(product?.sku || '');

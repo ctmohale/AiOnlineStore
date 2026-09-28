@@ -42,10 +42,10 @@ async function customerAuth(path: 'login' | 'register', payload: Record<string, 
 export const customerLogin = (email: string, password: string) => customerAuth('login', { email, password });
 export const customerRegister = (name: string, email: string, phone: string, password: string) => customerAuth('register', { name, email, phone, password });
 
-export async function customerRequest<T>(path: string) {
+export async function customerRequest<T>(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem('moya-customer-token');
-  const response = await fetch(`${API_URL}/customer${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  const body = await response.json();
+  const response = await fetch(`${API_URL}/customer${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
+  const body = response.status === 204 ? null : await response.json();
   if (!response.ok) throw Object.assign(new Error(body.error || 'Unable to load your account'), { status: response.status });
   return body as T;
 }

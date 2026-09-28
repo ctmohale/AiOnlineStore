@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orderStatusSchema } from './validation';
+import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema } from './validation';
 
 describe('shipment tracking', () => {
   it('requires a courier and number, and rejects unsafe tracking links', () => {
@@ -9,6 +9,17 @@ describe('shipment tracking', () => {
   });
 });
 import { adminProductCreateSchema } from './validation';
+
+describe('customer account validation', () => {
+  it('requires a strong new password different from the current password', () => {
+    expect(customerPasswordUpdateSchema.safeParse({ currentPassword: 'old-password', newPassword: 'old-password' }).success).toBe(false);
+    expect(customerPasswordUpdateSchema.safeParse({ currentPassword: 'old-password', newPassword: 'new-secure-password' }).success).toBe(true);
+  });
+
+  it('accepts an admin profile update without forcing a password reset', () => {
+    expect(adminCustomerUpdateSchema.parse({ name: 'Moya Customer', email: 'customer@example.com', phone: '', newPassword: '' }).phone).toBeNull();
+  });
+});
 
 describe('product sourcing validation', () => {
   it('preserves an unprovided promotion end as null', () => {

@@ -9,7 +9,7 @@ export default function ProductCard({ product }: { product: Product }) {
   const { add } = useStore();
   const { notify } = useFeedback();
   return <article className="product-card">
-    <Link to={`/product/${product.slug}`} className="product-image" style={{ background: product.accent }}>
+    <Link to={`/product/${product.slug}`} className="product-image">
       {product.badge && <span className="product-badge">{product.badge}</span>}
       <ProductVisual product={product} />
       <span className="view-product">View product <ArrowRight size={15} /></span>

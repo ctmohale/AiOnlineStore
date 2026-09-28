@@ -11,7 +11,7 @@ import { calculateProfit, passesPricingRules } from '../shared/domain.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -109,6 +109,33 @@ app.get('/api/customer/me', requireCustomer, async (_request, response, next) =>
   try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute('SELECT id,email,name,phone,created_at FROM customers WHERE id=?', [response.locals.customer.sub]); const customer = (rows as RowDataPacket[])[0]; if (!customer) return response.status(404).json({ error: 'Customer not found' }); response.json(customer); } catch (error) { next(error); }
 });
 
+app.patch('/api/customer/me', requireCustomer, async (request, response, next) => {
+  try {
+    const input = customerProfileUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const [duplicates] = await pool.execute('SELECT id FROM customers WHERE email=? AND id<>? LIMIT 1', [email, response.locals.customer.sub]);
+    if ((duplicates as RowDataPacket[]).length) return response.status(409).json({ error: 'Another account already uses this email address' });
+    const [result] = await pool.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, response.locals.customer.sub]);
+    if ((result as { affectedRows: number }).affectedRows === 0) return response.status(404).json({ error: 'Customer not found' });
+    const customer = { id: Number(response.locals.customer.sub), name: input.name, email, phone: input.phone || null };
+    response.json({ customer, token: signCustomerToken({ sub: response.locals.customer.sub, email, role: 'customer' }) });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/customer/password', loginLimiter, requireCustomer, async (request, response, next) => {
+  try {
+    const input = customerPasswordUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT password_hash FROM customers WHERE id=? LIMIT 1', [response.locals.customer.sub]);
+    const customer = (rows as (RowDataPacket & { password_hash: string })[])[0];
+    if (!customer) return response.status(404).json({ error: 'Customer not found' });
+    if (!await bcrypt.compare(input.currentPassword, customer.password_hash)) return response.status(401).json({ error: 'Your current password is incorrect' });
+    await pool.execute('UPDATE customers SET password_hash=? WHERE id=?', [await bcrypt.hash(input.newPassword, 12), response.locals.customer.sub]);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
   try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
@@ -186,6 +213,39 @@ app.get('/api/admin/me', requireAdmin, async (_request, response, next) => {
     const admin = (rows as RowDataPacket[])[0];
     if (!admin) return response.status(404).json({ error: 'Administrator not found' });
     response.json(admin);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/customers', requireAdmin, async (_request, response, next) => {
+  try {
+    if (response.locals.admin.role !== 'admin') return response.status(403).json({ error: 'Administrator access required' });
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute(`SELECT c.id,c.email,c.name,c.phone,c.created_at,c.updated_at,
+      COUNT(o.id) AS order_count,MAX(o.created_at) AS last_order_at
+      FROM customers c LEFT JOIN order_requests o ON o.customer_id=c.id
+      GROUP BY c.id ORDER BY c.updated_at DESC LIMIT 500`);
+    response.json(rows);
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, next) => {
+  try {
+    if (response.locals.admin.role !== 'admin') return response.status(403).json({ error: 'Administrator access required' });
+    const customerId = Number(request.params.id);
+    if (!Number.isInteger(customerId) || customerId < 1) return response.status(400).json({ error: 'Invalid customer identifier' });
+    const input = adminCustomerUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const updated = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id FROM customers WHERE id=? FOR UPDATE', [customerId]);
+      if (!(rows as RowDataPacket[]).length) throw Object.assign(new Error('Customer not found'), { status: 404 });
+      const [duplicates] = await connection.execute('SELECT id FROM customers WHERE email=? AND id<>? LIMIT 1', [email, customerId]);
+      if ((duplicates as RowDataPacket[]).length) throw Object.assign(new Error('Another account already uses this email address'), { status: 409 });
+      if (input.newPassword) await connection.execute('UPDATE customers SET name=?,email=?,phone=?,password_hash=? WHERE id=?', [input.name, email, input.phone || null, await bcrypt.hash(input.newPassword, 12), customerId]);
+      else await connection.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, customerId]);
+      return { id: customerId, name: input.name, email, phone: input.phone || null, passwordChanged: Boolean(input.newPassword) };
+    });
+    response.json(updated);
   } catch (error) { next(error); }
 });
 
