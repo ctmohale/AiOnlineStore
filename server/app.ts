@@ -368,15 +368,19 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
   try {
     const input = quoteSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT product_revenue,is_test FROM order_requests WHERE id=? FOR UPDATE', [request.params.id]);
-    const order = (rows as (RowDataPacket & { product_revenue: number; is_test: number })[])[0];
-    if (!order) return response.status(404).json({ error: 'Order not found' });
-    if (order.is_test) return response.status(409).json({ error: 'Test orders cannot be quoted for real payment' });
-    const profit = calculateProfit({ productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost });
-    const pricing = passesPricingRules({ productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost }, Number(process.env.MIN_EXPECTED_PROFIT || 120), Number(process.env.MIN_MARGIN_PERCENT || 15));
-    if (!pricing.passes) return response.status(422).json({ error: 'Quote does not meet configured profit rules', profit, margin: pricing.margin });
-    await pool.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, profit, request.params.id]);
-    response.json({ profit, margin: pricing.margin, status: 'quoted' });
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT o.product_revenue,o.status,o.is_test,s.minimum_profit,s.minimum_margin_percent FROM order_requests o JOIN pricing_settings s ON s.id=1 WHERE o.id=? FOR UPDATE', [request.params.id]);
+      const order = (rows as (RowDataPacket & { product_revenue: number; status: string; is_test: number; minimum_profit: number; minimum_margin_percent: number })[])[0];
+      if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
+      if (order.is_test) throw Object.assign(new Error('Test orders cannot be quoted for real payment'), { status: 409 });
+      if (!['checking_supplier', 'quoted'].includes(order.status)) throw Object.assign(new Error('Check the supplier before quoting this order'), { status: 409 });
+      const costs = { productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost };
+      const pricing = passesPricingRules(costs, Number(order.minimum_profit), Number(order.minimum_margin_percent));
+      if (!pricing.passes) throw Object.assign(new Error('Quote does not meet configured profit rules'), { status: 422 });
+      await connection.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, pricing.profit, request.params.id]);
+      return { profit: pricing.profit, margin: pricing.margin, status: 'quoted' };
+    });
+    response.json(result);
   } catch (error) { next(error); }
 });
 

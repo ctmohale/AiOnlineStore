@@ -12,7 +12,8 @@ export default function Shop() {
   const category = params.get('category') || 'All';
   const categories = ['All', ...new Set(products.map((product) => product.category))];
   const visible = useMemo(() => {
-    const filtered = products.filter((product) => (category === 'All' || product.category === category) && `${product.name} ${product.brand} ${product.model}`.toLowerCase().includes(query.toLowerCase()));
+    const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+    const filtered = products.filter((product) => (category === 'All' || product.category === category) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word)));
     return [...filtered].sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : a.id - b.id);
   }, [category, products, query, sort]);
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value && value !== 'All') next.set(key, value); else next.delete(key); setParams(next); };

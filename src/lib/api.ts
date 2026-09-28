@@ -46,7 +46,7 @@ export async function customerRequest<T>(path: string) {
   const token = localStorage.getItem('moya-customer-token');
   const response = await fetch(`${API_URL}/customer${path}`, { headers: { Authorization: `Bearer ${token}` } });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.error || 'Unable to load your account');
+  if (!response.ok) throw Object.assign(new Error(body.error || 'Unable to load your account'), { status: response.status });
   return body as T;
 }
 
