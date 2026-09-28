@@ -27,7 +27,9 @@ npm run dev:api
 
 In a second terminal run `npm run dev`, then open `http://localhost:5173`. Run the worker with `npm run worker:once`, or keep its schedules active with `npm run dev:worker`.
 
-Sign in at `/admin/login`, open **Products**, and choose **Add product**. New catalogue items are saved as drafts and remain off the public storefront until a current supplier offer passes the existing review and pricing guardrails. Images are optional URLs; the app does not generate or upload product imagery.
+Sign in at `/admin/login`, open **Products**, and choose **Add product**. Paste a public Game or Makro product URL to prefill available structured metadata, then review it before saving. The workflow stores product identity, supplier and promotion details, fulfilment costs, verification timestamps, confidence, price history, and internal notes. Images remain optional URLs; the app does not generate or upload product imagery.
+
+Drafts can be incomplete. Publication requires a name, category, exact model or pack size, supplier URL, verified supplier price, current check time, usable stock status, and a profit estimate that passes the configured product and margin guardrails. Supplier price, source URL, margin, and internal notes are never included in public catalogue responses. The R999 free-delivery rule is applied to the complete cart, and estimated costs and profit are recalculated when the order request is created.
 
 Without `DATABASE_URL`, the API deliberately starts in a development-only degraded mode so the UI and request flow can be reviewed. Production health returns 503 if MySQL is missing. The dashboard login uses the API in production; only Vite development mode permits the prefilled local preview credentials when the API is unavailable.
 
@@ -56,6 +58,7 @@ Reference Railway's MySQL `DATABASE_URL` into both API and worker. Add `JWT_SECR
 Still required before real trading:
 
 - verified, permitted retailer feed/API details (the code does not bypass access controls or scrape protected pages);
+- retailer URL import is a review aid that reads public structured page metadata only; blocked or incomplete listings must be entered manually;
 - human verification and publication of initial offers, descriptions, and rights-cleared product image URLs;
 - real delivery rates and packaging costs;
 - a configured Yoco or Paystack merchant account and payment-webhook verification if payment confirmation is to be automated;

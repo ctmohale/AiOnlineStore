@@ -38,9 +38,10 @@ Order body:
 - `POST /api/admin/login` — email/password sign-in; returns an 8-hour JWT. Limited to 10 attempts per IP per 15 minutes.
 - `GET /api/admin/review-queue` — changed, expired, stale, unavailable, and uncertain products.
 - `GET /api/admin/products` — list the active admin catalogue, including the primary image and latest offer summary.
-- `POST /api/admin/products` — create a draft or pending-review product, optional primary image URL, and initial price-history record.
+- `POST /api/admin/products/import-url` — read public structured metadata from an allowlisted Game or Makro HTTPS product URL and return a review draft; it never saves or verifies the result automatically.
+- `POST /api/admin/products` — create a product and its latest supplier sourcing record, optional primary image URL, fulfilment estimates, tracking fields, and initial price-history record.
 - `GET /api/admin/products/:id` — read one product together with its supplier offers.
-- `PATCH /api/admin/products/:id` — update product identity, description, specifications, selling price, or primary image URL. Editing a published product returns it to review.
+- `PATCH /api/admin/products/:id` — update product, supplier, promotion, fulfilment, tracking, selling-price, status, or primary-image data. Publication is rejected until required verification and profit guardrails pass.
 - `DELETE /api/admin/products/:id` — safely archive a product and remove it from the public catalogue while preserving history.
 - `POST /api/admin/products/:id/restore` — restore an archived product as a draft that requires supplier verification.
 - `GET /api/admin/products/:id/offers` — read complete supplier-offer details for a product.

@@ -386,7 +386,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .card-heading .product-actions .outline-button:hover { border-color:var(--forest); background:#f1f5f2; }
 .card-heading .product-actions button:focus-visible { outline:3px solid rgba(232,105,74,.32); outline-offset:2px; }
 .card-heading .product-actions button svg { width:16px; height:16px; }
-.product-table-grid { grid-template-columns:2fr .7fr .75fr .7fr .7fr .45fr; }
+.product-table-grid { grid-template-columns:1.8fr .65fr .65fr .72fr .65fr .7fr .42fr; }
 .row-actions { display:flex; gap:5px; }
 .row-actions button { width:29px; height:29px; border:1px solid #d9ddda; background:#fff; color:var(--forest); display:grid; place-items:center; cursor:pointer; }
 .row-actions button:hover { background:#edf3ef; }
@@ -395,6 +395,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .table-loading { padding:28px 8px; color:#7b857f; font-size:10px; }
 .product-modal-backdrop { position:fixed; inset:0; z-index:100; padding:28px; display:grid; place-items:center; background:rgba(21,41,31,.7); backdrop-filter:blur(3px); }
 .product-modal { width:min(760px,100%); max-height:calc(100vh - 56px); overflow:auto; background:#fff; box-shadow:0 24px 80px rgba(0,0,0,.3); }
+.product-workflow-modal { width:min(920px,100%); }
 .product-modal>header { position:sticky; top:0; z-index:1; padding:20px 24px; background:#fff; border-bottom:1px solid #e3e4e1; display:flex; align-items:flex-start; }
 .product-modal>header h2 { margin:4px 0 0; font-size:24px; }
 .product-modal>header>button { margin-left:auto; width:34px; height:34px; border:0; background:#f1f3f0; display:grid; place-items:center; cursor:pointer; }
@@ -403,9 +404,37 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .product-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:15px 18px; }
 .product-form-grid label { display:grid; gap:6px; color:#59665f; font-size:9px; font-weight:700; }
 .product-form-grid label>span { color:#949b97; font-weight:400; }
-.product-form-grid input,.product-form-grid textarea { width:100%; padding:10px 11px; border:1px solid #d6dad7; background:#fff; color:#1b2e25; outline:0; font:inherit; font-size:11px; resize:vertical; }
-.product-form-grid input:focus,.product-form-grid textarea:focus { border-color:#678675; box-shadow:0 0 0 2px rgba(59,101,78,.1); }
+.product-form-grid input,.product-form-grid textarea,.product-form-grid select { width:100%; padding:10px 11px; border:1px solid #d6dad7; background:#fff; color:#1b2e25; outline:0; font:inherit; font-size:11px; resize:vertical; }
+.product-form-grid input:focus,.product-form-grid textarea:focus,.product-form-grid select:focus { border-color:#678675; box-shadow:0 0 0 2px rgba(59,101,78,.1); }
 .product-form-grid .full-field { grid-column:1/-1; }
+.url-importer { display:grid; grid-template-columns:1fr auto; gap:10px 12px; padding:17px; margin-bottom:24px; background:#edf3ef; border:1px solid #cedcd4; }
+.url-importer>div { display:flex; align-items:flex-end; gap:10px; }
+.url-importer>div>svg { width:20px; margin-bottom:10px; color:var(--coral); flex:none; }
+.url-importer label { width:100%; display:grid; gap:6px; color:#43584f; font-size:13px; }
+.url-importer input { width:100%; min-height:42px; padding:9px 11px; border:1px solid #b9cbc1; background:#fff; outline:0; }
+.url-importer>button { align-self:end; min-height:42px; }
+.url-importer>p { grid-column:1/-1; margin:0; color:#6a7972; font-size:12px; }
+.workflow-section-heading { display:flex; gap:11px; align-items:center; padding-top:6px; margin:23px 0 14px; border-top:1px solid #e5e7e4; }
+.workflow-section-heading>span { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; background:var(--forest); color:#fff; font-size:12px; }
+.workflow-section-heading h3 { margin:0; font-size:17px; }
+.workflow-section-heading p { margin:2px 0 0; color:#758079; font-size:12px; }
+.check-field { display:flex!important; grid-template-columns:auto 1fr; align-items:center; gap:9px!important; padding:10px 12px; background:#f6f7f4; border:1px solid #e0e3df; }
+.check-field input { width:17px; height:17px; margin:0; accent-color:var(--forest); }
+.check-field span { color:#4d6157!important; font-size:12px; }
+.profit-preview { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:16px; margin:21px 0; border-left:4px solid #3d8e68; background:#e5f1e9; }
+.profit-preview.danger { border-color:#c95e43; background:#fae7e1; }
+.profit-preview span,.profit-preview strong { display:block; }
+.profit-preview span { color:#617168; font-size:12px; }
+.profit-preview strong { margin-top:3px; font-size:22px; }
+.profit-preview p { grid-column:1/-1; margin:0; color:#52665c; font-size:12px; line-height:1.5; }
+.publish-warning { margin:0 0 18px; padding:12px 14px; background:#fff1d9; border-left:3px solid #d99a2e; color:#775b2d; font-size:13px; }
+.workflow-details { border-top:1px solid #e1e4e0; }
+.workflow-details:last-of-type { border-bottom:1px solid #e1e4e0; }
+.workflow-details summary { padding:15px 3px; cursor:pointer; color:#29483a; font-size:14px; font-weight:500!important; }
+.workflow-details summary:hover { color:var(--coral); }
+.details-fields { padding:3px 3px 19px; }
+.profit-low { color:#b34e3a; }
+.profit-good { color:#28734f; }
 .product-form-actions { display:flex; justify-content:flex-end; gap:8px; padding-top:18px; margin-top:18px; border-top:1px solid #e7e8e5; }
 .product-form-actions button:disabled { opacity:.55; cursor:wait; }
 .review-table article { grid-template-columns:auto 1.5fr .6fr .8fr auto; }
@@ -638,9 +667,9 @@ footer a,footer p { font-size:13px; }
 .table-row b { font-size:13px; }
 .table-row b small { font-size:11px; }
 .table-loading { font-size:13px; }
-.product-table-grid { min-width:960px; }
+  .product-table-grid { min-width:1050px; }
 .product-form-grid label { font-size:13px; }
-.product-form-grid input,.product-form-grid textarea { font-size:14px; }
+.product-form-grid input,.product-form-grid textarea,.product-form-grid select { font-size:14px; }
 .review-table article strong,.review-table article span,.review-table article b { font-size:13px; }
 .review-table article small { font-size:11px; }
 .quote-fields label,.profit-box span,.profit-box small,.quote-warning { font-size:12px; }
@@ -651,4 +680,7 @@ footer a,footer p { font-size:13px; }
 @media (max-width:780px) {
   .admin-shell { grid-template-columns:1fr; }
   .announcement { font-size:11px; }
+  .url-importer { grid-template-columns:1fr; }
+  .url-importer>button { width:100%; }
+  .url-importer>p { grid-column:auto; }
 }
