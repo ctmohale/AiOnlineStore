@@ -22,7 +22,7 @@ export async function createOrder(payload: OrderPayload) {
 }
 
 export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
-export type CustomerOrder = { reference: string; status: string; is_test: number | boolean; test_paid_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
+export type CustomerOrder = { reference: string; status: string; is_test: number | boolean; test_paid_at?: string | null; courier_name?: string | null; tracking_number?: string | null; tracking_url?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
 
 export async function testPayment(reference: string, outcome: 'success' | 'failure') {
   const token = localStorage.getItem('moya-customer-token');

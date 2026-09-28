@@ -110,7 +110,7 @@ app.get('/api/customer/me', requireCustomer, async (_request, response, next) =>
 });
 
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async (request, response, next) => {
@@ -349,7 +349,7 @@ app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
 
 app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response, next) => {
   try {
-    const { status } = orderStatusSchema.parse(request.body);
+    const { status, courierName, trackingNumber, trackingUrl } = orderStatusSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const [rows] = await pool.execute('SELECT status,is_test FROM order_requests WHERE id=?', [request.params.id]);
     const record = (rows as (RowDataPacket & { status: string; is_test: number })[])[0];
@@ -359,7 +359,8 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response
     const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
     if (!transitions[current]?.includes(status)) return response.status(409).json({ error: `Cannot move an order from ${current} to ${status}` });
     if (status === 'paid') return response.status(409).json({ error: 'Use the payment verification endpoint to mark an order paid' });
-    await pool.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
+    if (status === 'shipped') await pool.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);
+    else await pool.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
     response.json({ status });
   } catch (error) { next(error); }
 });

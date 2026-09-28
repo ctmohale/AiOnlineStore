@@ -1,4 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { orderStatusSchema } from './validation';
+
+describe('shipment tracking', () => {
+  it('requires a courier and number, and rejects unsafe tracking links', () => {
+    expect(orderStatusSchema.safeParse({ status: 'shipped' }).success).toBe(false);
+    expect(orderStatusSchema.safeParse({ status: 'shipped', courierName: 'Bob Go', trackingNumber: 'ABC123', trackingUrl: 'http://example.test/track' }).success).toBe(false);
+    expect(orderStatusSchema.safeParse({ status: 'shipped', courierName: 'Bob Go', trackingNumber: 'ABC123', trackingUrl: 'https://example.test/track' }).success).toBe(true);
+  });
+});
 import { adminProductCreateSchema } from './validation';
 
 describe('product sourcing validation', () => {
