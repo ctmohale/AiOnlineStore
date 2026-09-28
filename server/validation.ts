@@ -51,7 +51,7 @@ export const customerLoginSchema = z.object({ email: z.email().max(190), passwor
 
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 const optionalMoney = z.number().nonnegative().max(10_000_000).nullable().optional();
-const optionalDate = z.union([z.coerce.date(), z.null()]).optional();
+const optionalDate = z.preprocess((value) => value === '' || value === null ? null : value, z.coerce.date().nullable()).optional();
 
 const supplierFields = {
   retailer: optionalText(120),
