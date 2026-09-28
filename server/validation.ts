@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const orderSchema = z.object({
+  testMode: z.boolean().optional().default(false),
   customer: z.object({
     name: z.string().trim().min(2).max(160),
     email: z.email().max(190),
@@ -38,7 +39,14 @@ export const pricingSettingsSchema = z.object({
   minimumProfit: z.number().nonnegative(), minimumMarginPercent: z.number().min(0).max(100), freeDeliveryThreshold: z.number().nonnegative(), standardCustomerDelivery: z.number().nonnegative(), supplierStaleHours: z.number().int().min(1).max(168),
 });
 
-export const orderStatusSchema = z.object({ status: z.enum(['requested','checking_supplier','quoted','awaiting_payment','paid','purchasing','shipped','delivered','cancelled','refunded']) });
+export const orderStatusSchema = z.object({
+  status: z.enum(['requested','checking_supplier','quoted','awaiting_payment','paid','purchasing','shipped','delivered','cancelled','refunded']),
+  courierName: z.string().trim().min(2).max(120).optional(),
+  trackingNumber: z.string().trim().min(2).max(160).optional(),
+  trackingUrl: z.url().max(1500).refine((value) => value.startsWith('https://'), 'Use an HTTPS tracking link').optional(),
+}).superRefine((value, context) => {
+  if (value.status === 'shipped' && (!value.courierName || !value.trackingNumber)) context.addIssue({ code: 'custom', message: 'Courier and tracking number are required when shipping' });
+});
 
 export const customerRegisterSchema = z.object({
   name: z.string().trim().min(2).max(160),

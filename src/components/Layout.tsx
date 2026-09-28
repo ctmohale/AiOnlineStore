@@ -31,7 +31,7 @@ export default function Layout() {
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
         <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => setMenu(false)}>Shop</Link>
         {categories.map((category) => { const active = isStoreNavigationActive(location.pathname, selectedCategory, category); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} key={category} to={`/shop?category=${encodeURIComponent(category)}`} onClick={() => setMenu(false)}>{category}</Link>; })}
-        <a href="#how" onClick={() => setMenu(false)}>How it works</a>
+        <Link to="/#how" onClick={() => setMenu(false)}>How it works</Link>
       </nav>
       <Link className="account-link" to="/account" aria-label="Customer account"><UserRound size={20} /><span>Sign in</span></Link>
       <Link className="cart-link" to="/cart" aria-label={`Cart with ${count} items`}><ShoppingBag size={21} /><span>Cart</span>{count > 0 && <b>{count}</b>}</Link>
@@ -41,7 +41,7 @@ export default function Layout() {
     <footer>
       <div className="footer-brand"><div className="brand light"><span className="brand-mark">m</span><span>moya</span><small>market</small></div><p>Smart finds. Checked before you pay.</p></div>
       <div><h4>Shop</h4><Link to="/shop">All products</Link>{categories.map((category) => <Link key={category} to={`/shop?category=${encodeURIComponent(category)}`}>{category}</Link>)}</div>
-      <div><h4>Help</h4><a href="mailto:hello@moyamarket.co.za">Contact us</a><a href="#delivery">Delivery policy</a><a href="#how">How ordering works</a><Link to="/account">Customer login</Link><Link to="/admin/login">Admin login</Link></div>
+      <div><h4>Help</h4><a href="mailto:hello@moyamarket.co.za">Contact us</a><Link to="/#delivery">Delivery policy</Link><Link to="/#how">How ordering works</Link><Link to="/account">Customer login</Link><Link to="/admin/login">Admin login</Link></div>
       <div><h4>Good to know</h4><p>We confirm the supplier's price and stock before asking you to pay. No card details are collected here.</p></div>
       <div className="footer-bottom">© 2026 Moya Market (Pty) Ltd <span>Prices include VAT where applicable</span></div>
     </footer>

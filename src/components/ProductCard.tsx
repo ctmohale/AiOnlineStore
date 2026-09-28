@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { money, type Product } from '../data/products';
 import { useStore } from '../state/StoreContext';
 import { useFeedback } from './FeedbackProvider';
+import ProductVisual from './ProductVisual';
 
 export default function ProductCard({ product }: { product: Product }) {
   const { add } = useStore();
@@ -10,7 +11,7 @@ export default function ProductCard({ product }: { product: Product }) {
   return <article className="product-card">
     <Link to={`/product/${product.slug}`} className="product-image" style={{ background: product.accent }}>
       {product.badge && <span className="product-badge">{product.badge}</span>}
-      {product.image ? <img src={product.image} alt={product.name} /> : <span className="product-placeholder"><small>Image coming soon</small><b>{product.brand}</b><em>{product.model}</em></span>}
+      <ProductVisual product={product} />
       <span className="view-product">View product <ArrowRight size={15} /></span>
     </Link>
     <div className="product-copy">

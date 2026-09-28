@@ -110,12 +110,30 @@ app.get('/api/customer/me', requireCustomer, async (_request, response, next) =>
 });
 
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute('SELECT reference,status,product_revenue,customer_delivery_charged,expected_profit,created_at,updated_at FROM order_requests WHERE customer_id=? ORDER BY created_at DESC LIMIT 100', [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+});
+
+app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    if (!['success', 'failure'].includes(request.body?.outcome)) return response.status(400).json({ error: 'Choose a test payment outcome' });
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,status,is_test FROM order_requests WHERE reference=? AND customer_id=? FOR UPDATE', [request.params.reference, response.locals.customer.sub]);
+      const order = (rows as (RowDataPacket & { id: number; status: string; is_test: number })[])[0];
+      if (!order || !order.is_test) throw Object.assign(new Error('Test order not found for this account'), { status: 404 });
+      if (order.status !== 'requested') throw Object.assign(new Error('This test order is not awaiting payment'), { status: 409 });
+      if (request.body.outcome === 'failure') return { status: 'test_failed', charged: false };
+      await connection.execute("UPDATE order_requests SET status='test_paid',test_paid_at=UTC_TIMESTAMP() WHERE id=?", [order.id]);
+      return { status: 'test_paid', charged: false };
+    });
+    response.json(result);
+  } catch (error) { next(error); }
 });
 
 app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
+    if (input.testMode && (!response.locals.customer || response.locals.customer.email.toLowerCase() !== input.customer.email.toLowerCase())) return response.status(401).json({ error: 'Sign in with the same email to place a test order' });
     const orderReference = reference();
     if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
     await withTransaction(async (connection) => {
@@ -134,14 +152,14 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const customerDeliveryCost = Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
       const expectedProfit = calculateProfit({ productRevenue: revenue, customerDeliveryCharged: delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, packaging: 0, paymentFees: 0, advertisingCost: 0 });
       const customer = input.customer;
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
         await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price) VALUES (?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price]);
       }
     });
-    response.status(201).json({ reference: orderReference, status: 'requested' });
+    response.status(201).json({ reference: orderReference, status: 'requested', isTest: input.testMode });
   } catch (error) { next(error); }
 });
 
@@ -331,15 +349,18 @@ app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
 
 app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response, next) => {
   try {
-    const { status } = orderStatusSchema.parse(request.body);
+    const { status, courierName, trackingNumber, trackingUrl } = orderStatusSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT status FROM order_requests WHERE id=?', [request.params.id]);
-    const current = (rows as (RowDataPacket & { status: string })[])[0]?.status;
+    const [rows] = await pool.execute('SELECT status,is_test FROM order_requests WHERE id=?', [request.params.id]);
+    const record = (rows as (RowDataPacket & { status: string; is_test: number })[])[0];
+    const current = record?.status;
     if (!current) return response.status(404).json({ error: 'Order not found' });
+    if (record.is_test) return response.status(409).json({ error: 'Test orders cannot enter the real fulfilment workflow' });
     const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
     if (!transitions[current]?.includes(status)) return response.status(409).json({ error: `Cannot move an order from ${current} to ${status}` });
     if (status === 'paid') return response.status(409).json({ error: 'Use the payment verification endpoint to mark an order paid' });
-    await pool.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
+    if (status === 'shipped') await pool.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);
+    else await pool.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
     response.json({ status });
   } catch (error) { next(error); }
 });
@@ -348,14 +369,19 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
   try {
     const input = quoteSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT product_revenue FROM order_requests WHERE id=? FOR UPDATE', [request.params.id]);
-    const order = (rows as (RowDataPacket & { product_revenue: number })[])[0];
-    if (!order) return response.status(404).json({ error: 'Order not found' });
-    const profit = calculateProfit({ productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost });
-    const pricing = passesPricingRules({ productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost }, Number(process.env.MIN_EXPECTED_PROFIT || 120), Number(process.env.MIN_MARGIN_PERCENT || 15));
-    if (!pricing.passes) return response.status(422).json({ error: 'Quote does not meet configured profit rules', profit, margin: pricing.margin });
-    await pool.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, profit, request.params.id]);
-    response.json({ profit, margin: pricing.margin, status: 'quoted' });
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT o.product_revenue,o.status,o.is_test,s.minimum_profit,s.minimum_margin_percent FROM order_requests o JOIN pricing_settings s ON s.id=1 WHERE o.id=? FOR UPDATE', [request.params.id]);
+      const order = (rows as (RowDataPacket & { product_revenue: number; status: string; is_test: number; minimum_profit: number; minimum_margin_percent: number })[])[0];
+      if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
+      if (order.is_test) throw Object.assign(new Error('Test orders cannot be quoted for real payment'), { status: 409 });
+      if (!['checking_supplier', 'quoted'].includes(order.status)) throw Object.assign(new Error('Check the supplier before quoting this order'), { status: 409 });
+      const costs = { productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost };
+      const pricing = passesPricingRules(costs, Number(order.minimum_profit), Number(order.minimum_margin_percent));
+      if (!pricing.passes) throw Object.assign(new Error('Quote does not meet configured profit rules'), { status: 422 });
+      await connection.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, pricing.profit, request.params.id]);
+      return { profit: pricing.profit, margin: pricing.margin, status: 'quoted' };
+    });
+    response.json(result);
   } catch (error) { next(error); }
 });
 
@@ -364,8 +390,9 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, async (request, res
     const input = paymentLinkSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     await withTransaction(async (connection) => {
-      const [rows] = await connection.execute("SELECT status FROM order_requests WHERE id=? FOR UPDATE", [request.params.id]);
-      const order = (rows as (RowDataPacket & { status: string })[])[0];
+      const [rows] = await connection.execute("SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE", [request.params.id]);
+      const order = (rows as (RowDataPacket & { status: string; is_test: number })[])[0];
+      if (order?.is_test) throw Object.assign(new Error('Test orders cannot receive real payment links'), { status: 409 });
       if (!order || order.status !== 'quoted') throw Object.assign(new Error('Only quoted orders can receive a payment link'), { status: 409 });
       await connection.execute('INSERT INTO payment_references (order_request_id,provider,payment_link,external_reference) VALUES (?,?,?,?)', [request.params.id, input.provider, input.paymentLink, input.externalReference]);
       await connection.execute("UPDATE order_requests SET status='awaiting_payment' WHERE id=?", [request.params.id]);
@@ -378,7 +405,7 @@ app.patch('/api/admin/orders/:id/confirm-payment', requireAdmin, async (request,
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const paymentReference = String(request.body?.externalReference || '');
-    const [result] = await pool.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND o.status='awaiting_payment'", [request.params.id, paymentReference]);
+    const [result] = await pool.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, paymentReference]);
     if ((result as { affectedRows: number }).affectedRows === 0) return response.status(409).json({ error: 'Payment reference could not be verified for this order' });
     response.json({ status: 'paid' });
   } catch (error) { next(error); }

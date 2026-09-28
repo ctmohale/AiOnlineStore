@@ -5,6 +5,7 @@ import { money } from '../data/products';
 import { useStore } from '../state/StoreContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useCatalog } from '../state/CatalogContext';
+import ProductVisual from '../components/ProductVisual';
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -20,7 +21,7 @@ export default function ProductDetail() {
   return <section className="section detail-page">
     <Link className="back-link" to="/shop"><ArrowLeft size={17} /> Back to shop</Link>
     <div className="detail-grid">
-      <div className="detail-image" style={{ background: product.accent }}><span className="product-badge">{product.badge}</span>{product.image ? <img src={product.image} alt={product.name} /> : <span className="product-placeholder large"><small>Product image coming soon</small><b>{product.brand}</b><em>{product.model}</em></span>}</div>
+      <div className="detail-image" style={{ background: product.accent }}><span className="product-badge">{product.badge}</span><ProductVisual product={product} large /></div>
       <div className="detail-copy">
         <p className="eyebrow">{product.category} · {product.brand}</p><h1>{product.name}</h1><p className="detail-model">{product.model} · {product.packSize}</p>
         <div className="detail-price"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
