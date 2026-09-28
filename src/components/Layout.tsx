@@ -1,9 +1,10 @@
 import { Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react';
 import { FormEvent, useState } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../state/StoreContext';
 import { useCatalog } from '../state/CatalogContext';
 import { money } from '../data/products';
+import { isStoreNavigationActive } from '../lib/navigation';
 
 export default function Layout() {
   const { count } = useStore();
@@ -12,6 +13,8 @@ export default function Layout() {
   const [menu, setMenu] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
+  const selectedCategory = new URLSearchParams(location.search).get('category') || '';
   const search = (event: FormEvent) => {
     event.preventDefault();
     navigate(`/shop?q=${encodeURIComponent(query)}`);
@@ -26,8 +29,8 @@ export default function Layout() {
         <Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search products" placeholder="Search products, brands and more" />
       </form>
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
-        <NavLink to="/shop" onClick={() => setMenu(false)}>Shop</NavLink>
-        {categories.map((category) => <NavLink key={category} to={`/shop?category=${encodeURIComponent(category)}`} onClick={() => setMenu(false)}>{category}</NavLink>)}
+        <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => setMenu(false)}>Shop</Link>
+        {categories.map((category) => { const active = isStoreNavigationActive(location.pathname, selectedCategory, category); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} key={category} to={`/shop?category=${encodeURIComponent(category)}`} onClick={() => setMenu(false)}>{category}</Link>; })}
         <a href="#how" onClick={() => setMenu(false)}>How it works</a>
       </nav>
       <Link className="account-link" to="/account" aria-label="Customer account"><UserRound size={20} /><span>Sign in</span></Link>

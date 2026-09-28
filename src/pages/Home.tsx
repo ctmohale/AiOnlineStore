@@ -1,4 +1,5 @@
-import { ArrowRight, BadgeCheck, Banknote, CheckCircle2, PackageCheck, SearchCheck, ShieldCheck, Truck } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Banknote, CheckCircle2, ChevronLeft, ChevronRight, PackageCheck, Pause, Play, SearchCheck, ShieldCheck, Truck } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { money } from '../data/products';
@@ -6,8 +7,18 @@ import { useCatalog } from '../state/CatalogContext';
 
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
-  const featured = products[0];
+  const featuredProducts = products.slice(0, 5);
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
+  const featured = featuredProducts[activeSlide];
   const categories = [...new Set(products.map((product) => product.category))].slice(0, 3);
+  useEffect(() => { if (activeSlide >= featuredProducts.length) setActiveSlide(0); }, [activeSlide, featuredProducts.length]);
+  useEffect(() => {
+    if (featuredProducts.length < 2 || !autoplay) return;
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % featuredProducts.length), 5500);
+    return () => window.clearInterval(timer);
+  }, [autoplay, featuredProducts.length]);
+  const moveSlide = (direction: number) => setActiveSlide((current) => (current + direction + featuredProducts.length) % featuredProducts.length);
   return <>
     <section className="hero">
       <div className="hero-content">
@@ -17,18 +28,26 @@ export default function Home() {
         <div className="hero-actions"><Link className="button primary" to="/shop">Shop the latest finds <ArrowRight size={18} /></Link><a className="text-link" href="#how">See how it works</a></div>
         <div className="hero-trust"><span><ShieldCheck /> Secure payment link</span><span><PackageCheck /> Stock checked first</span><span><Truck /> Nationwide delivery</span></div>
       </div>
-      <div className="hero-art" aria-label="Featured products">
+      <div className="hero-art featured-showcase" role="region" aria-roledescription="carousel" aria-label="Featured products">
         <div className="sun-shape" />
-        <div className="hero-product-placeholder"><small>{featured ? 'Latest live product' : 'Catalogue'}</small><strong>{featured?.brand || 'MOYA'}</strong><span>{featured?.name || 'No products published yet'}</span><em>{featured?.model || 'Add products in Admin'}</em></div>
-        {featured && <div className="deal-card"><small>Current selling price</small><strong>{money(featured.price)}</strong><span>{featured.name}</span></div>}
-        <div className="check-card"><BadgeCheck /><div><strong>Live catalogue</strong><span>Published from the admin database</span></div></div>
+        {featured ? <div className="featured-slide" key={featured.id} aria-live="polite">
+          {featured.image ? <Link className="hero-feature-image" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><img src={featured.image} alt={featured.name} /></Link> : <Link className="hero-product-placeholder" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><small>Featured find</small><strong>{featured.brand || 'MOYA'}</strong><span>{featured.name}</span><em>{featured.model || featured.packSize}</em></Link>}
+          <Link className="deal-card" to={`/product/${featured.slug}`}><small>{featured.compareAt ? `Was ${money(featured.compareAt)}` : 'Current selling price'}</small><strong>{money(featured.price)}</strong><span>{featured.name}</span></Link>
+          <div className="check-card"><BadgeCheck /><div><strong>Supplier checked</strong><span>{[featured.category, featured.packSize].filter(Boolean).join(' · ')}</span></div></div>
+        </div> : <div className="featured-empty"><small>Featured finds</small><strong>{loading ? 'Finding something good…' : 'New finds coming soon.'}</strong><span>{loading ? 'Loading our latest verified products.' : 'We’re preparing the next carefully checked selection.'}</span><Link className="text-link" to="/shop">Browse the catalogue <ArrowRight /></Link></div>}
+        {featuredProducts.length > 1 && <div className="featured-controls" aria-label="Featured product controls">
+          <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous featured product"><ChevronLeft /></button>
+          <div>{featuredProducts.map((product, index) => <button type="button" className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} aria-current={index === activeSlide ? 'true' : undefined} key={product.id} />)}</div>
+          <button type="button" onClick={() => moveSlide(1)} aria-label="Next featured product"><ChevronRight /></button>
+          <button type="button" onClick={() => setAutoplay((playing) => !playing)} aria-label={autoplay ? 'Pause featured product slideshow' : 'Play featured product slideshow'}>{autoplay ? <Pause /> : <Play />}</button>
+        </div>}
       </div>
     </section>
 
     <section className="category-strip">
       <p>Browse by category</p>
       {categories.map((category) => <Link key={category} to={`/shop?category=${encodeURIComponent(category)}`}><i>✦</i><div><strong>{category}</strong><span>View live products</span></div><ArrowRight /></Link>)}
-      {!loading && categories.length === 0 && <p>No categories are published yet.</p>}
+      {!loading && categories.length === 0 && <p>New categories are coming soon.</p>}
     </section>
 
     <section className="section products-section">
@@ -36,7 +55,7 @@ export default function Home() {
       {loading && <p className="catalogue-state">Loading the live catalogue…</p>}
       {!loading && error && <div className="empty-state compact"><h3>Catalogue unavailable</h3><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div>}
       {!loading && !error && products.length > 0 && <div className="product-grid">{products.slice(0, 6).map((product) => <ProductCard key={product.id} product={product} />)}</div>}
-      {!loading && !error && products.length === 0 && <div className="empty-state compact"><h3>No products published yet</h3><p>Products will appear here after they are verified and published in Admin.</p></div>}
+      {!loading && !error && products.length === 0 && <div className="empty-state compact"><h3>New finds are coming soon</h3><p>Our team is preparing the next carefully checked selection.</p></div>}
     </section>
 
     <section className="how-section" id="how">
