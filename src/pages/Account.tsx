@@ -32,7 +32,8 @@ export default function Account() {
         ? await customerLogin(String(data.get('email')), String(data.get('password')))
         : await customerRegister(String(data.get('name')), String(data.get('email')), String(data.get('phone')), String(data.get('password')));
       localStorage.setItem('moya-customer-token', result.token);
-      setCustomer(result.customer); setOrders([]);
+      setCustomer(result.customer);
+      await loadAccount();
       notify(mode === 'login' ? 'You are signed in.' : 'Your account was created.', 'success');
     } catch (authError) { const message = authError instanceof Error ? authError.message : 'Unable to continue'; setError(message); notify(message, 'error'); }
     finally { setSubmitting(false); }
@@ -42,8 +43,8 @@ export default function Account() {
   if (loading) return <section className="section account-loading">Loading your account…</section>;
   if (customer) return <section className="section account-page">
     <div className="account-heading"><div><p className="kicker">Customer account</p><h1>Hello, <em>{customer.name.split(' ')[0]}.</em></h1><p>{customer.email}{customer.phone ? ` · ${customer.phone}` : ''}</p></div><button type="button" className="outline-button" onClick={() => void logout()}><LogOut /> Sign out</button></div>
-    <div className="account-panel"><div className="card-heading"><div><p className="kicker">Your activity</p><h2>Order requests</h2></div><Link className="button primary" to="/shop">Shop now <ArrowRight /></Link></div>
-      {orders.length ? <div className="customer-orders">{orders.map((order) => <article key={order.reference}><div><strong>{order.reference}</strong><span>{new Date(order.created_at).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}</span></div><StatusPill status={order.status} /><strong>{money(Number(order.product_revenue) + Number(order.customer_delivery_charged))}</strong></article>)}</div> : <div className="account-empty"><PackageSearch /><h3>No order requests yet</h3><p>Your signed-in requests will appear here. Guest checkout is still available.</p><Link className="text-link" to="/shop">Browse the latest finds <ArrowRight /></Link></div>}
+    <div className="account-panel"><div className="card-heading"><div><p className="kicker">Your activity</p><h2>Order requests</h2></div><div className="account-actions"><button className="outline-button" type="button" onClick={() => void loadAccount()}>Refresh status</button><Link className="button primary" to="/shop">Shop now <ArrowRight /></Link></div></div>
+      {orders.length ? <div className="customer-orders">{orders.map((order) => <article key={order.reference}><div><strong>{order.reference}{order.is_test ? ' · TEST' : ''}</strong><span>{order.item_summary}</span><span>{new Date(order.created_at).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}</span>{(order.is_test === 1 || order.is_test === true) && order.status === 'requested' && <Link className="text-link" to={`/test-payment/${order.reference}`}>Complete test payment</Link>}</div><StatusPill status={order.status} /><strong>{money(Number(order.product_revenue) + Number(order.customer_delivery_charged))}</strong></article>)}</div> : <div className="account-empty"><PackageSearch /><h3>No order requests yet</h3><p>Your signed-in requests will appear here. Guest checkout is still available.</p><Link className="text-link" to="/shop">Browse the latest finds <ArrowRight /></Link></div>}
     </div>
   </section>;
 

@@ -1,4 +1,5 @@
 export type OrderPayload = {
+  testMode?: boolean;
   customer: { name: string; email: string; phone: string; addressLine1: string; suburb: string; city: string; province: string; postalCode: string; notes?: string };
   items: { productId: number; quantity: number; agreedUnitPrice: number }[];
 };
@@ -21,7 +22,15 @@ export async function createOrder(payload: OrderPayload) {
 }
 
 export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
-export type CustomerOrder = { reference: string; status: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
+export type CustomerOrder = { reference: string; status: string; is_test: number | boolean; test_paid_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
+
+export async function testPayment(reference: string, outcome: 'success' | 'failure') {
+  const token = localStorage.getItem('moya-customer-token');
+  const response = await fetch(`${API_URL}/customer/orders/${encodeURIComponent(reference)}/test-payment`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ outcome }) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'Test payment could not be completed');
+  return body as { status: 'test_paid' | 'test_failed'; charged: false };
+}
 
 async function customerAuth(path: 'login' | 'register', payload: Record<string, string>) {
   const response = await fetch(`${API_URL}/customer/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });

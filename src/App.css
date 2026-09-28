@@ -265,6 +265,16 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .customer-orders article { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:24px; padding:18px 5px; border-top:1px solid var(--line); }
 .customer-orders article>div strong,.customer-orders article>div span { display:block; font-size:12px; }
 .customer-orders article>div span { color:var(--muted); font-size:9px; margin-top:4px; }
+.account-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.test-order-option { display:flex!important; align-items:center; gap:10px; padding:14px; background:#f2eee4; border:1px solid var(--line); line-height:1.5; }
+.test-order-option input { width:auto!important; margin:0!important; }
+.test-payment-card { display:flex; flex-direction:column; align-items:center; gap:14px; }
+.test-payment-card .reference { width:100%; }
+.test-payment-icon { width:42px; height:42px; color:var(--forest); }
+.test-payment-actions { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+.test-result { display:flex; gap:9px; align-items:center; padding:13px; font-size:13px; }
+.test-result.success { background:#e4eee8; color:#1c6749; }
+.test-result.failure { background:#f9e6e2; color:#a43d34; }
 .account-empty { min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-top:1px solid var(--line); }
 .account-empty>svg { width:35px; height:35px; color:var(--coral); }
 .account-empty h3 { margin:15px 0 3px; }
@@ -359,6 +369,8 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .status-quoted i,.status-published i { background:#4a9a70; }
 .status-pending-review { background:#fff0db; color:#a76a21; }
 .status-paused { background:#eeeae6; color:#766d66; }
+.status-test-paid { background:#e5e9f8; color:#354f8b; }
+.status-test-paid i { background:#5874b0; }
 .review-card article,.review-table article { display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; padding:13px 0; border-top:1px solid #ebebe8; }
 .review-card article>i,.review-table article>i { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; background:#fff1dc; color:#c37b1d; }
 .review-card article>i svg,.review-table article>i svg { width:13px; }
