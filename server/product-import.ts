@@ -5,6 +5,15 @@ const retailerHosts = new Map([
   ['www.makro.co.za', 'Makro'],
 ]);
 
+export const isSupportedProductUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && retailerHosts.has(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 const decodeText = (value: string) => value
   .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
@@ -17,7 +26,7 @@ const numberValue = (value: unknown) => {
 
 const allowedUrl = (value: string) => {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || !retailerHosts.has(url.hostname.toLowerCase())) throw Object.assign(new Error('Only public Game or Makro HTTPS product URLs are supported'), { status: 400 });
+  if (!isSupportedProductUrl(value)) throw Object.assign(new Error('Only public Game or Makro HTTPS product URLs are supported'), { status: 400 });
   return url;
 };
 

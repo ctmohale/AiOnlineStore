@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { importProductUrl } from './product-import';
+import { importProductUrl, isSupportedProductUrl } from './product-import';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('product URL import', () => {
+  it('recognises only supported HTTPS product hosts', () => {
+    expect(isSupportedProductUrl('https://www.game.co.za/products/test-kettle')).toBe(true);
+    expect(isSupportedProductUrl('http://www.game.co.za/products/test-kettle')).toBe(false);
+    expect(isSupportedProductUrl('https://game.co.za.example.com/products/test-kettle')).toBe(false);
+    expect(isSupportedProductUrl('not a URL')).toBe(false);
+  });
+
   it('extracts a review draft from public retailer structured data', async () => {
     const html = `<html><head><script type="application/ld+json">${JSON.stringify({
       '@type': 'Product', name: 'Test Kettle', brand: { name: 'Acme' }, model: 'KT-100', sku: 'GAME-44', gtin13: '6001234567890',
