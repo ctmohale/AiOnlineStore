@@ -6,6 +6,7 @@ Base URL: `/api`. JSON is used for requests and responses. Admin routes require 
 
 - `GET /health` — application and database status.
 - `GET /api/products?q=&category=` — fresh, in-stock, published products only. Supplier costs are never selected.
+- `GET /api/store-settings` — public cart delivery threshold and standard delivery charge from the live pricing-settings row.
 - `POST /api/orders` — create a guest order request. Limited to 30 requests per IP per 15 minutes. The server ignores client prices and locks the current server-side selling price into each order-item snapshot.
 - `POST /api/customer/register` — create a customer account and return a 30-day customer token.
 - `POST /api/customer/login` — customer email/password login.
@@ -36,6 +37,7 @@ Order body:
 ## Admin
 
 - `POST /api/admin/login` — email/password sign-in; returns an 8-hour JWT. Limited to 10 attempts per IP per 15 minutes.
+- `GET /api/admin/me` — current authenticated administrator profile used by the dashboard.
 - `GET /api/admin/review-queue` — changed, expired, stale, unavailable, and uncertain products.
 - `GET /api/admin/products` — list the active admin catalogue, including the primary image and latest offer summary.
 - `POST /api/admin/products/import-url` — read public structured metadata from an allowlisted Game or Makro HTTPS product URL and return a review draft; it never saves or verifies the result automatically.

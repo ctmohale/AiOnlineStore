@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { Product } from '../data/products';
+import { useCatalog } from './CatalogContext';
 
 export type CartLine = { product: Product; quantity: number };
 type StoreContextValue = {
@@ -15,10 +16,18 @@ type StoreContextValue = {
 const StoreContext = createContext<StoreContextValue | null>(null);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { products, loading, error } = useCatalog();
   const [cart, setCart] = useState<CartLine[]>(() => {
     try { return JSON.parse(localStorage.getItem('moya-cart') || '[]'); } catch { return []; }
   });
   useEffect(() => localStorage.setItem('moya-cart', JSON.stringify(cart)), [cart]);
+  useEffect(() => {
+    if (loading || error) return;
+    setCart((lines) => lines.flatMap((line) => {
+      const current = products.find((product) => product.id === line.product.id);
+      return current ? [{ product: current, quantity: line.quantity }] : [];
+    }));
+  }, [error, loading, products]);
   const value = useMemo(() => ({
     cart,
     add: (product: Product, quantity = 1) => setCart((lines) => {

@@ -98,7 +98,8 @@ em { font-family:'Playfair Display',Georgia,serif; color:var(--coral); font-weig
 .stock-line span { width:7px; height:7px; border-radius:50%; background:#47a074; box-shadow:0 0 0 3px #dceee5; }
 .quick-add { width:100%; height:42px; background:transparent; border:1px solid var(--ink); display:flex; align-items:center; justify-content:center; gap:8px; font-size:11px; font-weight:700; cursor:pointer; }
 .quick-add:hover { background:var(--ink); color:#fff; }
-.demo-note { text-align:center; font-size:10px; color:#7c827e; margin:22px 0 0; }
+.catalogue-state { min-height:180px; display:grid; place-items:center; color:var(--muted); font-size:13px; }
+.empty-state.compact { min-height:240px; padding:30px; }
 .how-section { max-width:none; background:var(--forest); color:#fff; padding:95px max(6vw,30px); display:grid; grid-template-columns:.75fr 1.25fr; gap:8vw; }
 .how-intro { max-width:460px; }
 .how-intro .kicker { color:#a9c4b7; }
@@ -459,6 +460,9 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .settings-grid label>div { border:1px solid #d9dcd9; padding:10px; margin:6px 0; display:flex; gap:5px; }
 .settings-grid input { border:0; outline:0; width:100%; }
 .settings-grid small { font-size:8px; color:#88918d; }
+.admin-empty { min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#7d8982; text-align:center; border-top:1px solid #ebebe8; }
+.admin-empty svg { width:25px; }
+.admin-empty p { margin:0; font-size:12px; }
 
 /* Shared action feedback */
 .toast-region { position:fixed; z-index:320; right:22px; top:22px; width:min(390px,calc(100vw - 32px)); display:flex; flex-direction:column; gap:10px; pointer-events:none; }
@@ -615,7 +619,6 @@ em { font-family:inherit; font-style:normal; font-weight:400!important; }
 .product-model { font-size:13px; }
 .stock-line { font-size:12px; }
 .quick-add { min-height:46px; font-size:13px; }
-.demo-note { font-size:12px; }
 .steps>div>span { font-size:12px; }
 .steps p { font-size:13px; }
 .delivery-banner p:last-child { font-size:14px; }

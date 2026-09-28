@@ -5,17 +5,19 @@ export type OrderPayload = {
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+export async function publicRequest<T>(path: string) {
+  const response = await fetch(`${API_URL}${path}`);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error || 'The requested data could not be loaded');
+  return body as T;
+}
+
 export async function createOrder(payload: OrderPayload) {
-  try {
-    const token = localStorage.getItem('moya-customer-token');
-    const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
-    if (!response.ok) throw new Error('Unable to submit order request');
-    return await response.json() as { reference: string };
-  } catch (error) {
-    if (!import.meta.env.DEV) throw error;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return { reference: `MY-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}` };
-  }
+  const token = localStorage.getItem('moya-customer-token');
+  const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.error || 'Unable to submit order request');
+  return body as { reference: string };
 }
 
 export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
@@ -40,15 +42,10 @@ export async function customerRequest<T>(path: string) {
 }
 
 export async function adminLogin(email: string, password: string) {
-  try {
-    const response = await fetch(`${API_URL}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'Unable to sign in');
-    return body as { token: string };
-  } catch (error) {
-    if (import.meta.env.DEV && email === 'admin@moyamarket.co.za' && password === 'DemoPass123!') return { token: 'local-development-preview' };
-    throw error;
-  }
+  const response = await fetch(`${API_URL}/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'Unable to sign in');
+  return body as { token: string };
 }
 
 export async function adminRequest<T>(path: string, options: RequestInit = {}) {

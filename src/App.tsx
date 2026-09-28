@@ -11,13 +11,15 @@ import Account from './pages/Account';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import { FeedbackProvider } from './components/FeedbackProvider';
+import { CatalogProvider } from './state/CatalogContext';
 import './App.css';
 
 export default function App() {
   return (
     <FeedbackProvider>
       <BrowserRouter>
-        <StoreProvider>
+        <CatalogProvider>
+          <StoreProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
@@ -32,7 +34,8 @@ export default function App() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        </StoreProvider>
+          </StoreProvider>
+        </CatalogProvider>
       </BrowserRouter>
     </FeedbackProvider>
   );

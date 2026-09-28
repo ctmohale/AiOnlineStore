@@ -11,7 +11,7 @@ A launch-focused South African reseller storefront and operations dashboard. Cus
 - CSV and permitted JSON-feed adapters, exact-product deduplication, review-only ingestion, daily retailer URL and stale checks, and hourly promotion-end checks.
 - Domain tests for profit, free delivery, expiry, staleness, exact matching, and locked order prices.
 
-The three initial products are demo catalogue examples. Database seeds mark them `pending_review`; they cannot be published until a person verifies the supplier offer. Product image fields are intentionally empty and the UI displays placeholders until rights-cleared image URLs are supplied.
+The product catalogue starts empty. The seed command creates or updates only the production administrator; real products must be added, verified, and published through the admin sourcing workflow. Product images remain optional URLs and the UI displays placeholders until rights-cleared image URLs are supplied.
 
 ## Local setup
 
@@ -29,11 +29,11 @@ In a second terminal run `npm run dev`, then open `http://localhost:5173`. Run t
 
 Sign in at `/admin/login`, open **Products**, and choose **Add product**. Paste a public Game or Makro product URL to prefill available structured metadata, then review it before saving. The workflow stores product identity, supplier and promotion details, fulfilment costs, verification timestamps, confidence, price history, and internal notes. Images remain optional URLs; the app does not generate or upload product imagery.
 
-Drafts can be incomplete. Publication requires a name, category, exact model or pack size, supplier URL, verified supplier price, current check time, usable stock status, and a profit estimate that passes the configured product and margin guardrails. Supplier price, source URL, margin, and internal notes are never included in public catalogue responses. The R999 free-delivery rule is applied to the complete cart, and estimated costs and profit are recalculated when the order request is created.
+Drafts can be incomplete. Publication requires a name, category, exact model or pack size, supplier URL, verified supplier price, current check time, usable stock status, and a profit estimate that passes the configured product and margin guardrails. Supplier price, source URL, margin, and internal notes are never included in public catalogue responses. The database-configured free-delivery threshold is applied to the complete cart, and estimated costs and profit are recalculated when the order request is created.
 
 The daily worker rechecks the latest public Game or Makro URL when no promotion end date was supplied. If the supplier price changes, the price is marked unverified and the product returns to pending review; an unavailable item is paused. Failed or incomplete public metadata is recorded for staff follow-up and never silently overwrites a verified price.
 
-Without `DATABASE_URL`, the API deliberately starts in a development-only degraded mode so the UI and request flow can be reviewed. Production health returns 503 if MySQL is missing. The dashboard login uses the API in production; only Vite development mode permits the prefilled local preview credentials when the API is unavailable.
+Without `DATABASE_URL`, health reports degraded and data-changing requests return 503. The storefront and dashboard never substitute preview products, orders, credentials, prices, or metrics for unavailable database data.
 
 ## Commands
 
@@ -43,7 +43,7 @@ Without `DATABASE_URL`, the API deliberately starts in a development-only degrad
 | API | `npm run dev:api` | `npm run build:api` | `npm run start:api` |
 | Worker | `npm run dev:worker` | `npm run build:api` | `npm run start:worker` |
 
-Other commands: `npm test`, `npm run lint`, `npm run db:migrate`, `npm run db:seed`, and `npm run worker:import-csv -- ./examples/products.csv`.
+Other commands: `npm test`, `npm run lint`, `npm run db:migrate`, `npm run db:seed`, and `npm run worker:import-csv -- /path/to/authorised-products.csv`.
 
 ## Railway deployment
 

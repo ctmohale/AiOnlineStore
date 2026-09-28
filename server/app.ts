@@ -21,7 +21,6 @@ app.use(express.json({ limit: '200kb' }));
 
 const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
-const memoryOrders: unknown[] = [];
 const reference = () => `MY-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 const productSlug = (title: string, model: string) => `${title}-${model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 170) + `-${crypto.randomBytes(3).toString('hex')}`;
 
@@ -52,22 +51,32 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
 }
 
 app.get('/health', async (_request, response) => {
-  if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'development_memory' });
+  if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'database_required' });
   try { await pool.query('SELECT 1'); response.json({ status: 'ok', database: 'connected' }); }
   catch { response.status(503).json({ status: 'unhealthy', database: 'unavailable' }); }
 });
 
 app.get('/api/products', async (request, response, next) => {
   try {
-    if (!pool) return response.json([]);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const search = String(request.query.q || '');
     const category = String(request.query.category || '');
     const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", 'o.last_checked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)', '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY p.updated_at DESC LIMIT 100`, params);
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY p.updated_at DESC LIMIT 100`, params);
     response.json(rows);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/store-settings', async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT free_delivery_threshold,standard_customer_delivery FROM pricing_settings WHERE id=1');
+    const settings = (rows as RowDataPacket[])[0];
+    if (!settings) return response.status(503).json({ error: 'Store settings are not configured' });
+    response.json({ freeDeliveryThreshold: Number(settings.free_delivery_threshold), standardCustomerDelivery: Number(settings.standard_customer_delivery) });
   } catch (error) { next(error); }
 });
 
@@ -108,11 +117,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
   try {
     const input = orderSchema.parse(request.body);
     const orderReference = reference();
-    if (!pool) {
-      if (process.env.NODE_ENV === 'production') return response.status(503).json({ error: 'Order service unavailable' });
-      memoryOrders.push({ ...input, reference: orderReference, createdAt: new Date().toISOString() });
-      return response.status(201).json({ reference: orderReference, status: 'requested' });
-    }
+    if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
     await withTransaction(async (connection) => {
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
@@ -153,11 +158,21 @@ app.post('/api/admin/login', loginLimiter, async (request, response, next) => {
 });
 
 app.get('/api/admin/review-queue', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) WHERE p.deleted_at IS NULL AND p.status IN ('pending_review','paused','unavailable') ORDER BY p.updated_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) WHERE p.deleted_at IS NULL AND p.status IN ('pending_review','paused','unavailable') ORDER BY p.updated_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
+});
+
+app.get('/api/admin/me', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT id,email,name,role FROM admins WHERE id=? LIMIT 1', [response.locals.admin.sub]);
+    const admin = (rows as RowDataPacket[])[0];
+    if (!admin) return response.status(404).json({ error: 'Administrator not found' });
+    response.json(admin);
+  } catch (error) { next(error); }
 });
 
 app.get('/api/admin/products', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 500"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 500"); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/admin/products/import-url', requireAdmin, async (request, response, next) => {
@@ -311,7 +326,7 @@ app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response,
 });
 
 app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.json(memoryOrders); const [rows] = await pool.execute('SELECT * FROM order_requests ORDER BY created_at DESC LIMIT 200'); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.*,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
 });
 
 app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response, next) => {

@@ -36,7 +36,7 @@ const optionalNumber = (value: string) => value.trim() === '' ? null : Number(va
 const optionalDate = (value: string) => value ? new Date(value).toISOString() : null;
 const textValue = (value: unknown) => value == null ? '' : String(value);
 
-export default function ProductManager({ onChanged }: { onChanged?: () => void }) {
+export default function ProductManager({ onChanged, initialEditId, onInitialEditHandled }: { onChanged?: () => void; initialEditId?: number; onInitialEditHandled?: () => void }) {
   const { confirm, notify } = useFeedback();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [editing, setEditing] = useState<AdminProduct | null>(null);
@@ -51,11 +51,17 @@ export default function ProductManager({ onChanged }: { onChanged?: () => void }
   useEffect(() => { void load(); }, [load]);
   const field = <K extends keyof ProductForm>(key: K, value: ProductForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const add = () => { setEditing(null); setForm(emptyProduct); setMessage(''); setOpen(true); };
-  const edit = (product: AdminProduct) => {
+  const edit = useCallback((product: AdminProduct) => {
     setEditing(product);
     setForm({ title: product.title, category: product.category, brand: product.brand, model: product.model, barcode: product.barcode || '', packSize: product.pack_size, description: product.description, imageUrl: product.image_url || '', specifications: specificationsText(product.specifications), retailer: product.retailer || '', sourceUrl: product.source_url || '', supplierSku: product.supplier_sku || '', currentCost: textValue(product.current_cost), originalDisplayedPrice: textValue(product.original_displayed_price), stockStatus: product.stock_status || 'unknown', lastCheckedAt: dateInput(product.last_checked_at), promotionStartAt: dateInput(product.promotion_start_at), promotionEndAt: dateInput(product.promotion_end_at), promotionEndProvided: Boolean(product.promotion_end_provided), promotionTerms: product.promotion_terms || '', quantityLimit: product.quantity_limit || '', sellingPrice: String(product.selling_price), minimumProfit: textValue(product.minimum_profit ?? 120), status: product.status, supplierDeliveryCost: textValue(product.supplier_delivery_cost ?? 0), estimatedCustomerDeliveryCost: textValue(product.estimated_customer_delivery_cost ?? 0), deliveryTime: product.delivery_time || '', itemWeightSize: product.item_weight_size || '', sourceConfidence: product.source_confidence || 'low', supplierPriceVerified: Boolean(product.price_verified), reviewNotes: product.internal_review_notes || '', priceUpdatedAt: dateInput(product.price_updated_at), priceChangeReason: product.price_change_reason || '' });
     setMessage(''); setOpen(true);
-  };
+  }, []);
+  useEffect(() => {
+    if (!initialEditId || loading) return;
+    const product = products.find((item) => item.id === initialEditId);
+    if (product) edit(product);
+    onInitialEditHandled?.();
+  }, [edit, initialEditId, loading, onInitialEditHandled, products]);
   const estimatedProfit = useMemo(() => Number(form.sellingPrice || 0) - Number(form.currentCost || 0) - Number(form.supplierDeliveryCost || 0) - Number(form.estimatedCustomerDeliveryCost || 0), [form.sellingPrice, form.currentCost, form.supplierDeliveryCost, form.estimatedCustomerDeliveryCost]);
   const margin = Number(form.sellingPrice) > 0 ? estimatedProfit / Number(form.sellingPrice) * 100 : 0;
   const minimumProfit = Number(form.minimumProfit || 0);

@@ -1,13 +1,15 @@
 import { ArrowLeft, ArrowRight, Minus, Plus, ShoppingBag, Trash2, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { FREE_DELIVERY_THRESHOLD, money, STANDARD_DELIVERY } from '../data/products';
+import { money } from '../data/products';
 import { useStore } from '../state/StoreContext';
 import { useFeedback } from '../components/FeedbackProvider';
+import { useCatalog } from '../state/CatalogContext';
 
 export default function Cart() {
   const { cart, subtotal, update, remove } = useStore();
+  const { settings } = useCatalog();
   const { confirm, notify } = useFeedback();
-  const delivery = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : STANDARD_DELIVERY;
+  const delivery = settings ? subtotal >= settings.freeDeliveryThreshold ? 0 : settings.standardCustomerDelivery : 0;
   if (!cart.length) return <section className="section empty-state"><ShoppingBag size={48} /><h1>Your cart is ready for a good find.</h1><p>Add a product and come back when you're ready to request an order.</p><Link className="button primary" to="/shop">Browse products</Link></section>;
   const removeProduct = async (productId: number, productName: string) => {
     if (!await confirm({ title: 'Remove this item?', message: `Remove “${productName}” from your cart?`, confirmLabel: 'Remove item', tone: 'danger' })) return;
@@ -23,7 +25,7 @@ export default function Cart() {
         <div className="qty"><button type="button" aria-label={`Decrease ${product.name} quantity`} onClick={() => update(product.id, quantity - 1)}><Minus /></button><span>{quantity}</span><button type="button" aria-label={`Increase ${product.name} quantity`} onClick={() => update(product.id, quantity + 1)}><Plus /></button></div>
         <strong className="line-total">{money(product.price * quantity)}</strong>
       </article>)}</div>
-      <aside className="order-summary"><h2>Request summary</h2><div><span>Products</span><strong>{money(subtotal)}</strong></div><div><span>Estimated delivery</span><strong>{delivery === 0 ? 'Free' : money(delivery)}</strong></div>{subtotal < FREE_DELIVERY_THRESHOLD && <div className="delivery-progress"><Truck size={18} /><p>Add <strong>{money(FREE_DELIVERY_THRESHOLD - subtotal)}</strong> more for free delivery.</p><i><span style={{ width: `${Math.min(100, subtotal / FREE_DELIVERY_THRESHOLD * 100)}%` }} /></i></div>}<div className="summary-total"><span>Estimated total</span><strong>{money(subtotal + delivery)}</strong></div><p className="summary-note">Final stock, supplier cost and delivery are checked before we send your payment link.</p><Link className="button primary full" to="/request">Request this order <ArrowRight size={18} /></Link><span className="no-charge">No payment required now</span></aside>
+      <aside className="order-summary"><h2>Request summary</h2><div><span>Products</span><strong>{money(subtotal)}</strong></div><div><span>Estimated delivery</span><strong>{settings ? delivery === 0 ? 'Free' : money(delivery) : 'Loading…'}</strong></div>{settings && subtotal < settings.freeDeliveryThreshold && <div className="delivery-progress"><Truck size={18} /><p>Add <strong>{money(settings.freeDeliveryThreshold - subtotal)}</strong> more for free delivery.</p><i><span style={{ width: `${Math.min(100, subtotal / settings.freeDeliveryThreshold * 100)}%` }} /></i></div>}<div className="summary-total"><span>Estimated total</span><strong>{settings ? money(subtotal + delivery) : 'Loading…'}</strong></div><p className="summary-note">Final stock, supplier cost and delivery are checked before we send your payment link.</p><Link className="button primary full" to="/request">Request this order <ArrowRight size={18} /></Link><span className="no-charge">No payment required now</span></aside>
     </div>
   </section>;
 }
