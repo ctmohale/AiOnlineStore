@@ -2,9 +2,11 @@ import { ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { adminLogin } from '../../lib/api';
+import { useFeedback } from '../../components/FeedbackProvider';
 
 export default function AdminLogin() {
   const navigate = useNavigate();
+  const { notify } = useFeedback();
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -16,9 +18,10 @@ export default function AdminLogin() {
     try {
       const { token } = await adminLogin(email, password);
       sessionStorage.setItem('moya-admin-token', token);
+      notify('Welcome back. The operations dashboard is ready.', 'success', 'Signed in');
       navigate('/admin');
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Unable to sign in');
+      const message = loginError instanceof Error ? loginError.message : 'Unable to sign in'; setError(message); notify(message, 'error');
       setSubmitting(false);
     }
   };

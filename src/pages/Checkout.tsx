@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FREE_DELIVERY_THRESHOLD, money, STANDARD_DELIVERY } from '../data/products';
 import { createOrder } from '../lib/api';
 import { useStore } from '../state/StoreContext';
+import { useFeedback } from '../components/FeedbackProvider';
 
 const provinces = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
 
@@ -11,17 +12,20 @@ export default function Checkout() {
   const { cart, subtotal, clear } = useStore();
   const delivery = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : STANDARD_DELIVERY;
   const navigate = useNavigate();
+  const { confirm, notify } = useFeedback();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   if (!cart.length) return <section className="section empty-state"><h1>Your cart is empty</h1><Link className="button primary" to="/shop">Browse products</Link></section>;
   const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setSubmitting(true); setError('');
+    event.preventDefault();
+    if (!await confirm({ title: 'Send this order request?', message: `Submit your request for ${money(subtotal + delivery)}? You will not be charged now; stock, price and delivery will be confirmed first.`, confirmLabel: 'Send request' })) return;
+    setSubmitting(true); setError('');
     const fields = new FormData(event.currentTarget);
     const text = (name: string) => String(fields.get(name) || '').trim();
     try {
       const { reference } = await createOrder({ customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
-      clear(); navigate(`/confirmation/${reference}`);
-    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Something went wrong. Please try again.'); setSubmitting(false); }
+      clear(); notify(`Order request ${reference} was received.`, 'success', 'Request sent'); navigate(`/confirmation/${reference}`);
+    } catch (requestError) { const message = requestError instanceof Error ? requestError.message : 'Something went wrong. Please try again.'; setError(message); notify(message, 'error'); setSubmitting(false); }
   };
   return <section className="section checkout-page">
     <Link className="back-link" to="/cart"><ArrowLeft size={17} /> Back to cart</Link>

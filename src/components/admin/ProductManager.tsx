@@ -1,8 +1,9 @@
-import { Archive, Edit3, ExternalLink, Link2, PackagePlus, RefreshCw, Save, Sparkles, X } from 'lucide-react';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Edit3, ExternalLink, Link2, PackagePlus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import StatusPill from '../StatusPill';
 import { money } from '../../data/products';
 import { adminRequest } from '../../lib/api';
+import { useFeedback } from '../FeedbackProvider';
 
 type AdminProduct = {
   id: number; title: string; brand: string; model: string; barcode: string | null; pack_size: string; category: string;
@@ -36,6 +37,7 @@ const optionalDate = (value: string) => value ? new Date(value).toISOString() : 
 const textValue = (value: unknown) => value == null ? '' : String(value);
 
 export default function ProductManager({ onChanged }: { onChanged?: () => void }) {
+  const { confirm, notify } = useFeedback();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [editing, setEditing] = useState<AdminProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyProduct);
@@ -43,9 +45,10 @@ export default function ProductManager({ onChanged }: { onChanged?: () => void }
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
-  const load = async () => { setLoading(true); try { setProducts(await adminRequest<AdminProduct[]>('/products')); setMessage(''); } catch (error) { setMessage(error instanceof Error ? error.message : 'Products could not be loaded'); } finally { setLoading(false); } };
-  useEffect(() => { void load(); }, []);
+  const load = useCallback(async (showSuccess = false) => { setLoading(true); try { setProducts(await adminRequest<AdminProduct[]>('/products')); if (showSuccess) notify('The product list is up to date.', 'success', 'Products refreshed'); } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be loaded', 'error'); } finally { setLoading(false); } }, [notify]);
+  useEffect(() => { void load(); }, [load]);
   const field = <K extends keyof ProductForm>(key: K, value: ProductForm[K]) => setForm((current) => ({ ...current, [key]: value }));
   const add = () => { setEditing(null); setForm(emptyProduct); setMessage(''); setOpen(true); };
   const edit = (product: AdminProduct) => {
@@ -60,27 +63,37 @@ export default function ProductManager({ onChanged }: { onChanged?: () => void }
   const publishMissing = [!form.title && 'name', !form.category && 'category', !form.model && !form.packSize && 'exact model or pack size', !form.sourceUrl && 'supplier URL', !Number(form.currentCost) && 'supplier price', !form.supplierPriceVerified && 'price verification', !form.lastCheckedAt && 'last checked time', !['in_stock', 'low_stock'].includes(form.stockStatus) && 'in-stock status'].filter(Boolean) as string[];
 
   const importFromUrl = async () => {
-    if (!form.sourceUrl) { setMessage('Paste a Game or Makro product URL first.'); return; }
+    if (!form.sourceUrl) { const warning = 'Paste a Game or Makro product URL first.'; setMessage(warning); notify(warning, 'warning'); return; }
     setImporting(true); setMessage('');
     try {
       const imported = await adminRequest<Record<string, unknown>>('/products/import-url', { method: 'POST', body: JSON.stringify({ url: form.sourceUrl }) });
       setForm((current) => ({ ...current, title: textValue(imported.title) || current.title, category: textValue(imported.category) || current.category, brand: textValue(imported.brand) || current.brand, model: textValue(imported.model) || current.model, barcode: textValue(imported.barcode) || current.barcode, packSize: textValue(imported.packSize) || current.packSize, description: textValue(imported.description) || current.description, imageUrl: textValue(imported.imageUrl) || current.imageUrl, retailer: textValue(imported.retailer) || current.retailer, sourceUrl: textValue(imported.sourceUrl) || current.sourceUrl, supplierSku: textValue(imported.supplierSku) || current.supplierSku, currentCost: textValue(imported.currentCost) || current.currentCost, originalDisplayedPrice: textValue(imported.originalDisplayedPrice) || current.originalDisplayedPrice, stockStatus: textValue(imported.stockStatus) || current.stockStatus, lastCheckedAt: dateInput(textValue(imported.lastCheckedAt)) || current.lastCheckedAt, promotionStartAt: dateInput(textValue(imported.promotionStartAt)) || current.promotionStartAt, promotionEndAt: dateInput(textValue(imported.promotionEndAt)) || current.promotionEndAt, promotionTerms: textValue(imported.promotionTerms) || current.promotionTerms, quantityLimit: textValue(imported.quantityLimit) || current.quantityLimit, supplierDeliveryCost: textValue(imported.supplierDeliveryCost) || current.supplierDeliveryCost, sourceConfidence: textValue(imported.sourceConfidence) || current.sourceConfidence, supplierPriceVerified: false, priceUpdatedAt: dateInput(textValue(imported.priceUpdatedAt)) || current.priceUpdatedAt, priceChangeReason: textValue(imported.priceChangeReason) || current.priceChangeReason, reviewNotes: textValue(imported.reviewNotes) || current.reviewNotes }));
-      setMessage(textValue(imported.importWarning) || 'Fields imported. Review and verify them before publishing.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'The product URL could not be imported'); } finally { setImporting(false); }
+      const importedMessage = textValue(imported.importWarning) || 'Fields imported. Review and verify them before publishing.';
+      setMessage(importedMessage); notify(importedMessage, 'success', 'Supplier details imported');
+    } catch (error) { const errorMessage = error instanceof Error ? error.message : 'The product URL could not be imported'; setMessage(errorMessage); notify(errorMessage, 'error'); } finally { setImporting(false); }
   };
 
   const submit = async (event: FormEvent) => {
-    event.preventDefault(); setSaving(true); setMessage('');
+    event.preventDefault();
+    const approved = await confirm({ title: editing ? 'Save product changes?' : 'Add this product?', message: editing ? `Update “${form.title}” with these product and supplier details? Published listings may return to review after material changes.` : `Create “${form.title}” as a ${form.status.replace('_', ' ')} listing?`, confirmLabel: editing ? 'Save changes' : 'Add product' });
+    if (!approved) return;
+    setSaving(true); setMessage('');
     const payload = { title: form.title, category: form.category, brand: form.brand, model: form.model, barcode: form.barcode || null, packSize: form.packSize, description: form.description, imageUrl: form.imageUrl || null, specifications: parseSpecifications(form.specifications), sellingPrice: Number(form.sellingPrice), minimumProfit: optionalNumber(form.minimumProfit), estimatedCustomerDeliveryCost: optionalNumber(form.estimatedCustomerDeliveryCost), deliveryTime: form.deliveryTime || null, itemWeightSize: form.itemWeightSize || null, reviewNotes: form.reviewNotes || null, status: form.status, supplier: { retailer: form.retailer || null, sourceUrl: form.sourceUrl || null, supplierSku: form.supplierSku || null, currentCost: optionalNumber(form.currentCost), originalDisplayedPrice: optionalNumber(form.originalDisplayedPrice), stockStatus: form.stockStatus, lastCheckedAt: optionalDate(form.lastCheckedAt), promotionStartAt: optionalDate(form.promotionStartAt), promotionEndAt: optionalDate(form.promotionEndAt), promotionEndProvided: Boolean(form.promotionEndAt) || form.promotionEndProvided, promotionTerms: form.promotionTerms || null, quantityLimit: form.quantityLimit || null, supplierDeliveryCost: optionalNumber(form.supplierDeliveryCost), sourceConfidence: form.sourceConfidence, supplierPriceVerified: form.supplierPriceVerified, priceUpdatedAt: optionalDate(form.priceUpdatedAt), priceChangeReason: form.priceChangeReason || null } };
-    try { await adminRequest(editing ? `/products/${editing.id}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) }); setOpen(false); await load(); setMessage(editing ? 'Product and supplier details updated.' : 'Product saved. Publication guardrails were applied.'); onChanged?.(); }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Product could not be saved'); } finally { setSaving(false); }
+    try { await adminRequest(editing ? `/products/${editing.id}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) }); setOpen(false); await load(); notify(editing ? 'Product and supplier details updated.' : 'Product saved. Publication guardrails were applied.', 'success', editing ? 'Product updated' : 'Product added'); onChanged?.(); }
+    catch (error) { const errorMessage = error instanceof Error ? error.message : 'Product could not be saved'; setMessage(errorMessage); notify(errorMessage, 'error'); } finally { setSaving(false); }
   };
-  const archive = async (product: AdminProduct) => { if (!window.confirm(`Archive “${product.title}”? It will disappear from the storefront but its history will be preserved.`)) return; try { await adminRequest(`/products/${product.id}`, { method: 'DELETE' }); await load(); setMessage('Product archived safely.'); onChanged?.(); } catch (error) { setMessage(error instanceof Error ? error.message : 'Product could not be archived'); } };
+  const deleteProduct = async (product: AdminProduct) => {
+    const approved = await confirm({ title: 'Delete this product?', message: `“${product.title}” will be removed from the storefront and active product list. Its order and price history will be preserved for audit purposes.`, confirmLabel: 'Delete product', tone: 'danger' });
+    if (!approved) return;
+    setDeletingId(product.id);
+    try { await adminRequest(`/products/${product.id}`, { method: 'DELETE' }); setProducts((current) => current.filter((item) => item.id !== product.id)); notify(`“${product.title}” was deleted from the active catalogue.`, 'success', 'Product deleted'); onChanged?.(); }
+    catch (error) { notify(error instanceof Error ? error.message : 'Product could not be deleted', 'error'); }
+    finally { setDeletingId(null); }
+  };
 
   return <>
-    <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button className="outline-button" onClick={() => void load()}><RefreshCw /> Refresh</button><button className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
-      {message && <p className="admin-notice">{message}</p>}
-      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Product</span><span>Status</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{products.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); return <div className="table-row product-table-grid" key={product.id}><span><i className="table-thumb">{product.brand?.[0] || 'P'}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><StatusPill status={product.status} /><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit < Number(product.minimum_profit || 120) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}</span><span className="row-actions"><button title="Edit product" onClick={() => edit(product)}><Edit3 /></button><button title="Archive product" className="danger" onClick={() => void archive(product)}><Archive /></button></span></div>; })}</div>}
+    <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button type="button" className="outline-button" disabled={loading} onClick={() => void load(true)}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh'}</button><button type="button" className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
+      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Product</span><span>Status</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{products.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); return <div className="table-row product-table-grid" key={product.id}><span><i className="table-thumb">{product.brand?.[0] || 'P'}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><StatusPill status={product.status} /><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit < Number(product.minimum_profit || 120) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}</span><span className="row-actions"><button type="button" title="Edit product" aria-label={`Edit ${product.title}`} onClick={() => edit(product)}><Edit3 /> Edit</button><button type="button" title="Delete product" aria-label={`Delete ${product.title}`} className="danger" disabled={deletingId === product.id} onClick={() => void deleteProduct(product)}><Trash2 /> {deletingId === product.id ? 'Deleting…' : 'Delete'}</button></span></div>; })}</div>}
       {!loading && products.length === 0 && <div className="account-empty"><PackagePlus /><h3>No active products</h3><p>Create the first catalogue draft to begin supplier review.</p></div>}
     </section>
     {open && <div className="product-modal-backdrop" role="presentation"><section className="product-modal product-workflow-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title"><header><div><p className="kicker">{editing ? 'Edit sourcing record' : 'New sourcing record'}</p><h2 id="product-form-title">{editing ? editing.title : 'Add a product'}</h2></div><button type="button" onClick={() => setOpen(false)} aria-label="Close product form"><X /></button></header><form onSubmit={submit}>
