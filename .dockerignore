@@ -1,0 +1,10 @@
+.git
+.env
+node_modules
+dist
+api-dist
+coverage
+cypress/videos
+cypress/screenshots
+npm-debug.log*
+.DS_Store

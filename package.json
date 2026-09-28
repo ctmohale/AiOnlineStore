@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "start": "node scripts/start-service.mjs",
     "dev": "vite",
     "dev:api": "tsx watch server/index.ts",
     "dev:worker": "tsx watch worker/index.ts",

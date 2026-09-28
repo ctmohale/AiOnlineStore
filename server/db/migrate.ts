@@ -5,7 +5,9 @@ import { pool } from './pool.js';
 
 if (!pool) throw new Error('DATABASE_URL is required to run migrations');
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const migrationsDir = path.join(currentDir, 'migrations');
+const compiledMigrationsDir = path.join(currentDir, 'migrations');
+const sourceMigrationsDir = path.join(process.cwd(), 'server', 'db', 'migrations');
+const migrationsDir = await fs.access(compiledMigrationsDir).then(() => compiledMigrationsDir).catch(() => sourceMigrationsDir);
 const connection = await pool.getConnection();
 try {
   await connection.query('CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
