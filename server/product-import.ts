@@ -18,8 +18,8 @@ export const highResolutionImageUrl = (value: string) => {
   try {
     const url = new URL(value);
     if (['makro.co.za', 'www.makro.co.za'].includes(url.hostname.toLowerCase()) && url.pathname.includes('/asset/rukmini/fccp/')) {
-      url.pathname = url.pathname.replace(/\/asset\/rukmini\/fccp\/\d+\/\d+\//, '/asset/rukmini/fccp/1200/1200/');
-      url.searchParams.set('q', '95');
+      url.pathname = url.pathname.replace(/\/asset\/rukmini\/fccp\/\d+\/\d+\//, '/asset/rukmini/fccp/1600/1600/');
+      url.searchParams.set('q', '100');
     }
     return url.toString();
   } catch { return value; }

@@ -12,7 +12,7 @@ describe('product URL import', () => {
   });
 
   it('requests the high-resolution Makro product image variant', () => {
-    expect(highResolutionImageUrl('https://www.makro.co.za/asset/rukmini/fccp/416/416/example/photo.jpeg?q=70')).toBe('https://www.makro.co.za/asset/rukmini/fccp/1200/1200/example/photo.jpeg?q=95');
+    expect(highResolutionImageUrl('https://www.makro.co.za/asset/rukmini/fccp/416/416/example/photo.jpeg?q=70')).toBe('https://www.makro.co.za/asset/rukmini/fccp/1600/1600/example/photo.jpeg?q=100');
   });
 
   it('extracts a review draft from public retailer structured data', async () => {
