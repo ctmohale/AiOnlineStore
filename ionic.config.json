@@ -1,0 +1,7 @@
+{
+  "name": "BigOnlineStore",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
