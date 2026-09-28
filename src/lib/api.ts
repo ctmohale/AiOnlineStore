@@ -54,7 +54,7 @@ export async function adminLogin(email: string, password: string) {
 export async function adminRequest<T>(path: string, options: RequestInit = {}) {
   const token = sessionStorage.getItem('moya-admin-token');
   const response = await fetch(`${API_URL}/admin${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || 'Admin request failed');
+  const body = response.status === 204 ? null : await response.json();
+  if (!response.ok) throw new Error(body?.error || 'Admin request failed');
   return body as T;
 }

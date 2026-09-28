@@ -9,7 +9,7 @@ import type { RowDataPacket } from 'mysql2';
 import { calculateProfit, passesPricingRules } from '../shared/domain.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
-import { customerLoginSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, quoteSchema } from './validation.js';
+import { adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -21,6 +21,7 @@ const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHead
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
 const memoryOrders: unknown[] = [];
 const reference = () => `MY-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+const productSlug = (title: string, model: string) => `${title}-${model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 170) + `-${crypto.randomBytes(3).toString('hex')}`;
 
 app.get('/health', async (_request, response) => {
   if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'development_memory' });
@@ -33,7 +34,7 @@ app.get('/api/products', async (request, response, next) => {
     if (!pool) return response.json([]);
     const search = String(request.query.q || '');
     const category = String(request.query.category || '');
-    const terms: string[] = ["p.status = 'published'", "o.stock_status IN ('in_stock','low_stock')", 'o.last_checked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)', '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
+    const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', "o.stock_status IN ('in_stock','low_stock')", 'o.last_checked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)', '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
@@ -120,11 +121,75 @@ app.post('/api/admin/login', loginLimiter, async (request, response, next) => {
 });
 
 app.get('/api/admin/review-queue', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) WHERE p.status IN ('pending_review','paused','unavailable') ORDER BY p.updated_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) WHERE p.deleted_at IS NULL AND p.status IN ('pending_review','paused','unavailable') ORDER BY p.updated_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
 });
 
 app.get('/api/admin/products', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at,o.source_url FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) ORDER BY p.updated_at DESC LIMIT 500"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.json([]); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.current_cost,o.original_displayed_price,o.promotion_end_at,o.stock_status,o.last_checked_at,o.source_url FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 500"); response.json(rows); } catch (error) { next(error); }
+});
+
+app.post('/api/admin/products', requireAdmin, async (request, response, next) => {
+  try {
+    const input = adminProductCreateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const created = await withTransaction(async (connection) => {
+      const [duplicates] = input.barcode
+        ? await connection.execute('SELECT id FROM products WHERE barcode=? AND deleted_at IS NULL LIMIT 1', [input.barcode])
+        : await connection.execute('SELECT id FROM products WHERE LOWER(brand)=LOWER(?) AND LOWER(model)=LOWER(?) AND LOWER(pack_size)=LOWER(?) AND deleted_at IS NULL LIMIT 1', [input.brand, input.model, input.packSize]);
+      if ((duplicates as RowDataPacket[]).length) throw Object.assign(new Error('An exact product with this barcode or model and pack size already exists'), { status: 409 });
+      const slug = productSlug(input.title, input.model);
+      const [result] = await connection.execute('INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,status,review_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [slug, input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.status, 'New product requires supplier verification']);
+      const id = Number((result as { insertId: number }).insertId);
+      if (input.imageUrl) await connection.execute('INSERT INTO product_images (product_id,url,alt_text,sort_order) VALUES (?,?,?,0)', [id, input.imageUrl, input.title]);
+      await connection.execute('INSERT INTO price_history (product_id,supplier_cost,selling_price,reason,changed_by_admin_id) VALUES (?,NULL,?,?,?)', [id, input.sellingPrice, 'Product created', response.locals.admin.sub]);
+      return { id, slug };
+    });
+    response.status(201).json({ ...created, status: input.status });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/products/:id', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT p.*,i.url AS image_url FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 WHERE p.id=? AND p.deleted_at IS NULL', [request.params.id]);
+    const product = (rows as RowDataPacket[])[0];
+    if (!product) return response.status(404).json({ error: 'Product not found' });
+    const [offers] = await pool.execute('SELECT * FROM supplier_offers WHERE product_id=? ORDER BY last_checked_at DESC', [request.params.id]);
+    response.json({ ...product, offers });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/products/:id', requireAdmin, async (request, response, next) => {
+  try {
+    const input = adminProductUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT title,selling_price FROM products WHERE id=? AND deleted_at IS NULL FOR UPDATE', [request.params.id]);
+      const current = (rows as (RowDataPacket & { title: string; selling_price: number })[])[0];
+      if (!current) throw Object.assign(new Error('Product not found'), { status: 404 });
+      const columns: Record<string, string> = { title: 'title', brand: 'brand', model: 'model', barcode: 'barcode', packSize: 'pack_size', category: 'category', description: 'description', specifications: 'specifications', sellingPrice: 'selling_price' };
+      const entries = Object.entries(input).filter(([key]) => key !== 'imageUrl');
+      if (entries.length) {
+        const assignments = entries.map(([key]) => `${columns[key]}=?`).join(',');
+        const values = entries.map(([key, value]) => key === 'specifications' ? JSON.stringify(value) : value === '' ? null : value);
+        await connection.execute(`UPDATE products SET ${assignments},review_reason=CASE WHEN status='published' THEN 'Product details changed; supplier recheck required' ELSE review_reason END,status=CASE WHEN status='published' THEN 'pending_review' ELSE status END WHERE id=?`, [...values, request.params.id]);
+      }
+      if ('imageUrl' in input) {
+        await connection.execute('DELETE FROM product_images WHERE product_id=? AND sort_order=0', [request.params.id]);
+        if (input.imageUrl) await connection.execute('INSERT INTO product_images (product_id,url,alt_text,sort_order) VALUES (?,?,?,0)', [request.params.id, input.imageUrl, input.title || current.title]);
+      }
+      if (input.sellingPrice != null && Number(current.selling_price) !== input.sellingPrice) await connection.execute('INSERT INTO price_history (product_id,supplier_cost,selling_price,reason,changed_by_admin_id) VALUES (?,NULL,?,?,?)', [request.params.id, input.sellingPrice, 'Admin product edit', response.locals.admin.sub]);
+    });
+    response.json({ updated: true });
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/admin/products/:id', requireAdmin, async (request, response, next) => {
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [result] = await pool.execute("UPDATE products SET deleted_at=UTC_TIMESTAMP(),status='unavailable',review_reason='Archived by administrator' WHERE id=? AND deleted_at IS NULL", [request.params.id]); if ((result as { affectedRows: number }).affectedRows === 0) return response.status(404).json({ error: 'Product not found' }); response.status(204).end(); } catch (error) { next(error); }
+});
+
+app.post('/api/admin/products/:id/restore', requireAdmin, async (request, response, next) => {
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [result] = await pool.execute("UPDATE products SET deleted_at=NULL,status='draft',review_reason='Restored; supplier verification required' WHERE id=? AND deleted_at IS NOT NULL", [request.params.id]); if ((result as { affectedRows: number }).affectedRows === 0) return response.status(404).json({ error: 'Archived product not found' }); response.json({ restored: true, status: 'draft' }); } catch (error) { next(error); }
 });
 
 app.get('/api/admin/products/:id/offers', requireAdmin, async (request, response, next) => {

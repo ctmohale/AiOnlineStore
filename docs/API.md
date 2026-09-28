@@ -37,7 +37,13 @@ Order body:
 
 - `POST /api/admin/login` — email/password sign-in; returns an 8-hour JWT. Limited to 10 attempts per IP per 15 minutes.
 - `GET /api/admin/review-queue` — changed, expired, stale, unavailable, and uncertain products.
-- `GET /api/admin/products` and `GET /api/admin/products/:id/offers` — catalogue and complete supplier-offer details.
+- `GET /api/admin/products` — list the active admin catalogue, including the primary image and latest offer summary.
+- `POST /api/admin/products` — create a draft or pending-review product, optional primary image URL, and initial price-history record.
+- `GET /api/admin/products/:id` — read one product together with its supplier offers.
+- `PATCH /api/admin/products/:id` — update product identity, description, specifications, selling price, or primary image URL. Editing a published product returns it to review.
+- `DELETE /api/admin/products/:id` — safely archive a product and remove it from the public catalogue while preserving history.
+- `POST /api/admin/products/:id/restore` — restore an archived product as a draft that requires supplier verification.
+- `GET /api/admin/products/:id/offers` — read complete supplier-offer details for a product.
 - `PATCH /api/admin/products/:id/review` — change price/state, persist price history, and enforce freshness, stock, promotion, profit, and margin rules before publication.
 - `GET|PATCH /api/admin/pricing-settings` — read or update the global profit, margin, delivery, and staleness guardrails.
 - `GET /api/admin/orders` — most recent order requests.

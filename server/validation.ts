@@ -48,3 +48,19 @@ export const customerRegisterSchema = z.object({
 });
 
 export const customerLoginSchema = z.object({ email: z.email().max(190), password: z.string().min(1).max(128) });
+
+const productFields = {
+  title: z.string().trim().min(3).max(255),
+  brand: z.string().trim().min(1).max(120),
+  model: z.string().trim().min(1).max(120),
+  barcode: z.string().trim().max(64).nullable().optional(),
+  packSize: z.string().trim().min(1).max(120),
+  category: z.string().trim().min(2).max(100),
+  description: z.string().trim().min(10).max(10000),
+  sellingPrice: z.number().positive().max(10_000_000),
+  specifications: z.record(z.string().max(100), z.string().max(500)).default({}),
+  imageUrl: z.union([z.url().max(1000), z.literal(''), z.null()]).optional(),
+};
+
+export const adminProductCreateSchema = z.object({ ...productFields, status: z.enum(['draft', 'pending_review']).default('draft') });
+export const adminProductUpdateSchema = z.object(productFields).partial().refine((value) => Object.keys(value).length > 0, 'At least one product field is required');

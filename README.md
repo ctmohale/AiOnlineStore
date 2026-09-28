@@ -5,7 +5,7 @@ A launch-focused South African reseller storefront and operations dashboard. Cus
 ## What is included
 
 - Responsive React storefront with search, category filtering, product detail, persistent cart, guest request form, optional customer registration/login, customer order history, delivery threshold, and confirmation reference.
-- Operations dashboard for product states, review alerts, order statuses, quote costs, profit/margin visibility, and configurable guardrails.
+- Operations dashboard with full product CRUD (create, list, edit, and safe archive), optional image URLs, product states, review alerts, order statuses, quote costs, profit/margin visibility, and configurable guardrails.
 - Express API with Zod validation, parameterized MySQL queries, bcrypt passwords, JWT admin authorization, Helmet, CORS, and public rate limits.
 - MySQL migrations covering admins, customers, products, images, supplier offers, price history, ingestion runs, orders/items, payment references, and pricing settings.
 - CSV and permitted JSON-feed adapters, exact-product deduplication, review-only ingestion, daily stale checks, and hourly promotion-end checks.
@@ -26,6 +26,8 @@ npm run dev:api
 ```
 
 In a second terminal run `npm run dev`, then open `http://localhost:5173`. Run the worker with `npm run worker:once`, or keep its schedules active with `npm run dev:worker`.
+
+Sign in at `/admin/login`, open **Products**, and choose **Add product**. New catalogue items are saved as drafts and remain off the public storefront until a current supplier offer passes the existing review and pricing guardrails. Images are optional URLs; the app does not generate or upload product imagery.
 
 Without `DATABASE_URL`, the API deliberately starts in a development-only degraded mode so the UI and request flow can be reviewed. Production health returns 503 if MySQL is missing. The dashboard login uses the API in production; only Vite development mode permits the prefilled local preview credentials when the API is unavailable.
 

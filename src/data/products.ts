@@ -14,7 +14,7 @@ export type Product = {
   short: string;
   description: string;
   specs: Record<string, string>;
-  status: 'published' | 'pending_review' | 'paused';
+  status: 'draft' | 'pending_review' | 'published' | 'paused' | 'unavailable';
   freshness: string;
 };
 
