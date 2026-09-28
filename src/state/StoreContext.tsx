@@ -1,0 +1,42 @@
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import type { Product } from '../data/products';
+
+export type CartLine = { product: Product; quantity: number };
+type StoreContextValue = {
+  cart: CartLine[];
+  add: (product: Product, quantity?: number) => void;
+  update: (id: number, quantity: number) => void;
+  remove: (id: number) => void;
+  clear: () => void;
+  count: number;
+  subtotal: number;
+};
+
+const StoreContext = createContext<StoreContextValue | null>(null);
+
+export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const [cart, setCart] = useState<CartLine[]>(() => {
+    try { return JSON.parse(localStorage.getItem('moya-cart') || '[]'); } catch { return []; }
+  });
+  useEffect(() => localStorage.setItem('moya-cart', JSON.stringify(cart)), [cart]);
+  const value = useMemo(() => ({
+    cart,
+    add: (product: Product, quantity = 1) => setCart((lines) => {
+      const found = lines.find((line) => line.product.id === product.id);
+      return found ? lines.map((line) => line.product.id === product.id ? { ...line, quantity: line.quantity + quantity } : line) : [...lines, { product, quantity }];
+    }),
+    update: (id: number, quantity: number) => setCart((lines) => quantity < 1 ? lines.filter((line) => line.product.id !== id) : lines.map((line) => line.product.id === id ? { ...line, quantity } : line)),
+    remove: (id: number) => setCart((lines) => lines.filter((line) => line.product.id !== id)),
+    clear: () => setCart([]),
+    count: cart.reduce((sum, line) => sum + line.quantity, 0),
+    subtotal: cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0),
+  }), [cart]);
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const useStore = () => {
+  const value = useContext(StoreContext);
+  if (!value) throw new Error('useStore must be used inside StoreProvider');
+  return value;
+};

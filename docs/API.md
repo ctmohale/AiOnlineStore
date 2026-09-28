@@ -1,0 +1,43 @@
+# Moya Market REST API
+
+Base URL: `/api`. JSON is used for requests and responses. Admin routes require `Authorization: Bearer <token>`.
+
+## Public
+
+- `GET /health` — application and database status.
+- `GET /api/products?q=&category=` — fresh, in-stock, published products only. Supplier costs are never selected.
+- `POST /api/orders` — create a guest order request. Limited to 30 requests per IP per 15 minutes. The server ignores client prices and locks the current server-side selling price into each order-item snapshot.
+
+Order body:
+
+```json
+{
+  "customer": {
+    "name": "Nomsa Dlamini",
+    "email": "nomsa@example.com",
+    "phone": "082 123 4567",
+    "addressLine1": "10 Main Road",
+    "suburb": "Rosebank",
+    "city": "Johannesburg",
+    "province": "Gauteng",
+    "postalCode": "2196",
+    "notes": "Call at the gate"
+  },
+  "items": [{ "productId": 1, "quantity": 1 }]
+}
+```
+
+## Admin
+
+- `POST /api/admin/login` — email/password sign-in; returns an 8-hour JWT. Limited to 10 attempts per IP per 15 minutes.
+- `GET /api/admin/review-queue` — changed, expired, stale, unavailable, and uncertain products.
+- `GET /api/admin/products` and `GET /api/admin/products/:id/offers` — catalogue and complete supplier-offer details.
+- `PATCH /api/admin/products/:id/review` — change price/state, persist price history, and enforce freshness, stock, promotion, profit, and margin rules before publication.
+- `GET|PATCH /api/admin/pricing-settings` — read or update the global profit, margin, delivery, and staleness guardrails.
+- `GET /api/admin/orders` — most recent order requests.
+- `PATCH /api/admin/orders/:id/status` — controlled status transitions; deliberately refuses to mark an order paid.
+- `PATCH /api/admin/orders/:id/quote` — records real supplier/product/delivery/packaging/payment/advertising costs, calculates expected profit, and rejects quotes below configured thresholds.
+- `POST /api/admin/orders/:id/payment-link` — stores a manually-created Yoco/Paystack link and moves a quoted order to `awaiting_payment`.
+- `PATCH /api/admin/orders/:id/confirm-payment` — explicitly verifies a matching payment reference and only then marks the order paid. Customer return URLs never change payment state.
+
+Validation errors return HTTP 400, stale/unavailable product conflicts return 409, pricing-rule failures return 422, and unauthenticated admin requests return 401.

@@ -1,0 +1,2 @@
+title,brand,model,barcode,pack_size,retailer,url,price,original_displayed_price,sale_end_date,stock_status
+Example Kettle 1.7L,Example Brand,EK-17,6000000000001,1 unit,Approved Feed,https://retailer.example/products/ek-17,399,499,2026-12-31T21:59:59Z,in_stock
