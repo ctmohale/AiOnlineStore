@@ -19,7 +19,8 @@ main { min-height:60vh; }
 .main-nav { display:flex; align-items:center; gap:25px; margin-left:auto; }
 .main-nav a { font-size:13px; font-weight:600; padding:28px 0; border-bottom:2px solid transparent; }
 .main-nav a:hover,.main-nav a.active { color:var(--coral); border-color:var(--coral); }
-.cart-link { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; position:relative; }
+.account-link,.cart-link { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; position:relative; white-space:nowrap; }
+.account-link:hover { color:var(--coral); }
 .cart-link b { position:absolute; top:-12px; left:14px; background:var(--coral); color:#fff; width:19px; height:19px; font-size:10px; display:grid; place-items:center; border-radius:50%; }
 .menu-button { display:none; border:0; background:transparent; cursor:pointer; }
 .hero { min-height:640px; display:grid; grid-template-columns:1.02fr .98fr; background:#e5eee5; overflow:hidden; }
@@ -224,6 +225,40 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .next-steps strong,.next-steps span { display:block; font-size:11px; }
 .next-steps span { color:var(--muted); font-size:9px; margin-top:3px; }
 
+/* Customer account */
+.account-auth { min-height:720px; display:grid; grid-template-columns:1fr 1fr; background:#e5eee5; }
+.account-benefits { padding:90px max(7vw,45px); display:flex; flex-direction:column; justify-content:center; }
+.account-icon { width:54px; height:54px; border-radius:50%; display:grid; place-items:center; background:var(--forest); color:#fff; margin-bottom:25px; }
+.account-benefits h1,.account-heading h1 { font-size:clamp(45px,5vw,67px); line-height:1.03; letter-spacing:-.05em; margin:0; }
+.account-benefits>p:not(.kicker) { color:#5b6e65; line-height:1.7; max-width:540px; }
+.account-benefits>div { display:flex; flex-direction:column; gap:12px; margin-top:25px; }
+.account-benefits>div span { display:flex; gap:9px; align-items:center; font-size:11px; font-weight:600; }
+.account-benefits>div svg { width:17px; color:var(--coral); }
+.account-form { width:min(440px,calc(100% - 44px)); align-self:center; justify-self:center; background:var(--paper); border:1px solid var(--line); padding:38px; box-shadow:var(--shadow); }
+.account-tabs { display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--line); margin:-10px 0 30px; }
+.account-tabs button { border:0; border-bottom:2px solid transparent; background:transparent; padding:13px 5px; font-size:10px; font-weight:700; cursor:pointer; }
+.account-tabs button.active { color:var(--coral); border-color:var(--coral); }
+.account-form h2 { font-size:30px; margin:0; letter-spacing:-.04em; }
+.account-form>p { color:var(--muted); font-size:11px; }
+.account-form label { display:block; font-size:10px; font-weight:700; margin:18px 0; }
+.account-form input { width:100%; border:1px solid #d5d8d2; background:#fff; padding:12px 13px; outline:0; margin-top:6px; }
+.account-form input:focus { border-color:#5a8574; box-shadow:0 0 0 3px #e4eee8; }
+.account-form>small { display:block; margin:-10px 0 16px; color:var(--muted); font-size:8px; }
+.account-form .guest-note { text-align:center; margin:16px 0 0; font-size:9px; }
+.account-form .guest-note a { color:var(--coral); font-weight:700; }
+.account-loading { min-height:65vh; display:grid; place-items:center; color:var(--muted); }
+.account-heading { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:42px; }
+.account-heading>div>p:last-child { color:var(--muted); }
+.account-heading .outline-button svg { width:14px; }
+.account-panel { background:var(--paper); border:1px solid var(--line); padding:30px; }
+.customer-orders article { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:24px; padding:18px 5px; border-top:1px solid var(--line); }
+.customer-orders article>div strong,.customer-orders article>div span { display:block; font-size:12px; }
+.customer-orders article>div span { color:var(--muted); font-size:9px; margin-top:4px; }
+.account-empty { min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-top:1px solid var(--line); }
+.account-empty>svg { width:35px; height:35px; color:var(--coral); }
+.account-empty h3 { margin:15px 0 3px; }
+.account-empty p { color:var(--muted); font-size:10px; margin-bottom:18px; }
+
 /* Admin */
 .admin-login { min-height:100vh; display:grid; grid-template-columns:1.05fr .95fr; }
 .login-brand { background:var(--forest); color:white; padding:65px 8vw; display:flex; flex-direction:column; justify-content:space-between; }
@@ -383,6 +418,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .main-nav a { padding:7px 0; }
   .menu-button { display:block; }
   .cart-link span { display:none; }
+  .account-link span { display:none; }
   .hero { grid-template-columns:1fr; }
   .hero-content { padding:70px 24px 50px; }
   .hero-art { min-height:440px; }
@@ -410,6 +446,9 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .cart-line .qty { grid-column:2; height:38px; width:max-content; }
   .line-total { grid-column:3; grid-row:2; }
   .admin-login { grid-template-columns:1fr; }
+  .account-auth { grid-template-columns:1fr; }
+  .account-benefits { padding:65px 24px 40px; }
+  .account-form { margin:0 auto 65px; }
   .login-brand { min-height:360px; padding:35px 24px; }
   .login-brand h1 { font-size:45px; }
   .admin-shell { grid-template-columns:1fr; }
@@ -439,6 +478,10 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .request-form { padding:24px 18px; }
   .confirmation-card { padding:40px 22px; }
   .confirmation-card h1 { font-size:42px; }
+  .account-heading { align-items:flex-start; flex-direction:column; gap:20px; }
+  .account-panel { padding:21px 16px; }
+  .customer-orders article { grid-template-columns:1fr auto; }
+  .customer-orders article>strong { grid-column:2; }
   .metric-grid { grid-template-columns:1fr; }
   .pulse-grid,.settings-grid,.quote-fields { grid-template-columns:1fr; }
   .order-list>div { grid-template-columns:auto 1fr auto; }

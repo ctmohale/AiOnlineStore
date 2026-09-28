@@ -4,10 +4,10 @@ A launch-focused South African reseller storefront and operations dashboard. Cus
 
 ## What is included
 
-- Responsive React storefront with search, category filtering, product detail, persistent cart, guest request form, delivery threshold, and confirmation reference.
+- Responsive React storefront with search, category filtering, product detail, persistent cart, guest request form, optional customer registration/login, customer order history, delivery threshold, and confirmation reference.
 - Operations dashboard for product states, review alerts, order statuses, quote costs, profit/margin visibility, and configurable guardrails.
 - Express API with Zod validation, parameterized MySQL queries, bcrypt passwords, JWT admin authorization, Helmet, CORS, and public rate limits.
-- MySQL migration covering admins, products, images, supplier offers, price history, ingestion runs, orders/items, payment references, and pricing settings.
+- MySQL migrations covering admins, customers, products, images, supplier offers, price history, ingestion runs, orders/items, payment references, and pricing settings.
 - CSV and permitted JSON-feed adapters, exact-product deduplication, review-only ingestion, daily stale checks, and hourly promotion-end checks.
 - Domain tests for profit, free delivery, expiry, staleness, exact matching, and locked order prices.
 

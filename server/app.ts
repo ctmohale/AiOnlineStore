@@ -7,9 +7,9 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { RowDataPacket } from 'mysql2';
 import { calculateProfit, passesPricingRules } from '../shared/domain.js';
-import { requireAdmin, signAdminToken } from './auth.js';
+import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
-import { orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, quoteSchema } from './validation.js';
+import { customerLoginSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -42,7 +42,40 @@ app.get('/api/products', async (request, response, next) => {
   } catch (error) { next(error); }
 });
 
-app.post('/api/orders', publicLimiter, async (request, response, next) => {
+app.post('/api/customer/register', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerRegisterSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const [existing] = await pool.execute('SELECT id FROM customers WHERE email=? LIMIT 1', [email]);
+    if ((existing as RowDataPacket[]).length) return response.status(409).json({ error: 'An account already exists for this email' });
+    const passwordHash = await bcrypt.hash(input.password, 12);
+    const [result] = await pool.execute('INSERT INTO customers (email,password_hash,name,phone) VALUES (?,?,?,?)', [email, passwordHash, input.name, input.phone || null]);
+    const id = Number((result as { insertId: number }).insertId);
+    response.status(201).json({ token: signCustomerToken({ sub: String(id), email, role: 'customer' }), customer: { id, email, name: input.name, phone: input.phone || null } });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer/login', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerLoginSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT id,email,password_hash,name,phone FROM customers WHERE email=? LIMIT 1', [input.email.toLowerCase()]);
+    const customer = (rows as (RowDataPacket & { id: number; email: string; password_hash: string; name: string; phone: string | null })[])[0];
+    if (!customer || !await bcrypt.compare(input.password, customer.password_hash)) return response.status(401).json({ error: 'Invalid email or password' });
+    response.json({ token: signCustomerToken({ sub: String(customer.id), email: customer.email, role: 'customer' }), customer: { id: customer.id, email: customer.email, name: customer.name, phone: customer.phone } });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/customer/me', requireCustomer, async (_request, response, next) => {
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute('SELECT id,email,name,phone,created_at FROM customers WHERE id=?', [response.locals.customer.sub]); const customer = (rows as RowDataPacket[])[0]; if (!customer) return response.status(404).json({ error: 'Customer not found' }); response.json(customer); } catch (error) { next(error); }
+});
+
+app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute('SELECT reference,status,product_revenue,customer_delivery_charged,expected_profit,created_at,updated_at FROM order_requests WHERE customer_id=? ORDER BY created_at DESC LIMIT 100', [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+});
+
+app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
     const orderReference = reference();
@@ -63,7 +96,7 @@ app.post('/api/orders', publicLimiter, async (request, response, next) => {
       const settings = productRows[0];
       const delivery = revenue >= settings.free_threshold ? 0 : settings.delivery_charge;
       const customer = input.customer;
-      const [result] = await connection.execute('INSERT INTO order_requests (reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,product_revenue,customer_delivery_charged) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)', [orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, revenue, delivery]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,product_revenue,customer_delivery_charged) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, revenue, delivery]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;

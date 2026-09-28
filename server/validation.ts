@@ -39,3 +39,12 @@ export const pricingSettingsSchema = z.object({
 });
 
 export const orderStatusSchema = z.object({ status: z.enum(['requested','checking_supplier','quoted','awaiting_payment','paid','purchasing','shipped','delivered','cancelled','refunded']) });
+
+export const customerRegisterSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  email: z.email().max(190),
+  phone: z.string().trim().regex(/^[0-9+ ]{9,15}$/).optional(),
+  password: z.string().min(10).max(128),
+});
+
+export const customerLoginSchema = z.object({ email: z.email().max(190), password: z.string().min(1).max(128) });

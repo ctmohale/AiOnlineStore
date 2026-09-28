@@ -7,6 +7,12 @@ Base URL: `/api`. JSON is used for requests and responses. Admin routes require 
 - `GET /health` — application and database status.
 - `GET /api/products?q=&category=` — fresh, in-stock, published products only. Supplier costs are never selected.
 - `POST /api/orders` — create a guest order request. Limited to 30 requests per IP per 15 minutes. The server ignores client prices and locks the current server-side selling price into each order-item snapshot.
+- `POST /api/customer/register` — create a customer account and return a 30-day customer token.
+- `POST /api/customer/login` — customer email/password login.
+- `GET /api/customer/me` — authenticated customer profile.
+- `GET /api/customer/orders` — authenticated customer's own order-request history only.
+
+Guest checkout remains available. When a valid customer bearer token accompanies an order request, the order is linked to that customer account automatically.
 
 Order body:
 

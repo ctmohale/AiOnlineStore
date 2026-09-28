@@ -7,7 +7,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export async function createOrder(payload: OrderPayload) {
   try {
-    const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const token = localStorage.getItem('moya-customer-token');
+    const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error('Unable to submit order request');
     return await response.json() as { reference: string };
   } catch (error) {
@@ -15,6 +16,27 @@ export async function createOrder(payload: OrderPayload) {
     await new Promise((resolve) => setTimeout(resolve, 500));
     return { reference: `MY-${new Date().getFullYear()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}` };
   }
+}
+
+export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
+export type CustomerOrder = { reference: string; status: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
+
+async function customerAuth(path: 'login' | 'register', payload: Record<string, string>) {
+  const response = await fetch(`${API_URL}/customer/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'Unable to continue');
+  return body as { token: string; customer: Customer };
+}
+
+export const customerLogin = (email: string, password: string) => customerAuth('login', { email, password });
+export const customerRegister = (name: string, email: string, phone: string, password: string) => customerAuth('register', { name, email, phone, password });
+
+export async function customerRequest<T>(path: string) {
+  const token = localStorage.getItem('moya-customer-token');
+  const response = await fetch(`${API_URL}/customer${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || 'Unable to load your account');
+  return body as T;
 }
 
 export async function adminLogin(email: string, password: string) {
