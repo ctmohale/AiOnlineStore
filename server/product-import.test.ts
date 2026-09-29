@@ -28,6 +28,18 @@ describe('product URL import', () => {
     expect(result).toMatchObject({ title: 'Test Kettle', brand: 'Acme', model: 'KT-100', supplierSku: 'GAME-44', currentCost: 499.99, stockStatus: 'in_stock', retailer: 'Game', supplierPriceVerified: false });
   });
 
+  it('reads Game price and stock when the product metadata has no Offer', async () => {
+    const html = `<html><head><script type="application/ld+json">${JSON.stringify({ '@type': 'Product', name: 'Goldair Cooker', sku: '850015830', price: 'R810.00' })}</script></head><body><h1>Goldair Cooker</h1><p>Only 2 left in stock</p><button>Add</button></body></html>`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })));
+    expect(await importProductUrl('https://www.game.co.za/product/850015830')).toMatchObject({ currentCost: 810, stockStatus: 'low_stock' });
+  });
+
+  it('reads Makro stock from the main product section without using related items', async () => {
+    const html = `<html><head><script type="application/ld+json">${JSON.stringify([{ '@type': 'Product', name: 'Milex Bread Maker', offers: { price: 2298 } }])}</script></head><body><h1>Milex Bread Maker</h1><p>Available online only</p><h2>Similar Products</h2><p>Out of stock</p></body></html>`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })));
+    expect(await importProductUrl('https://www.makro.co.za/product/bread-maker')).toMatchObject({ currentCost: 2298, stockStatus: 'in_stock' });
+  });
+
   it('blocks non-allowlisted URLs before making a request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
