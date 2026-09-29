@@ -103,6 +103,15 @@ const stockFromAvailability = (value: unknown) => {
   return 'unknown';
 };
 
+const stockFromPage = (html: string) => {
+  const visibleText = plainText(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' '));
+  const productText = visibleText.split(/Similar Products|Bought Together/i)[0];
+  if (/hurry,?\s*only\s*(?:\d+|a few)\s*left|only\s*\d+\s*left in stock/i.test(productText)) return 'low_stock';
+  if (/out of stock/i.test(productText)) return 'out_of_stock';
+  if (/available online only/i.test(productText) || /add to cart/i.test(productText)) return 'in_stock';
+  return 'unknown';
+};
+
 export async function importProductUrl(rawUrl: string) {
   const requestedUrl = allowedUrl(rawUrl);
   const { html, finalUrl } = await fetchPublicHtml(requestedUrl);
@@ -118,7 +127,7 @@ export async function importProductUrl(rawUrl: string) {
   const title = plainText(product?.name || metaValue(html, 'og:title'));
   const description = plainText(product?.description || metaValue(html, 'og:description'));
   const imageUrl = highResolutionImageUrl(String(images.find(Boolean) || metaValue(html, 'og:image') || ''));
-  const price = numberValue(offer.price ?? offer.lowPrice ?? metaValue(html, 'product:price:amount'));
+  const price = numberValue(offer.price ?? offer.lowPrice ?? product?.price ?? metaValue(html, 'product:price:amount'));
   const model = plainText(product?.model || product?.mpn || product?.sku || '');
   const sku = plainText(product?.sku || '');
   const barcode = plainText(product?.gtin13 || product?.gtin14 || product?.gtin12 || '');
@@ -127,7 +136,7 @@ export async function importProductUrl(rawUrl: string) {
   return {
     title, category: plainText(product?.category || 'Uncategorised'), brand, model, barcode, packSize: '1 unit', description,
     imageUrl, retailer: retailerHosts.get(finalUrl.hostname.toLowerCase()) || '', sourceUrl: finalUrl.toString(), supplierSku: sku,
-    currentCost: price, originalDisplayedPrice: null, stockStatus: stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
+    currentCost: price, originalDisplayedPrice: null, stockStatus: stockFromAvailability(offer.availability) === 'unknown' ? stockFromPage(html) : stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
     promotionStartAt: null, promotionEndAt: null, promotionTerms: '', quantityLimit: '', supplierDeliveryCost: 0,
     sourceConfidence: product ? 'high' : 'medium', supplierPriceVerified: false, priceUpdatedAt: price ? new Date().toISOString() : null,
     priceChangeReason: 'Initial URL import', reviewNotes: 'Imported from public retailer metadata. Verify the exact model, pack size, stock and checkout price before publishing.',
