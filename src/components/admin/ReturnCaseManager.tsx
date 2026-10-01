@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { adminRequest } from '../../lib/api';
 import { useFeedback } from '../FeedbackProvider';
 
@@ -75,6 +75,10 @@ export default function ReturnCaseManager({ orderId, orderStatus, cases, onSaved
   const [reasonCategory,setReasonCategory]=useState('changed_mind');
   const [reasonDetails,setReasonDetails]=useState('');
   const [evidence,setEvidence]=useState('');
+  useEffect(() => {
+    if (caseType === 'cancellation' && !canCancel && canReturn) setCaseType('return');
+    if (caseType === 'return' && !canReturn && canCancel) setCaseType('cancellation');
+  }, [canCancel, canReturn, caseType]);
   const create=async()=>{
     if(reasonDetails.trim().length<3)return notify('Add a short reason for the request.','warning');
     setBusy(true);
