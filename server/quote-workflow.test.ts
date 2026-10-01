@@ -8,6 +8,7 @@ vi.mock('./db/pool.js', () => ({
     execute: async (sql: string) => {
       if (sql.startsWith('SELECT o.product_revenue')) return [[{ product_revenue: 779, status: state.status, is_test: 0, minimum_profit: state.profitFloor, minimum_margin_percent: state.marginFloor }]];
       if (sql.startsWith('UPDATE order_requests')) { state.updates++; return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('INSERT INTO order_status_history')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected query: ${sql}`);
     },
   }),

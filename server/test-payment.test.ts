@@ -8,6 +8,7 @@ vi.mock('./db/pool.js', () => ({
     execute: async (sql: string, params: unknown[]) => {
       if (sql.startsWith('SELECT id,status,is_test')) return [[params[1] === db.owner ? { id: 12, status: db.status, is_test: 1 } : undefined].filter(Boolean)];
       if (sql.startsWith('UPDATE order_requests')) { db.status = 'test_paid'; db.updateCount++; return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('INSERT INTO order_status_history')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected query: ${sql}`);
     },
   }),

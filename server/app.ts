@@ -11,7 +11,7 @@ import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '..
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -142,7 +142,7 @@ app.patch('/api/customer/password', loginLimiter, requireCustomer, async (reques
 });
 
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async (request, response, next) => {
@@ -156,6 +156,7 @@ app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async 
       if (order.status !== 'requested') throw Object.assign(new Error('This test order is not awaiting payment'), { status: 409 });
       if (request.body.outcome === 'failure') return { status: 'test_failed', charged: false };
       await connection.execute("UPDATE order_requests SET status='test_paid',test_paid_at=UTC_TIMESTAMP() WHERE id=?", [order.id]);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'requested','test_paid','Simulated test payment completed')", [order.id]);
       return { status: 'test_paid', charged: false };
     });
     response.json(result);
@@ -171,8 +172,8 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
     await withTransaction(async (connection) => {
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
-      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND o.price_verified=TRUE FOR UPDATE`, ids);
-      const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; current_cost: number; supplier_delivery_cost: number; stock_status: string; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
+      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND o.price_verified=TRUE FOR UPDATE`, ids);
+      const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; retailer: string; source_url: string; supplier_sku: string | null; current_cost: number; supplier_delivery_cost: number; stock_status: string; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
       if (productRows.length !== ids.length) throw Object.assign(new Error('One or more products are not available'), { status: 409 });
       const now = Date.now();
       for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000 || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} needs a fresh supplier check`), { status: 409 });
@@ -188,8 +189,9 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
-        await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price) VALUES (?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price]);
+        await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost]);
       }
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested','Order submitted')", [orderId]);
     });
     response.status(201).json({ reference: orderReference, status: 'requested', isTest: input.testMode });
   } catch (error) { next(error); }
@@ -268,7 +270,7 @@ app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, ne
 });
 
 app.get('/api/admin/products', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 2000"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 5000"); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/admin/products/import-url', requireAdmin, async (request, response, next) => {
@@ -425,20 +427,107 @@ app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
   try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.*,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
 });
 
+app.get('/api/admin/analytics', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [summaryRows, dailyRows, statusRows, productRows, customerRows] = await Promise.all([
+      pool.execute(`SELECT COUNT(*) AS total_orders,
+        SUM(status NOT IN ('cancelled','refunded')) AS active_orders,
+        SUM(status IN ('paid','purchasing','shipped','delivered')) AS paid_orders,
+        SUM(status='delivered') AS delivered_orders,
+        SUM(status='awaiting_payment') AS awaiting_payment,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN product_revenue+customer_delivery_charged ELSE 0 END) AS confirmed_revenue,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN expected_profit ELSE 0 END) AS expected_profit,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN COALESCE(actual_profit,expected_profit) ELSE 0 END) AS realised_profit,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') AND created_at>=DATE_FORMAT(UTC_DATE(),'%Y-%m-01') THEN product_revenue+customer_delivery_charged ELSE 0 END) AS current_month_revenue,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') AND created_at>=DATE_FORMAT(UTC_DATE(),'%Y-%m-01') THEN COALESCE(actual_profit,expected_profit) ELSE 0 END) AS current_month_profit,
+        SUM(CASE WHEN status NOT IN ('delivered','cancelled','refunded') AND ((expected_delivery_at IS NOT NULL AND expected_delivery_at<UTC_TIMESTAMP()) OR (status='requested' AND created_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR))) THEN 1 ELSE 0 END) AS orders_at_risk,
+        SUM(CASE WHEN status='delivered' AND expected_delivery_at IS NOT NULL THEN 1 ELSE 0 END) AS delivery_sla_sample,
+        SUM(CASE WHEN status='delivered' AND expected_delivery_at IS NOT NULL AND delivered_at<=expected_delivery_at THEN 1 ELSE 0 END) AS on_time_deliveries
+        FROM order_requests WHERE is_test=FALSE`),
+      pool.execute(`SELECT DATE(created_at) AS day,COUNT(*) AS orders,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN product_revenue+customer_delivery_charged ELSE 0 END) AS revenue,
+        SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN COALESCE(actual_profit,expected_profit) ELSE 0 END) AS profit
+        FROM order_requests WHERE is_test=FALSE AND created_at>=DATE_SUB(UTC_DATE(),INTERVAL 29 DAY) GROUP BY DATE(created_at) ORDER BY day`),
+      pool.execute("SELECT status,COUNT(*) AS count FROM order_requests WHERE is_test=FALSE GROUP BY status ORDER BY count DESC"),
+      pool.execute("SELECT COUNT(*) AS total_products,SUM(status='published') AS published_products,SUM(status='pending_review') AS review_products,SUM(status='paused') AS paused_products,SUM(status='unavailable') AS unavailable_products FROM products WHERE deleted_at IS NULL"),
+      pool.execute('SELECT COUNT(*) AS customers FROM customers'),
+    ]);
+    const summary = ((summaryRows[0] as RowDataPacket[])[0] || {}) as Record<string, unknown>;
+    const products = ((productRows[0] as RowDataPacket[])[0] || {}) as Record<string, unknown>;
+    const paidOrders = Number(summary.paid_orders || 0);
+    const totalOrders = Number(summary.total_orders || 0);
+    const confirmedRevenue = Number(summary.confirmed_revenue || 0);
+    const currentMonthRevenue = Number(summary.current_month_revenue || 0);
+    const currentMonthProfit = Number(summary.current_month_profit || 0);
+    const daysElapsed = Math.max(1, new Date().getUTCDate());
+    response.json({
+      summary: { ...summary, ...products, customers: Number((customerRows[0] as RowDataPacket[])[0]?.customers || 0), average_order_value: paidOrders ? confirmedRevenue / paidOrders : 0, payment_conversion_rate: totalOrders ? paidOrders / totalOrders * 100 : 0, on_time_delivery_rate: Number(summary.delivery_sla_sample || 0) ? Number(summary.on_time_deliveries || 0) / Number(summary.delivery_sla_sample) * 100 : null },
+      projection: { basis: 'Current calendar month run rate from confirmed real orders', basis_days: daysElapsed, projected_monthly_revenue: currentMonthRevenue / daysElapsed * 30, projected_monthly_profit: currentMonthProfit / daysElapsed * 30 },
+      daily: dailyRows[0], statuses: statusRows[0], generatedAt: new Date().toISOString(),
+    });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [items, history, payments] = await Promise.all([
+      pool.execute(`SELECT oi.product_title_snapshot,oi.model_snapshot,oi.pack_size_snapshot,oi.quantity,oi.agreed_unit_price,
+        COALESCE(oi.supplier_retailer_snapshot,so.retailer) AS supplier_retailer_snapshot,
+        COALESCE(oi.supplier_source_url_snapshot,so.source_url) AS supplier_source_url_snapshot,
+        COALESCE(oi.supplier_sku_snapshot,so.supplier_sku) AS supplier_sku_snapshot,
+        COALESCE(oi.supplier_unit_cost_snapshot,oi.supplier_checkout_unit_cost,so.current_cost) AS supplier_unit_cost_snapshot,
+        oi.supplier_checkout_unit_cost
+        FROM order_items oi
+        LEFT JOIN supplier_offers so ON so.id=(SELECT id FROM supplier_offers WHERE product_id=oi.product_id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
+        WHERE oi.order_request_id=? ORDER BY oi.id`, [request.params.id]),
+      pool.execute('SELECT from_status,to_status,note,created_at FROM order_status_history WHERE order_request_id=? ORDER BY created_at,id', [request.params.id]),
+      pool.execute('SELECT provider,payment_link,external_reference,verification_status,verified_at,created_at FROM payment_references WHERE order_request_id=? ORDER BY created_at DESC', [request.params.id]),
+    ]);
+    response.json({ items: items[0], history: history[0], payments: payments[0] });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/orders/:id/fulfilment', requireAdmin, async (request, response, next) => {
+  try {
+    const input = orderFulfilmentSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const columns: Record<string,string> = { supplierOrderReference:'supplier_order_reference',supplierOrderUrl:'supplier_order_url',fulfilmentNotes:'fulfilment_notes',expectedShipAt:'expected_ship_at',expectedDeliveryAt:'expected_delivery_at',actualSupplierProductCost:'actual_supplier_product_cost',actualSupplierDelivery:'actual_supplier_delivery',actualCustomerDeliveryCost:'actual_customer_delivery_cost',actualPackagingCost:'actual_packaging_cost',actualPaymentFee:'actual_payment_fee',actualAdvertisingCost:'actual_advertising_cost' };
+    const entries = Object.entries(input).filter(([key]) => key in columns);
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,packaging_cost,payment_fee_estimate,advertising_cost FROM order_requests WHERE id=? AND is_test=FALSE FOR UPDATE', [request.params.id]);
+      const order = (rows as (RowDataPacket & Record<string,unknown>)[])[0];
+      if (!order) throw Object.assign(new Error('Real order not found'), { status: 404 });
+      if (entries.length) await connection.execute(`UPDATE order_requests SET ${entries.map(([key]) => `${columns[key]}=?`).join(',')} WHERE id=?`, [...entries.map(([,value]) => value), request.params.id]);
+      const [updatedRows] = await connection.execute('SELECT * FROM order_requests WHERE id=?', [request.params.id]);
+      const updated = (updatedRows as (RowDataPacket & Record<string,unknown>)[])[0];
+      const actualProfit = Number(updated.product_revenue) + Number(updated.customer_delivery_charged) - Number(updated.actual_supplier_product_cost ?? updated.supplier_product_cost ?? 0) - Number(updated.actual_supplier_delivery ?? updated.supplier_delivery ?? 0) - Number(updated.actual_customer_delivery_cost ?? updated.customer_delivery_cost ?? 0) - Number(updated.actual_packaging_cost ?? updated.packaging_cost ?? 0) - Number(updated.actual_payment_fee ?? updated.payment_fee_estimate ?? 0) - Number(updated.actual_advertising_cost ?? updated.advertising_cost ?? 0);
+      await connection.execute('UPDATE order_requests SET actual_profit=? WHERE id=?', [actualProfit, request.params.id]);
+    });
+    response.json({ updated: true });
+  } catch (error) { next(error); }
+});
+
 app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response, next) => {
   try {
     const { status, courierName, trackingNumber, trackingUrl } = orderStatusSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT status,is_test FROM order_requests WHERE id=?', [request.params.id]);
-    const record = (rows as (RowDataPacket & { status: string; is_test: number })[])[0];
-    const current = record?.status;
-    if (!current) return response.status(404).json({ error: 'Order not found' });
-    if (record.is_test) return response.status(409).json({ error: 'Test orders cannot enter the real fulfilment workflow' });
-    const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
-    if (!transitions[current]?.includes(status)) return response.status(409).json({ error: `Cannot move an order from ${current} to ${status}` });
-    if (status === 'paid') return response.status(409).json({ error: 'Use the payment verification endpoint to mark an order paid' });
-    if (status === 'shipped') await pool.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);
-    else await pool.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE', [request.params.id]);
+      const record = (rows as (RowDataPacket & { status: string; is_test: number })[])[0];
+      const current = record?.status;
+      if (!current) throw Object.assign(new Error('Order not found'), { status: 404 });
+      if (record.is_test) throw Object.assign(new Error('Test orders cannot enter the real fulfilment workflow'), { status: 409 });
+      const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
+      if (!transitions[current]?.includes(status)) throw Object.assign(new Error(`Cannot move an order from ${current} to ${status}`), { status: 409 });
+      if (status === 'paid') throw Object.assign(new Error('Use the payment verification endpoint to mark an order paid'), { status: 409 });
+      const timestampColumns: Record<string,string> = { checking_supplier:'supplier_checked_at',purchasing:'purchased_at',shipped:'shipped_at',delivered:'delivered_at',cancelled:'cancelled_at',refunded:'refunded_at' };
+      if (status === 'shipped') await connection.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);
+      else if (timestampColumns[status]) await connection.execute(`UPDATE order_requests SET status=?,${timestampColumns[status]}=UTC_TIMESTAMP() WHERE id=?`, [status, request.params.id]);
+      else await connection.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
+      await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [request.params.id,current,status,`Status changed to ${status.replaceAll('_',' ')}`,response.locals.admin.sub]);
+    });
     response.json({ status });
   } catch (error) { next(error); }
 });
@@ -457,6 +546,7 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
       const pricing = passesPricingRules(costs, Number(order.minimum_profit), Number(order.minimum_margin_percent));
       if (!pricing.passes) throw Object.assign(new Error('Quote does not meet configured profit rules'), { status: 422 });
       await connection.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, pricing.profit, request.params.id]);
+      if (order.status !== 'quoted') await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,'quoted','Verified quote confirmed',?)", [request.params.id,order.status,response.locals.admin.sub]);
       return { profit: pricing.profit, margin: pricing.margin, status: 'quoted' };
     });
     response.json(result);
@@ -474,6 +564,7 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, async (request, res
       if (!order || order.status !== 'quoted') throw Object.assign(new Error('Only quoted orders can receive a payment link'), { status: 409 });
       await connection.execute('INSERT INTO payment_references (order_request_id,provider,payment_link,external_reference) VALUES (?,?,?,?)', [request.params.id, input.provider, input.paymentLink, input.externalReference]);
       await connection.execute("UPDATE order_requests SET status='awaiting_payment' WHERE id=?", [request.params.id]);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,'quoted','awaiting_payment','Payment link created',?)", [request.params.id,response.locals.admin.sub]);
     });
     response.status(201).json({ status: 'awaiting_payment' });
   } catch (error) { next(error); }
@@ -481,10 +572,13 @@ app.post('/api/admin/orders/:id/payment-link', requireAdmin, async (request, res
 
 app.patch('/api/admin/orders/:id/confirm-payment', requireAdmin, async (request, response, next) => {
   try {
+    const { externalReference } = paymentConfirmationSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const paymentReference = String(request.body?.externalReference || '');
-    const [result] = await pool.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, paymentReference]);
-    if ((result as { affectedRows: number }).affectedRows === 0) return response.status(409).json({ error: 'Payment reference could not be verified for this order' });
+    await withTransaction(async (connection) => {
+      const [result] = await connection.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, externalReference]);
+      if ((result as { affectedRows: number }).affectedRows === 0) throw Object.assign(new Error('Payment reference could not be verified for this order'), { status: 409 });
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,'awaiting_payment','paid','Payment reference verified',?)", [request.params.id,response.locals.admin.sub]);
+    });
     response.json({ status: 'paid' });
   } catch (error) { next(error); }
 });

@@ -1,59 +1,52 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { money } from '../../data/products';
 import { adminRequest } from '../../lib/api';
 import { useFeedback } from '../FeedbackProvider';
 
 export type WorkflowOrder = {
-  id?: number;
-  ref: string;
-  status: string;
-  customer: string;
-  email: string;
-  phone: string;
-  address: string;
-  courierName?: string;
-  trackingNumber?: string;
-  trackingUrl?: string;
-  isTest: boolean;
+  id?: number; ref: string; status: string; customer: string; email: string; phone: string; address: string; courierName?: string; trackingNumber?: string; trackingUrl?: string; isTest: boolean;
+  supplierOrderReference?: string; supplierOrderUrl?: string; fulfilmentNotes?: string; expectedShipAt?: string; expectedDeliveryAt?: string;
+  supplierCost?: number; supplierDelivery?: number; deliveryCost?: number; packaging?: number; paymentFee?: number; advertising?: number;
+  actualSupplierCost?: number | null; actualSupplierDelivery?: number | null; actualDeliveryCost?: number | null; actualPackaging?: number | null; actualPaymentFee?: number | null; actualAdvertising?: number | null; actualProfit?: number | null;
 };
-
-const nextStatuses: Record<string, { status: string; label: string }[]> = {
-  requested: [{ status: 'checking_supplier', label: 'Start supplier check' }, { status: 'cancelled', label: 'Cancel order' }],
-  checking_supplier: [{ status: 'cancelled', label: 'Cancel order' }],
-  quoted: [{ status: 'cancelled', label: 'Cancel order' }],
-  awaiting_payment: [{ status: 'cancelled', label: 'Cancel order' }],
-  paid: [{ status: 'purchasing', label: 'Mark purchasing' }, { status: 'refunded', label: 'Mark refunded' }],
-  purchasing: [{ status: 'shipped', label: 'Mark shipped' }, { status: 'refunded', label: 'Mark refunded' }],
-  shipped: [{ status: 'delivered', label: 'Mark delivered' }, { status: 'refunded', label: 'Mark refunded' }],
-  delivered: [{ status: 'refunded', label: 'Mark refunded' }],
+type Operations = {
+  items: { product_title_snapshot:string; model_snapshot:string; pack_size_snapshot:string; quantity:number; agreed_unit_price:number; supplier_retailer_snapshot:string|null; supplier_source_url_snapshot:string|null; supplier_sku_snapshot:string|null; supplier_unit_cost_snapshot:number|null; supplier_checkout_unit_cost:number|null }[];
+  history: { from_status:string|null; to_status:string; note:string|null; created_at:string }[];
+  payments: { provider:string; payment_link:string; external_reference:string; verification_status:string; verified_at:string|null; created_at:string }[];
 };
+const nextStatuses: Record<string,{status:string;label:string}[]> = {
+  requested:[{status:'checking_supplier',label:'Start supplier check'},{status:'cancelled',label:'Cancel order'}], checking_supplier:[{status:'cancelled',label:'Cancel order'}], quoted:[{status:'cancelled',label:'Cancel order'}], awaiting_payment:[{status:'cancelled',label:'Cancel order'}], paid:[{status:'purchasing',label:'Start purchasing'},{status:'refunded',label:'Mark refunded'}], purchasing:[{status:'shipped',label:'Mark shipped'},{status:'refunded',label:'Mark refunded'}], shipped:[{status:'delivered',label:'Mark delivered'},{status:'refunded',label:'Mark refunded'}], delivered:[{status:'refunded',label:'Mark refunded'}],
+};
+const dateInput = (value?:string) => value ? new Date(value).toISOString().slice(0,16) : '';
 
-export default function OrderWorkflow({ order, onChanged }: { order?: WorkflowOrder; onChanged: () => Promise<void> }) {
+export default function OrderWorkflow({ order, onChanged }:{ order?:WorkflowOrder; onChanged:()=>Promise<void> }) {
   const { confirm, notify } = useFeedback();
-  const [busy, setBusy] = useState(false);
-  const [courierName, setCourierName] = useState(order?.courierName || '');
-  const [trackingNumber, setTrackingNumber] = useState(order?.trackingNumber || '');
-  const [trackingUrl, setTrackingUrl] = useState(order?.trackingUrl || '');
-  if (!order) return <p className="quote-warning">Select a real order to see its customer details and next steps.</p>;
-  const move = async (status: string, label: string) => {
-    if (status === 'shipped' && (!courierName.trim() || !trackingNumber.trim())) return notify('Enter the courier and tracking number before marking this order shipped.', 'warning');
-    if (!order.id || !await confirm({ title: `${label}?`, message: `Move ${order.ref} from ${order.status.replaceAll('_', ' ')} to ${status.replaceAll('_', ' ')}? The customer will see the new status in their account.`, confirmLabel: label })) return;
-    setBusy(true);
-    try {
-      await adminRequest(`/orders/${order.id}/status`, { method: 'PATCH', body: JSON.stringify({ status, ...(status === 'shipped' ? { courierName: courierName.trim(), trackingNumber: trackingNumber.trim(), trackingUrl: trackingUrl.trim() || undefined } : {}) }) });
-      await onChanged();
-      notify(`${order.ref} is now ${status.replaceAll('_', ' ')}.`, 'success');
-    } catch (error) { notify(error instanceof Error ? error.message : 'Status could not be updated.', 'error'); }
-    finally { setBusy(false); }
-  };
+  const [busy,setBusy] = useState(false);
+  const [operations,setOperations] = useState<Operations|null>(null);
+  const [courierName,setCourierName] = useState(''); const [trackingNumber,setTrackingNumber] = useState(''); const [trackingUrl,setTrackingUrl] = useState('');
+  const [provider,setProvider] = useState<'yoco'|'paystack'|'other'>('other'); const [paymentLink,setPaymentLink] = useState(''); const [paymentReference,setPaymentReference] = useState('');
+  const [fulfilment,setFulfilment] = useState({ supplierOrderReference:'',supplierOrderUrl:'',fulfilmentNotes:'',expectedShipAt:'',expectedDeliveryAt:'',actualSupplierProductCost:0,actualSupplierDelivery:0,actualCustomerDeliveryCost:0,actualPackagingCost:0,actualPaymentFee:0,actualAdvertisingCost:0 });
+  useEffect(() => {
+    if (!order?.id || order.isTest) { setOperations(null); return; }
+    setCourierName(order.courierName||''); setTrackingNumber(order.trackingNumber||''); setTrackingUrl(order.trackingUrl||'');
+    setFulfilment({ supplierOrderReference:order.supplierOrderReference||'',supplierOrderUrl:order.supplierOrderUrl||'',fulfilmentNotes:order.fulfilmentNotes||'',expectedShipAt:dateInput(order.expectedShipAt),expectedDeliveryAt:dateInput(order.expectedDeliveryAt),actualSupplierProductCost:order.actualSupplierCost??order.supplierCost??0,actualSupplierDelivery:order.actualSupplierDelivery??order.supplierDelivery??0,actualCustomerDeliveryCost:order.actualDeliveryCost??order.deliveryCost??0,actualPackagingCost:order.actualPackaging??order.packaging??0,actualPaymentFee:order.actualPaymentFee??order.paymentFee??0,actualAdvertisingCost:order.actualAdvertising??order.advertising??0 });
+    void adminRequest<Operations>(`/orders/${order.id}/operations`).then((result)=>{ const safe = { items:result.items||[],history:result.history||[],payments:result.payments||[] }; setOperations(safe); if(safe.payments[0]) setPaymentReference(safe.payments[0].external_reference); }).catch((error)=>notify(error instanceof Error?error.message:'Order operations could not be loaded.','error'));
+  },[notify,order]);
+  if (!order) return <p className="quote-warning">Select a real order to see its supplier records, customer details and next steps.</p>;
+  if (order.isTest) return <p className="quote-warning">This is a QA test order. No purchase, shipment or real payment actions are available.</p>;
+  const move = async(status:string,label:string) => { if(status==='shipped'&&(!courierName.trim()||!trackingNumber.trim())) return notify('Enter the courier and tracking number before marking this order shipped.','warning'); if(!order.id||!await confirm({title:`${label}?`,message:`Move ${order.ref} from ${order.status.replaceAll('_',' ')} to ${status.replaceAll('_',' ')}? The customer will see the new status in their account.`,confirmLabel:label})) return; setBusy(true); try { await adminRequest(`/orders/${order.id}/status`,{method:'PATCH',body:JSON.stringify({status,...(status==='shipped'?{courierName:courierName.trim(),trackingNumber:trackingNumber.trim(),trackingUrl:trackingUrl.trim()||undefined}:{})})}); await onChanged(); notify(`${order.ref} is now ${status.replaceAll('_',' ')}.`,'success'); } catch(error){ notify(error instanceof Error?error.message:'Status could not be updated.','error'); } finally{ setBusy(false); } };
+  const saveFulfilment = async() => { if(!order.id)return; setBusy(true); try { await adminRequest(`/orders/${order.id}/fulfilment`,{method:'PATCH',body:JSON.stringify({...fulfilment,supplierOrderReference:fulfilment.supplierOrderReference||null,supplierOrderUrl:fulfilment.supplierOrderUrl||null,fulfilmentNotes:fulfilment.fulfilmentNotes||null,expectedShipAt:fulfilment.expectedShipAt?new Date(fulfilment.expectedShipAt).toISOString():null,expectedDeliveryAt:fulfilment.expectedDeliveryAt?new Date(fulfilment.expectedDeliveryAt).toISOString():null})}); await onChanged(); notify('Supplier references, delivery dates and actual costs were saved.','success','Fulfilment saved'); } catch(error){ notify(error instanceof Error?error.message:'Fulfilment details could not be saved.','error'); } finally{setBusy(false);} };
+  const createPaymentLink = async() => { if(!order.id||!paymentLink||!paymentReference)return notify('Enter the secure payment link and its provider reference.','warning'); setBusy(true); try{await adminRequest(`/orders/${order.id}/payment-link`,{method:'POST',body:JSON.stringify({provider,paymentLink,externalReference:paymentReference})});await onChanged();notify('Payment link recorded. The order is awaiting verified payment.','success');}catch(error){notify(error instanceof Error?error.message:'Payment link could not be saved.','error');}finally{setBusy(false);} };
+  const confirmPayment = async() => {if(!order.id||!paymentReference||!await confirm({title:'Verify payment?',message:`Only continue after confirming ${paymentReference} in the payment provider. This will mark ${order.ref} as paid.`,confirmLabel:'Payment verified'}))return;setBusy(true);try{await adminRequest(`/orders/${order.id}/confirm-payment`,{method:'PATCH',body:JSON.stringify({externalReference:paymentReference})});await onChanged();notify('Payment verified. The order can now be purchased.','success');}catch(error){notify(error instanceof Error?error.message:'Payment could not be verified.','error');}finally{setBusy(false);}};
+  const field=(key:keyof typeof fulfilment,value:string|number)=>setFulfilment((current)=>({...current,[key]:value}));
   return <section className="order-workflow">
-    <h3>Customer and delivery</h3>
-    <p><strong>{order.customer}</strong><br /><a href={`mailto:${order.email}`}>{order.email}</a> · {order.phone}</p>
-    <p>{order.address}</p>
-    <h3>Next step</h3>
-    {order.status === 'purchasing' && <div className="order-tracking-inputs"><label>Courier<input value={courierName} onChange={(event) => setCourierName(event.target.value)} placeholder="Courier name" /></label><label>Tracking number<input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="Shipment reference" /></label><label>Tracking link (optional)<input type="url" value={trackingUrl} onChange={(event) => setTrackingUrl(event.target.value)} placeholder="https://courier.example/track" /></label></div>}
-    {order.isTest ? <p>Test order. No purchase, shipment or real payment is allowed.</p> : (nextStatuses[order.status] || []).length
-      ? <div className="order-workflow-actions">{nextStatuses[order.status].map(({ status, label }) => <button key={status} type="button" className="outline-button" disabled={busy} onClick={() => void move(status, label)}>{label}</button>)}</div>
-      : <p>No further status changes are available.</p>}
-    {order.status === 'quoted' && <p className="quote-warning">A payment link requires a configured real gateway. Verify the transaction with the provider before marking it paid.</p>}
+    <h3>Customer and delivery</h3><p><strong>{order.customer}</strong><br/><a href={`mailto:${order.email}`}>{order.email}</a> · {order.phone}</p><p>{order.address}</p>
+    <h3>Supplier purchase list</h3>{operations?.items.length?<div className="fulfilment-items">{operations.items.map((item,index)=><article key={`${item.product_title_snapshot}-${index}`}><div><strong>{item.product_title_snapshot} × {item.quantity}</strong><span>{item.model_snapshot} · {item.pack_size_snapshot}</span><small>{item.supplier_retailer_snapshot||'Supplier not captured'} · SKU {item.supplier_sku_snapshot||'not captured'}</small></div><div><strong>{money(Number(item.supplier_unit_cost_snapshot||0)*item.quantity)}</strong>{item.supplier_source_url_snapshot&&<a href={item.supplier_source_url_snapshot} target="_blank" rel="noreferrer">Open supplier</a>}</div></article>)}</div>:<p className="quote-warning">Supplier snapshots are unavailable for this older order. Open each current product source and verify it before quoting.</p>}
+    {!['requested','cancelled','refunded'].includes(order.status)&&<><h3>Fulfilment record</h3><div className="fulfilment-grid"><label>Supplier order reference<input value={fulfilment.supplierOrderReference} onChange={(event)=>field('supplierOrderReference',event.target.value)}/></label><label>Supplier order link<input type="url" value={fulfilment.supplierOrderUrl} onChange={(event)=>field('supplierOrderUrl',event.target.value)}/></label><label>Expected ship date<input type="datetime-local" value={fulfilment.expectedShipAt} onChange={(event)=>field('expectedShipAt',event.target.value)}/></label><label>Expected delivery date<input type="datetime-local" value={fulfilment.expectedDeliveryAt} onChange={(event)=>field('expectedDeliveryAt',event.target.value)}/></label>{([['actualSupplierProductCost','Actual product cost'],['actualSupplierDelivery','Actual supplier delivery'],['actualCustomerDeliveryCost','Actual courier cost'],['actualPackagingCost','Actual packaging'],['actualPaymentFee','Actual payment fee'],['actualAdvertisingCost','Actual advertising']] as [keyof typeof fulfilment,string][]).map(([key,label])=><label key={key}>{label}<div className="money-input">R <input type="number" min="0" step="0.01" value={fulfilment[key]} onChange={(event)=>field(key,Number(event.target.value))}/></div></label>)}<label className="full-field">Internal fulfilment notes<textarea rows={3} value={fulfilment.fulfilmentNotes} onChange={(event)=>field('fulfilmentNotes',event.target.value)}/></label></div><button type="button" className="outline-button" disabled={busy} onClick={()=>void saveFulfilment()}>Save fulfilment record</button>{order.actualProfit!=null&&<p className="actual-profit">Current actual profit <strong>{money(order.actualProfit)}</strong></p>}</>}
+    {order.status==='quoted'&&<div className="payment-operations"><h3>Send payment link</h3><label>Provider<select value={provider} onChange={(event)=>setProvider(event.target.value as typeof provider)}><option value="other">Other / manual</option><option value="paystack">Paystack</option><option value="yoco">Yoco</option></select></label><label>Secure payment URL<input type="url" value={paymentLink} onChange={(event)=>setPaymentLink(event.target.value)} placeholder="https://…"/></label><label>Provider reference<input value={paymentReference} onChange={(event)=>setPaymentReference(event.target.value)}/></label><button type="button" className="outline-button" disabled={busy} onClick={()=>void createPaymentLink()}>Record payment link</button></div>}
+    {order.status==='awaiting_payment'&&<div className="payment-operations"><h3>Verify payment</h3>{operations?.payments.map((payment)=><p key={payment.external_reference}><a href={payment.payment_link} target="_blank" rel="noreferrer">{payment.provider} payment link</a> · {payment.external_reference} · {payment.verification_status}</p>)}<label>Reference confirmed with provider<input value={paymentReference} onChange={(event)=>setPaymentReference(event.target.value)}/></label><button type="button" className="outline-button" disabled={busy} onClick={()=>void confirmPayment()}>Confirm verified payment</button></div>}
+    {order.status==='purchasing'&&<div className="order-tracking-inputs"><h3>Shipment tracking</h3><label>Courier<input value={courierName} onChange={(event)=>setCourierName(event.target.value)} placeholder="Courier name"/></label><label>Tracking number<input value={trackingNumber} onChange={(event)=>setTrackingNumber(event.target.value)} placeholder="Shipment reference"/></label><label>Tracking link (optional)<input type="url" value={trackingUrl} onChange={(event)=>setTrackingUrl(event.target.value)} placeholder="https://courier.example/track"/></label></div>}
+    <h3>Next step</h3>{(nextStatuses[order.status]||[]).length?<div className="order-workflow-actions">{nextStatuses[order.status].map(({status,label})=><button key={status} type="button" className="outline-button" disabled={busy} onClick={()=>void move(status,label)}>{label}</button>)}</div>:<p>No further status changes are available.</p>}
+    <h3>Status history</h3>{operations?.history.length?<ol className="status-timeline">{operations.history.map((item,index)=><li key={`${item.created_at}-${index}`}><strong>{item.to_status.replaceAll('_',' ')}</strong><span>{new Date(item.created_at).toLocaleString('en-ZA')}</span><small>{item.note}</small></li>)}</ol>:<p>No history captured yet.</p>}
   </section>;
 }

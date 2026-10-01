@@ -809,3 +809,82 @@ footer a,footer p { font-size:13px; }
 .order-tracking-inputs { display: grid; gap: .6rem; margin: .8rem 0; }
 .order-tracking-inputs label { display: grid; gap: .25rem; }
 .order-tracking-inputs input { width: 100%; padding: .55rem; border: 1px solid #d8e1d7; border-radius: .4rem; }
+
+/* Production operations and analytics */
+.context-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+.context-metrics>div { background:#fff; border:1px solid #e0e1dd; border-top:3px solid #dfe9e3; padding:16px 18px; }
+.context-metrics span,.context-metrics strong { display:block; }
+.context-metrics span { color:#77837c; font-size:12px; margin-bottom:7px; }
+.context-metrics strong { color:#183b30; font-size:23px; }
+.analytics-metrics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:17px; }
+.analytics-metrics article { background:#fff; border:1px solid #e0e1dd; display:grid; grid-template-columns:auto 1fr; gap:3px 11px; padding:17px; }
+.analytics-metrics article>svg { grid-row:1/4; width:20px; color:#3f8466; }
+.analytics-metrics article>span,.analytics-metrics article>small { color:#75827b; font-size:12px; }
+.analytics-metrics article>strong { font-size:21px; }
+.analytics-metrics article.risk { border-color:#e8c6a5; background:#fffaf3; }
+.analytics-metrics article.risk>svg { color:#c17329; }
+.analytics-grid { display:grid; grid-template-columns:1.2fr .8fr; gap:17px; margin-top:17px; }
+.chart-card { min-height:285px; }
+.chart-card>.card-heading>small { margin-left:auto; color:#77837c; font-size:11px; }
+.bar-chart { min-height:205px; display:flex; align-items:flex-end; gap:9px; overflow-x:auto; padding:14px 2px 0; }
+.bar-column { min-width:38px; height:175px; display:grid; grid-template-rows:1fr auto; align-items:end; gap:8px; }
+.bar-column>span { width:100%; min-height:6px; background:linear-gradient(180deg,#5a9879,#285c49); border-radius:4px 4px 0 0; }
+.bar-column>small { color:#77837c; font-size:9px; text-align:center; white-space:nowrap; }
+.status-chart { display:grid; gap:15px; }
+.status-chart>div { display:grid; grid-template-columns:110px 1fr 25px; align-items:center; gap:10px; font-size:11px; text-transform:capitalize; }
+.status-chart i { height:8px; background:#edf0ed; overflow:hidden; border-radius:8px; }
+.status-chart b { display:block; height:100%; background:#d97559; border-radius:inherit; }
+.projection-card { grid-column:1/-1; display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:30px; }
+.projection-card h2 { font-size:18px; margin:4px 0; }
+.projection-card>div>span,.projection-card p,.projection-card article small { color:#77837c; font-size:11px; }
+.projection-card article strong,.projection-card article small { display:block; }
+.projection-card article strong { font-size:23px; margin-top:6px; }
+.projection-card>p { grid-column:1/-1; margin:0; padding-top:12px; border-top:1px solid #eceeeb; }
+.analytics-empty,.analytics-loading { color:#77837c; font-size:12px; }
+.test-orders { border-top:1px solid #e4e6e3; margin-top:16px; padding-top:13px; color:#6c7771; font-size:11px; }
+.test-orders summary { cursor:pointer; font-weight:700; }
+.test-orders p { padding-left:14px; }
+.fulfilment-items { border:1px solid #e2e6e1; }
+.fulfilment-items article { display:grid; grid-template-columns:1fr auto; gap:14px; padding:12px; border-top:1px solid #e8ebe7; }
+.fulfilment-items article:first-child { border-top:0; }
+.fulfilment-items span,.fulfilment-items small,.fulfilment-items a { display:block; color:#75817b; font-size:11px; margin-top:3px; }
+.fulfilment-items article>div:last-child { text-align:right; }
+.fulfilment-grid,.payment-operations { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0 14px; padding:15px; background:#f7f8f5; border:1px solid #e1e5e0; }
+.fulfilment-grid label,.payment-operations label { display:grid; gap:5px; color:#526159; font-size:11px; }
+.fulfilment-grid input,.fulfilment-grid textarea,.payment-operations input,.payment-operations select { width:100%; border:1px solid #d6dcd6; background:#fff; padding:9px; font:inherit; }
+.full-field,.payment-operations h3,.payment-operations p,.payment-operations button { grid-column:1/-1; }
+.money-input { display:flex; align-items:center; gap:5px; border:1px solid #d6dcd6; background:#fff; padding-left:9px; }
+.money-input input { border:0; }
+.actual-profit { display:inline-flex; gap:10px; margin-left:12px!important; padding:8px 11px; background:#e4f0e9; color:#286348; }
+.status-timeline { list-style:none; padding:0 0 0 18px; margin:10px 0 0; border-left:2px solid #dce5df; }
+.status-timeline li { position:relative; display:grid; grid-template-columns:1fr auto; gap:3px 12px; padding:0 0 16px 13px; text-transform:capitalize; }
+.status-timeline li::before { content:''; position:absolute; left:-24px; top:3px; width:10px; height:10px; border-radius:50%; background:#4e8b6d; border:2px solid #fff; }
+.status-timeline span,.status-timeline small { color:#77837c; font-size:10px; }
+.status-timeline small { grid-column:1/-1; }
+.customer-order-progress { min-width:150px; text-transform:capitalize; }
+.customer-order-progress>span { font-weight:600; }
+.customer-tracking,.order-eta { color:#2b6d52!important; }
+
+@media (max-width:1050px) {
+  .analytics-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .analytics-grid { grid-template-columns:1fr; }
+  .projection-card { grid-column:auto; }
+}
+
+@media (max-width:780px) {
+  .context-metrics { grid-template-columns:1fr 1fr; }
+  .analytics-metrics { grid-template-columns:1fr; }
+  .projection-card { grid-template-columns:1fr 1fr; gap:18px; }
+  .projection-card>div { grid-column:1/-1; }
+  .fulfilment-grid,.payment-operations { grid-template-columns:1fr; }
+  .full-field,.payment-operations h3,.payment-operations p,.payment-operations button { grid-column:auto; }
+}
+
+@media (max-width:520px) {
+  .context-metrics { grid-template-columns:1fr; }
+  .projection-card { grid-template-columns:1fr; }
+  .projection-card>div,.projection-card>p { grid-column:auto; }
+  .customer-orders article { grid-template-columns:1fr; align-items:start; }
+  .customer-orders article>strong { grid-column:auto; }
+  .customer-order-progress { min-width:0; }
+}

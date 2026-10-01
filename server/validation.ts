@@ -48,6 +48,8 @@ export const orderStatusSchema = z.object({
   if (value.status === 'shipped' && (!value.courierName || !value.trackingNumber)) context.addIssue({ code: 'custom', message: 'Courier and tracking number are required when shipping' });
 });
 
+export const paymentConfirmationSchema = z.object({ externalReference: z.string().trim().min(2).max(255) });
+
 export const customerRegisterSchema = z.object({
   name: z.string().trim().min(2).max(160),
   email: z.email().max(190),
@@ -88,6 +90,20 @@ export const adminCustomerUpdateSchema = z.object({
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 const optionalMoney = z.number().nonnegative().max(10_000_000).nullable().optional();
 const optionalDate = z.preprocess((value) => value === '' || value === null ? null : value, z.coerce.date().nullable()).optional();
+
+export const orderFulfilmentSchema = z.object({
+  supplierOrderReference: z.string().trim().max(190).nullable().optional(),
+  supplierOrderUrl: z.union([z.url().max(1500), z.literal(''), z.null()]).optional(),
+  fulfilmentNotes: z.string().trim().max(5000).nullable().optional(),
+  expectedShipAt: optionalDate,
+  expectedDeliveryAt: optionalDate,
+  actualSupplierProductCost: optionalMoney,
+  actualSupplierDelivery: optionalMoney,
+  actualCustomerDeliveryCost: optionalMoney,
+  actualPackagingCost: optionalMoney,
+  actualPaymentFee: optionalMoney,
+  actualAdvertisingCost: optionalMoney,
+}).refine((value) => Object.keys(value).length > 0, 'At least one fulfilment field is required');
 
 const supplierFields = {
   retailer: optionalText(120),
