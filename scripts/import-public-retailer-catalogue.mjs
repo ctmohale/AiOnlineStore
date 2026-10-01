@@ -79,17 +79,30 @@ function makroCandidate(product) {
 
 async function collectMakro() {
   const candidates = new Map();
-  const pages = await parallelMap(Array.from({ length: 14 }, (_, index) => index + 1), 4, async (page) => {
-    const response = await fetch(`https://www.makro.co.za/food-products/pr?page=${page}&sid=eat`, { headers: { 'User-Agent': 'MoyaMarket/1.0 product-review-client' } });
-    if (!response.ok) throw new Error(`Makro catalogue page ${page} returned ${response.status}`);
-    return { page, products: findMakroProducts(initialState(await response.text())) };
+  const catalogues = [
+    ['Clearance', 'https://www.makro.co.za/all/~cs-w2553hzh8d/pr?sid=all&sort=price_desc', 10],
+    ['Home appliances', 'https://www.makro.co.za/home-kitchen/home-appliances/pr?sid=j9e,abm', 8],
+    ['Laptops', 'https://www.makro.co.za/all/computers/laptops/pr?sid=all,6bo,b5g', 5],
+    ['Mobile phones', 'https://www.makro.co.za/all/mobiles-accessories/mobiles/pr?sid=all,tyy,4io', 5],
+    ['Speakers', 'https://www.makro.co.za/all/audio-video/speakers/pr?sid=all,0pm,0o7', 5],
+    ['Gaming', 'https://www.makro.co.za/gaming/gaming-consoles/pr?sid=4rr,x1m', 5],
+    ['Cameras', 'https://www.makro.co.za/all/cameras-accessories/cameras/pr?sid=all,jek,p31', 5],
+    ['Kitchen', 'https://www.makro.co.za/kitchen-cookware-serveware/pr?sid=upp', 5],
+    ['Camping', 'https://www.makro.co.za/all/~cs-96c93fy581/pr?sid=all', 5],
+  ];
+  const requests = catalogues.flatMap(([name, baseUrl, count]) => Array.from({ length: Number(count) }, (_, index) => ({ name, baseUrl, page: index + 1 })));
+  const pages = await parallelMap(requests, 6, async ({ name, baseUrl, page }) => {
+    const url = new URL(String(baseUrl)); url.searchParams.set('page', String(page));
+    const response = await fetch(url, { headers: { 'User-Agent': 'MoyaMarket/1.0 product-review-client' } });
+    if (!response.ok) throw new Error(`Makro ${name} page ${page} returned ${response.status}`);
+    return { name, page, products: findMakroProducts(initialState(await response.text())) };
   });
-  for (const { page, products } of pages) {
+  for (const { name, page, products } of pages) {
     for (const product of products.values()) {
       const candidate = makroCandidate(product);
       if (candidate) candidates.set(sourceKey(candidate.supplier.sourceUrl), candidate);
     }
-    process.stdout.write(`Makro page ${page}: ${candidates.size} unique products\n`);
+    process.stdout.write(`Makro ${name} page ${page}: ${candidates.size} unique products\n`);
   }
   return [...candidates.values()];
 }
@@ -132,7 +145,7 @@ function gameCandidate(product) {
 }
 
 async function collectGame() {
-  const pages = await parallelMap(Array.from({ length: 30 }, (_, index) => index), 10, (page) => gameRequest(`/occ/v2/game/channel/web/zone/G205/products/search?fields=FULL&currentPage=${page}`, { method: 'POST', body: JSON.stringify({ query: 'sale:price-desc' }) }));
+  const pages = await parallelMap(Array.from({ length: 120 }, (_, index) => index), 10, (page) => gameRequest(`/occ/v2/game/channel/web/zone/G205/products/search?fields=FULL&currentPage=${page}`, { method: 'POST', body: JSON.stringify({ query: 'sale:price-desc' }) }));
   const products = new Map();
   for (const page of pages) for (const product of page.products || []) products.set(product.code, product);
   return [...products.values()].map(gameCandidate).filter(Boolean);
@@ -152,7 +165,7 @@ async function adminRequest(token, path, options = {}) {
 }
 
 async function main() {
-  const [makro, game] = await Promise.all([collectMakro(), collectGame()]);
+  const [makro, game] = await Promise.all([collectMakro(), process.env.SKIP_GAME === 'true' ? [] : collectGame()]);
   const candidates = [...game, ...makro].filter((item) => item.sellingPrice >= MIN_SELLING_PRICE).sort((a, b) => Number(b.sale) - Number(a.sale) || b.sellingPrice - a.sellingPrice);
   const summary = { collected: candidates.length, sale: candidates.filter((item) => item.sale).length, game: game.length, makro: makro.length, minimumSellingPrice: MIN_SELLING_PRICE, target: TARGET_COUNT, dryRun: DRY_RUN };
   if (DRY_RUN) { console.log(JSON.stringify(summary, null, 2)); return; }
