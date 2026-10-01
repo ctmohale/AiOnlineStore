@@ -1,7 +1,7 @@
 const publicLabels: Record<string,string> = {
   requested: 'Order received',
   checking_supplier: 'Confirming your order',
-  quoted: 'Order confirmed',
+  quoted: 'Order details confirmed',
   awaiting_payment: 'Awaiting payment',
   paid: 'Payment confirmed',
   purchasing: 'Preparing your order',
