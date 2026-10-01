@@ -12,7 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -530,7 +530,7 @@ app.get('/api/admin/analytics', requireAdmin, async (_request, response, next) =
 app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [items, history, payments] = await Promise.all([
+    const [items, history, payments, cases] = await Promise.all([
       pool.execute(`SELECT oi.id,oi.product_title_snapshot,oi.model_snapshot,oi.pack_size_snapshot,oi.quantity,oi.agreed_unit_price,
         oi.supplier_verification_status,oi.verified_supplier_unit_cost,oi.supplier_stock_verified_at,oi.supplier_verification_notes,
         COALESCE(oi.supplier_retailer_snapshot,so.retailer) AS supplier_retailer_snapshot,
@@ -543,8 +543,46 @@ app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, respon
         WHERE oi.order_request_id=? ORDER BY oi.id`, [request.params.id]),
       pool.execute('SELECT from_status,to_status,note,created_at FROM order_status_history WHERE order_request_id=? ORDER BY created_at,id', [request.params.id]),
       pool.execute('SELECT provider,payment_link,external_reference,verification_status,verified_at,created_at FROM payment_references WHERE order_request_id=? ORDER BY created_at DESC', [request.params.id]),
+      pool.execute('SELECT id,reference,case_type,status,reason_category,reason_details,evidence_urls,supplier_return_reference,supplier_return_url,return_courier_name,return_tracking_number,return_tracking_url,resolution,refund_amount,internal_notes,resolved_at,created_at,updated_at FROM order_support_cases WHERE order_request_id=? ORDER BY created_at DESC,id DESC', [request.params.id]),
     ]);
-    response.json({ items: items[0], history: history[0], payments: payments[0] });
+    response.json({ items: items[0], history: history[0], payments: payments[0], cases: cases[0] });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/orders/:id/cases', requireAdmin, async (request, response, next) => {
+  try {
+    const input = supportCaseCreateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const created = await withTransaction(async (connection) => {
+      const [orderRows] = await connection.execute('SELECT id,reference,status,is_test FROM order_requests WHERE id=? FOR UPDATE', [request.params.id]);
+      const order = (orderRows as (RowDataPacket & { id:number; reference:string; status:string; is_test:number })[])[0];
+      if (!order || order.is_test) throw Object.assign(new Error('Real order not found'), { status: 404 });
+      if (input.caseType === 'return' && !['shipped','delivered'].includes(order.status)) throw Object.assign(new Error('A return can be opened once the order has shipped'), { status: 409 });
+      if (input.caseType === 'cancellation' && ['delivered','cancelled','refunded'].includes(order.status)) throw Object.assign(new Error('This order can no longer enter the cancellation workflow'), { status: 409 });
+      const [existingRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND case_type=? AND status NOT IN ('declined','resolved','closed') LIMIT 1", [order.id,input.caseType]);
+      if ((existingRows as RowDataPacket[]).length) throw Object.assign(new Error(`An active ${input.caseType} case already exists for this order`), { status: 409 });
+      const reference = `MM-${input.caseType === 'return' ? 'RET' : 'CAN'}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
+      const [result] = await connection.execute('INSERT INTO order_support_cases (reference,order_request_id,case_type,reason_category,reason_details,evidence_urls,opened_by_admin_id) VALUES (?,?,?,?,?,?,?)', [reference,order.id,input.caseType,input.reasonCategory,input.reasonDetails,JSON.stringify(input.evidenceUrls),response.locals.admin.sub]);
+      await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [order.id,order.status,order.status,`${input.caseType} case ${reference} opened`,response.locals.admin.sub]);
+      return { id:Number((result as { insertId:number }).insertId), reference, status:'open' };
+    });
+    response.status(201).json(created);
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/orders/:id/cases/:caseId', requireAdmin, async (request, response, next) => {
+  try {
+    const input = supportCaseUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const updated = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT c.id,c.reference,c.case_type,o.status AS order_status,o.is_test FROM order_support_cases c JOIN order_requests o ON o.id=c.order_request_id WHERE c.id=? AND c.order_request_id=? FOR UPDATE', [request.params.caseId,request.params.id]);
+      const record = (rows as (RowDataPacket & { id:number; reference:string; case_type:string; order_status:string; is_test:number })[])[0];
+      if (!record || record.is_test) throw Object.assign(new Error('Support case not found'), { status: 404 });
+      await connection.execute(`UPDATE order_support_cases SET status=?,supplier_return_reference=?,supplier_return_url=?,return_courier_name=?,return_tracking_number=?,return_tracking_url=?,resolution=?,refund_amount=?,internal_notes=?,resolved_at=CASE WHEN ? IN ('resolved','closed') THEN COALESCE(resolved_at,UTC_TIMESTAMP()) ELSE NULL END WHERE id=? AND order_request_id=?`, [input.status,input.supplierReturnReference || null,input.supplierReturnUrl || null,input.returnCourierName || null,input.returnTrackingNumber || null,input.returnTrackingUrl || null,input.resolution,input.refundAmount ?? null,input.internalNotes || null,input.status,record.id,request.params.id]);
+      await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [request.params.id,record.order_status,record.order_status,`${record.case_type} case ${record.reference} updated to ${input.status}`,response.locals.admin.sub]);
+      return { id:record.id, reference:record.reference, status:input.status, resolution:input.resolution };
+    });
+    response.json(updated);
   } catch (error) { next(error); }
 });
 
@@ -605,6 +643,14 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response
       if (record.is_test) throw Object.assign(new Error('Test orders cannot enter the real fulfilment workflow'), { status: 409 });
       const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
       if (!transitions[current]?.includes(status)) throw Object.assign(new Error(`Cannot move an order from ${current} to ${status}`), { status: 409 });
+      if (status === 'cancelled') {
+        const [caseRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND case_type='cancellation' AND status IN ('approved','resolved') LIMIT 1", [request.params.id]);
+        if (!(caseRows as RowDataPacket[]).length) throw Object.assign(new Error('Open and approve a cancellation case before cancelling this order'), { status: 409 });
+      }
+      if (status === 'refunded') {
+        const [caseRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND resolution='refund' AND status IN ('approved','resolved','closed') AND refund_amount IS NOT NULL LIMIT 1", [request.params.id]);
+        if (!(caseRows as RowDataPacket[]).length) throw Object.assign(new Error('Approve a refund case and record its amount before marking this order refunded'), { status: 409 });
+      }
       if (status === 'paid') throw Object.assign(new Error('Use the payment verification endpoint to mark an order paid'), { status: 409 });
       const timestampColumns: Record<string,string> = { checking_supplier:'supplier_checked_at',purchasing:'purchased_at',shipped:'shipped_at',delivered:'delivered_at',cancelled:'cancelled_at',refunded:'refunded_at' };
       if (status === 'shipped') await connection.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);

@@ -125,6 +125,34 @@ export const supplierItemVerificationSchema = z.object({
   }
 });
 
+const supportReason = z.enum(['changed_mind','incorrect_item','damaged','defective','late_delivery','duplicate_order','address_problem','supplier_unavailable','other']);
+const supportStatus = z.enum(['open','reviewing','approved','declined','collection_scheduled','in_transit','received','resolved','closed']);
+const supportResolution = z.enum(['pending','refund','replacement','repair','cancelled_without_charge','declined','other']);
+const optionalSupportUrl = z.union([z.url().max(1500).refine((value) => value.startsWith('https://'), 'Use an HTTPS link'), z.literal(''), z.null()]).optional();
+
+export const supportCaseCreateSchema = z.object({
+  caseType: z.enum(['cancellation','return']),
+  reasonCategory: supportReason,
+  reasonDetails: z.string().trim().min(3).max(5000),
+  evidenceUrls: z.array(z.url().max(1500).refine((value) => value.startsWith('https://'), 'Use HTTPS evidence links')).max(10).default([]),
+});
+
+export const supportCaseUpdateSchema = z.object({
+  status: supportStatus,
+  supplierReturnReference: z.string().trim().max(190).nullable().optional(),
+  supplierReturnUrl: optionalSupportUrl,
+  returnCourierName: z.string().trim().max(120).nullable().optional(),
+  returnTrackingNumber: z.string().trim().max(160).nullable().optional(),
+  returnTrackingUrl: optionalSupportUrl,
+  resolution: supportResolution,
+  refundAmount: z.number().nonnegative().max(10_000_000).nullable().optional(),
+  internalNotes: z.string().trim().max(5000).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.resolution === 'refund' && value.status === 'resolved' && value.refundAmount == null) {
+    context.addIssue({ code: 'custom', path: ['refundAmount'], message: 'Record the refund amount before resolving this case' });
+  }
+});
+
 
 const supplierFields = {
   retailer: optionalText(120),
