@@ -14,7 +14,7 @@ vi.mock('./db/pool.js', () => ({
         offer_id: 1, source_url: 'https://www.makro.co.za/product', current_cost: 800, original_displayed_price: 850,
         stock_status: 'in_stock', last_checked_at: new Date(), promotion_end_at: null, price_verified: true,
         supplier_delivery_cost: 0, estimated_customer_delivery_cost: 0, minimum_profit: null,
-        global_minimum_profit: 0, minimum_margin_percent: 0, standard_markup_percent: 7, supplier_stale_hours: 24,
+        global_minimum_profit: 0, minimum_margin_percent: 0, standard_markup_percent: 7, free_delivery_threshold: 500, standard_customer_delivery: 89, supplier_stale_hours: 24,
       }]];
       if (sql.startsWith('UPDATE products SET status=')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected query: ${sql}`);
