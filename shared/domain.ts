@@ -17,6 +17,18 @@ export const calculateMargin = (profit: number, revenue: number) => revenue <= 0
 export const customerDeliveryCharge = (productRevenue: number, threshold = 999, standardCharge = 89) => productRevenue >= threshold ? 0 : standardCharge;
 export const normalise = (value: string) => value.trim().toLocaleLowerCase('en-ZA').replace(/\s+/g, ' ');
 
+export type SourcePrice = { cost: number; originalPrice?: number | null; promotionEndAt?: Date | string | null };
+export function recommendedSellingPrice(source: SourcePrice, standardMarkupPercent = 7, now = new Date()) {
+  if (!Number.isFinite(source.cost) || source.cost <= 0) throw new Error('A positive supplier price is required');
+  if (!Number.isFinite(standardMarkupPercent) || standardMarkupPercent < 5 || standardMarkupPercent > 10) throw new Error('Standard markup must be between 5% and 10%');
+  const original = source.originalPrice == null ? null : Number(source.originalPrice);
+  const end = source.promotionEndAt ? new Date(source.promotionEndAt) : null;
+  const promotionActive = original != null && Number.isFinite(original) && original > source.cost && (!end || end.getTime() > now.getTime());
+  const regular = Math.round(source.cost * (1 + standardMarkupPercent / 100) * 100) / 100;
+  const sellingPrice = promotionActive ? Math.min(Math.round(source.cost * 1.15 * 100) / 100, Math.round(original! * 100) / 100 - 0.01) : regular;
+  return { sellingPrice: Math.round(sellingPrice * 100) / 100, promotionActive };
+}
+
 export function isExactProductMatch(a: MatchableProduct, b: MatchableProduct) {
   if (a.barcode && b.barcode) return normalise(a.barcode) === normalise(b.barcode);
   return normalise(a.brand) === normalise(b.brand) && normalise(a.model) === normalise(b.model) && normalise(a.packSize) === normalise(b.packSize);

@@ -1,5 +1,5 @@
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
-import { isExactProductMatch, offerReviewReason } from '../shared/domain.js';
+import { isExactProductMatch, offerReviewReason, recommendedSellingPrice } from '../shared/domain.js';
 import { pool, withTransaction } from '../server/db/pool.js';
 import type { CandidateProduct, SourceAdapter } from './adapters/types.js';
 
@@ -38,7 +38,10 @@ async function upsertCandidate(candidate: CandidateProduct) {
     let created = false;
     if (!productId) {
       const slugBase = `${candidate.brand}-${candidate.model}-${candidate.packSize}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const [result] = await connection.execute("INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,status,review_reason) VALUES (?,?,?,?,?,?,'Uncategorised','Description pending rights-cleared authoring',JSON_OBJECT(),?,'pending_review','New candidate requires human review')", [`${slugBase}-${Date.now().toString(36)}`, candidate.title, candidate.brand, candidate.model, candidate.barcode || null, candidate.packSize, Math.ceil(candidate.price * 1.25)]);
+      const [settingsRows] = await connection.execute('SELECT standard_markup_percent FROM pricing_settings WHERE id=1');
+      const markup = Number((settingsRows as { standard_markup_percent: number }[])[0]?.standard_markup_percent ?? 7);
+      const price = recommendedSellingPrice({ cost: candidate.price, originalPrice: candidate.originalDisplayedPrice, promotionEndAt: candidate.saleEndDate }, markup).sellingPrice;
+      const [result] = await connection.execute("INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,status,review_reason) VALUES (?,?,?,?,?,?,'Uncategorised','Description pending rights-cleared authoring',JSON_OBJECT(),?,'pending_review','New candidate requires human review')", [`${slugBase}-${Date.now().toString(36)}`, candidate.title, candidate.brand, candidate.model, candidate.barcode || null, candidate.packSize, price]);
       productId = (result as ResultSetHeader).insertId; created = true;
     }
     const [previousRows] = await connection.execute('SELECT id,current_cost FROM supplier_offers WHERE product_id=? AND retailer=? ORDER BY last_checked_at DESC LIMIT 1', [productId, candidate.retailer]);
