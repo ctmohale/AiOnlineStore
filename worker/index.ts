@@ -42,11 +42,11 @@ async function recheckRetailerOffers() {
 async function repriceVerifiedOffers() {
   if (!pool) return;
   const [rows] = await pool.execute(`SELECT p.id FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1
-    WHERE p.deleted_at IS NULL AND p.status IN ('published','paused') AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
+    WHERE p.deleted_at IS NULL AND p.status IN ('published','paused','pending_review') AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)
       AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 500`);
   for (const row of rows as { id: number }[]) await withTransaction(async (connection) => {
-    const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.supplier_stale_hours
+    const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
       FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 WHERE p.id=? FOR UPDATE`, [row.id]);
     const item = (lockedRows as Record<string, unknown>[])[0];
     if (!item || !item.price_verified || !['in_stock','low_stock'].includes(String(item.stock_status)) || new Date(item.last_checked_at as Date).getTime() < Date.now() - Number(item.supplier_stale_hours) * 3_600_000 || (item.promotion_end_at && new Date(item.promotion_end_at as Date).getTime() <= Date.now())) return;
@@ -55,7 +55,8 @@ async function repriceVerifiedOffers() {
       return;
     }
     const { sellingPrice } = recommendedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent));
-    const profit = sellingPrice - Number(item.current_cost) - Number(item.supplier_delivery_cost || 0) - Number(item.estimated_customer_delivery_cost || 0);
+    const customerDelivery = sellingPrice >= Number(item.free_delivery_threshold) ? 0 : Number(item.standard_customer_delivery);
+    const profit = sellingPrice + customerDelivery - Number(item.current_cost) - Number(item.supplier_delivery_cost || 0) - Number(item.estimated_customer_delivery_cost || 0);
     const margin = profit / sellingPrice * 100;
     if (profit <= 0 || profit < Number(item.minimum_profit ?? item.global_minimum_profit) || margin < Number(item.minimum_margin_percent)) {
       await connection.execute("UPDATE products SET status='pending_review',review_reason='New price does not cover estimated costs' WHERE id=?", [row.id]);
@@ -65,7 +66,7 @@ async function repriceVerifiedOffers() {
       await connection.execute('UPDATE products SET selling_price=? WHERE id=?', [sellingPrice, row.id]);
       await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) VALUES (?,?,?,?,'Source pricing rule applied after supplier check')", [row.id, Number(item.offer_id), Number(item.current_cost), sellingPrice]);
     }
-    if (item.status === 'paused' && ['supplier_data_stale','Supplier stock changed during daily URL recheck'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
+    if (['paused','pending_review'].includes(String(item.status)) && ['supplier_data_stale','Supplier stock changed during daily URL recheck','New price does not cover estimated costs'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
   });
 }
 
