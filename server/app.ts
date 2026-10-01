@@ -643,6 +643,14 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response
       if (record.is_test) throw Object.assign(new Error('Test orders cannot enter the real fulfilment workflow'), { status: 409 });
       const transitions: Record<string, string[]> = { requested:['checking_supplier','cancelled'], checking_supplier:['quoted','cancelled'], quoted:['awaiting_payment','cancelled'], awaiting_payment:['cancelled'], paid:['purchasing','refunded'], purchasing:['shipped','refunded'], shipped:['delivered','refunded'], delivered:['refunded'], cancelled:[], refunded:[] };
       if (!transitions[current]?.includes(status)) throw Object.assign(new Error(`Cannot move an order from ${current} to ${status}`), { status: 409 });
+      if (status === 'cancelled') {
+        const [caseRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND case_type='cancellation' AND status IN ('approved','resolved') LIMIT 1", [request.params.id]);
+        if (!(caseRows as RowDataPacket[]).length) throw Object.assign(new Error('Open and approve a cancellation case before cancelling this order'), { status: 409 });
+      }
+      if (status === 'refunded') {
+        const [caseRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND resolution='refund' AND status IN ('approved','resolved','closed') AND refund_amount IS NOT NULL LIMIT 1", [request.params.id]);
+        if (!(caseRows as RowDataPacket[]).length) throw Object.assign(new Error('Approve a refund case and record its amount before marking this order refunded'), { status: 409 });
+      }
       if (status === 'paid') throw Object.assign(new Error('Use the payment verification endpoint to mark an order paid'), { status: 409 });
       const timestampColumns: Record<string,string> = { checking_supplier:'supplier_checked_at',purchasing:'purchased_at',shipped:'shipped_at',delivered:'delivered_at',cancelled:'cancelled_at',refunded:'refunded_at' };
       if (status === 'shipped') await connection.execute('UPDATE order_requests SET status=?,courier_name=?,tracking_number=?,tracking_url=?,shipped_at=UTC_TIMESTAMP() WHERE id=?', [status, courierName!, trackingNumber!, trackingUrl || null, request.params.id]);
