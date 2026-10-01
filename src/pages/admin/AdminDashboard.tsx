@@ -90,7 +90,7 @@ export default function AdminDashboard() {
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
   useEffect(() => {
     if (selectedOrder) setQuote((current) => ({ ...current, supplierCost: selectedOrder.supplierCost }));
-  }, [selectedOrder?.supplierCost, selectedOrder?.id]);
+  }, [selectedOrder]);
 
   if (!sessionStorage.getItem('moya-admin-token')) return <Navigate to="/admin/login" replace />;
 
