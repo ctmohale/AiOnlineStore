@@ -122,6 +122,8 @@ const supplierFields = {
   currentCost: optionalMoney,
   originalDisplayedPrice: optionalMoney,
   stockStatus: z.enum(['in_stock', 'low_stock', 'out_of_stock', 'unknown']).optional(),
+  fulfilmentType: z.enum(['store_stock', 'warehouse', 'online_only', 'unknown']).optional(),
+  fulfilmentSignal: optionalText(255),
   lastCheckedAt: optionalDate,
   promotionStartAt: optionalDate,
   promotionEndAt: optionalDate,

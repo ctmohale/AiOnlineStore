@@ -16,6 +16,11 @@ export type Product = {
   description: string;
   specs: Record<string, string>;
   status: 'draft' | 'pending_review' | 'published' | 'paused' | 'unavailable';
+  retailer?: string;
+  stockStatus?: string;
+  fulfilmentType?: 'store_stock' | 'warehouse' | 'online_only' | 'unknown';
+  fulfilmentSignal?: string;
+  deliveryEstimate?: { fulfilmentLabel: string; supplierMinDays: number; supplierMaxDays: number; processingDays: number; courierMinDays: number; courierMaxDays: number; totalMinDays: number; totalMaxDays: number; summary: string };
 };
 
 export type PublicProductRow = {
@@ -23,6 +28,8 @@ export type PublicProductRow = {
   description: string; specifications: Record<string, string> | string | null; selling_price: number;
   original_displayed_price?: number | null; image_url: string | null;
   images?: { url: string; alt_text?: string; sort_order?: number }[];
+  retailer?: string; stock_status?: string; fulfilment_type?: NonNullable<Product['fulfilmentType']>; fulfilment_signal?: string | null;
+  delivery_estimate?: NonNullable<Product['deliveryEstimate']>;
 };
 
 const accents = ['#f3e9df', '#dfeff0', '#efe1cd', '#e6eee9', '#f1e6e2'];
@@ -39,7 +46,8 @@ export const mapPublicProduct = (row: PublicProductRow): Product => {
   id: Number(row.id), slug: row.slug, name: row.title, brand: row.brand || '', model: row.model || '', packSize: row.pack_size || '',
   category: row.category, price: Number(row.selling_price), compareAt: row.original_displayed_price && Number(row.original_displayed_price) > Number(row.selling_price) ? Number(row.original_displayed_price) : undefined,
   image: images[0]?.url || '', images, accent: accents[Number(row.id) % accents.length], short: row.description?.slice(0, 140) || '', description: row.description || '',
-  specs: parseSpecs(row.specifications), status: 'published',
+  specs: parseSpecs(row.specifications), status: 'published', retailer: row.retailer || 'Supplier', stockStatus: row.stock_status || 'unknown', fulfilmentType: row.fulfilment_type || 'unknown', fulfilmentSignal: row.fulfilment_signal || undefined,
+  deliveryEstimate: row.delivery_estimate || { fulfilmentLabel: 'Supplier fulfilment being confirmed', supplierMinDays: 2, supplierMaxDays: 6, processingDays: 1, courierMinDays: 3, courierMaxDays: 5, totalMinDays: 6, totalMaxDays: 12, summary: '6–12 business days' },
   });
 };
 

@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
 import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '../shared/domain.js';
+import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
@@ -15,6 +16,7 @@ import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreat
 
 const app = express();
 app.set('trust proxy', 1);
+app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'], methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
 app.use(express.json({ limit: '200kb' }));
@@ -33,6 +35,8 @@ async function withProductImages(rows: RowDataPacket[]) {
   for (const image of imageRows as ProductImageRow[]) grouped.set(Number(image.product_id), [...(grouped.get(Number(image.product_id)) || []), image]);
   return rows.map((row) => ({ ...row, images: grouped.get(Number(row.id)) || [] }));
 }
+
+const withDeliveryEstimates = (rows: RowDataPacket[], province?: string) => rows.map((row) => ({ ...row, delivery_estimate: deliveryEstimate({ retailer: String(row.retailer || ''), fulfilmentType: String(row.fulfilment_type || 'unknown'), stockStatus: String(row.stock_status || 'unknown'), province }) }));
 
 async function replaceProductImages(connection: PoolConnection, productId: number | string, title: string, urls: string[]) {
   const unique = [...new Set(urls.filter(Boolean))].slice(0, 20);
@@ -89,8 +93,8 @@ app.get('/api/products', async (request, response, next) => {
     if (category) { terms.push('p.category = ?'); params.push(category); }
     const ids = String(request.query.ids || '').split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 24);
     if (ids.length) { terms.push(`p.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
-    response.json(await withProductImages(rows as RowDataPacket[]));
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
+    response.json(await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || ''))));
   } catch (error) { next(error); }
 });
 
@@ -105,13 +109,13 @@ app.get('/api/seo/sitemap', async (_request, response, next) => {
 app.get('/api/products/:slug', async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,i.url AS image_url
       FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1
       WHERE p.slug=? AND p.status='published' AND p.deleted_at IS NULL AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
         AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)
         AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1`, [String(request.params.slug)]);
-    const products = await withProductImages(rows as RowDataPacket[]);
+    const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     if (!products.length) return response.status(404).json({ error: 'Product not found' });
     response.json(products[0]);
   } catch (error) { next(error); }
@@ -214,8 +218,8 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
     await withTransaction(async (connection) => {
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
-      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND o.price_verified=TRUE FOR UPDATE`, ids);
-      const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; retailer: string; source_url: string; supplier_sku: string | null; current_cost: number; supplier_delivery_cost: number; stock_status: string; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
+      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND o.price_verified=TRUE FOR UPDATE`, ids);
+      const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; retailer: string; source_url: string; supplier_sku: string | null; current_cost: number; supplier_delivery_cost: number; stock_status: string; fulfilment_type: string; fulfilment_signal: string | null; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
       if (productRows.length !== ids.length) throw Object.assign(new Error('One or more products are not available'), { status: 409 });
       const now = Date.now();
       for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000 || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} needs a fresh supplier check`), { status: 409 });
@@ -227,11 +231,19 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const customerDeliveryCost = Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
       const expectedProfit = calculateProfit({ productRevenue: revenue, customerDeliveryCharged: delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, packaging: 0, paymentFees: 0, advertisingCost: 0 });
       const customer = input.customer;
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit]);
+      const estimates = productRows.map((product) => deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province }));
+      const estimateMin = Math.max(...estimates.map((item) => item.totalMinDays));
+      const estimateMax = Math.max(...estimates.map((item) => item.totalMaxDays));
+      const supplierMax = Math.max(...estimates.map((item) => item.supplierMaxDays));
+      const estimateBasis = [...new Set(productRows.map((product) => `${product.retailer}: ${deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status }).fulfilmentLabel}`))].join('; ').slice(0, 500);
+      const expectedShipAt = addBusinessDays(new Date(), supplierMax + 1);
+      const expectedDeliveryAt = addBusinessDays(new Date(), estimateMax);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
-        await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost]);
+        const itemEstimate = deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province });
+        await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot,supplier_fulfilment_snapshot,estimated_supplier_days_min,estimated_supplier_days_max) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost, itemEstimate.fulfilmentType, itemEstimate.supplierMinDays, itemEstimate.supplierMaxDays]);
       }
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested','Order submitted')", [orderId]);
     });
@@ -312,7 +324,7 @@ app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, ne
 });
 
 app.get('/api/admin/products', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 5000"); response.json(await withProductImages(rows as RowDataPacket[])); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 5000"); response.json(await withProductImages(rows as RowDataPacket[])); } catch (error) { next(error); }
 });
 
 app.post('/api/admin/products/import-url', requireAdmin, async (request, response, next) => {
@@ -341,8 +353,8 @@ app.post('/api/admin/products', requireAdmin, async (request, response, next) =>
       const supplier = input.supplier;
       if (supplier) {
         const [offerResult] = await connection.execute(`INSERT INTO supplier_offers
-          (product_id,retailer,source_url,supplier_sku,brand,model,barcode,pack_size,current_cost,original_displayed_price,supplier_delivery_cost,promotion_start_at,promotion_end_at,promotion_end_provided,promotion_terms,quantity_limit,stock_status,source_confidence,price_verified,last_checked_at,price_updated_at,price_change_reason)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, supplier.retailer || 'Not provided', supplier.sourceUrl || '', supplier.supplierSku || null, input.brand, input.model, input.barcode || null, input.packSize, supplier.currentCost ?? null, supplier.originalDisplayedPrice ?? null, supplier.supplierDeliveryCost ?? 0, supplier.promotionStartAt ?? null, supplier.promotionEndAt ?? null, Boolean(supplier.promotionEndAt || supplier.promotionEndProvided), supplier.promotionTerms || null, supplier.quantityLimit || null, supplier.stockStatus || 'unknown', supplier.sourceConfidence || 'low', Boolean(supplier.supplierPriceVerified), supplier.lastCheckedAt ?? null, supplier.priceUpdatedAt ?? (supplier.currentCost != null ? new Date() : null), supplier.priceChangeReason || 'Initial supplier entry']);
+          (product_id,retailer,source_url,supplier_sku,brand,model,barcode,pack_size,current_cost,original_displayed_price,supplier_delivery_cost,promotion_start_at,promotion_end_at,promotion_end_provided,promotion_terms,quantity_limit,stock_status,fulfilment_type,fulfilment_signal,source_confidence,price_verified,last_checked_at,price_updated_at,price_change_reason)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [id, supplier.retailer || 'Not provided', supplier.sourceUrl || '', supplier.supplierSku || null, input.brand, input.model, input.barcode || null, input.packSize, supplier.currentCost ?? null, supplier.originalDisplayedPrice ?? null, supplier.supplierDeliveryCost ?? 0, supplier.promotionStartAt ?? null, supplier.promotionEndAt ?? null, Boolean(supplier.promotionEndAt || supplier.promotionEndProvided), supplier.promotionTerms || null, supplier.quantityLimit || null, supplier.stockStatus || 'unknown', supplier.fulfilmentType || 'unknown', supplier.fulfilmentSignal || null, supplier.sourceConfidence || 'low', Boolean(supplier.supplierPriceVerified), supplier.lastCheckedAt ?? null, supplier.priceUpdatedAt ?? (supplier.currentCost != null ? new Date() : null), supplier.priceChangeReason || 'Initial supplier entry']);
         offerId = Number((offerResult as { insertId: number }).insertId);
       }
       await connection.execute('INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason,changed_by_admin_id) VALUES (?,?,?,?,?,?)', [id, offerId, supplier?.currentCost ?? null, input.sellingPrice, supplier?.priceChangeReason || 'Product created', response.locals.admin.sub]);
@@ -400,7 +412,7 @@ app.patch('/api/admin/products/:id', requireAdmin, async (request, response, nex
       }
       if (input.supplier) {
         const supplier = input.supplier;
-        const offerColumns: Record<string, string> = { retailer: 'retailer', sourceUrl: 'source_url', supplierSku: 'supplier_sku', currentCost: 'current_cost', originalDisplayedPrice: 'original_displayed_price', supplierDeliveryCost: 'supplier_delivery_cost', promotionStartAt: 'promotion_start_at', promotionEndAt: 'promotion_end_at', promotionEndProvided: 'promotion_end_provided', promotionTerms: 'promotion_terms', quantityLimit: 'quantity_limit', stockStatus: 'stock_status', sourceConfidence: 'source_confidence', supplierPriceVerified: 'price_verified', lastCheckedAt: 'last_checked_at', priceUpdatedAt: 'price_updated_at', priceChangeReason: 'price_change_reason' };
+        const offerColumns: Record<string, string> = { retailer: 'retailer', sourceUrl: 'source_url', supplierSku: 'supplier_sku', currentCost: 'current_cost', originalDisplayedPrice: 'original_displayed_price', supplierDeliveryCost: 'supplier_delivery_cost', promotionStartAt: 'promotion_start_at', promotionEndAt: 'promotion_end_at', promotionEndProvided: 'promotion_end_provided', promotionTerms: 'promotion_terms', quantityLimit: 'quantity_limit', stockStatus: 'stock_status', fulfilmentType: 'fulfilment_type', fulfilmentSignal: 'fulfilment_signal', sourceConfidence: 'source_confidence', supplierPriceVerified: 'price_verified', lastCheckedAt: 'last_checked_at', priceUpdatedAt: 'price_updated_at', priceChangeReason: 'price_change_reason' };
         if (existing) {
           offerId = Number(existing.id);
           const offerEntries = Object.entries(supplier).filter(([key, value]) => key in offerColumns && value !== undefined);
@@ -408,8 +420,8 @@ app.patch('/api/admin/products/:id', requireAdmin, async (request, response, nex
           if (offerEntries.length) await connection.execute(`UPDATE supplier_offers SET ${offerEntries.map(([key]) => `${offerColumns[key]}=?`).join(',')},brand=?,model=?,barcode=?,pack_size=? WHERE id=?`, [...offerEntries.map(([, value]) => value), product.brand, product.model, product.barcode, product.pack_size, offerId]);
         } else {
           const [offerResult] = await connection.execute(`INSERT INTO supplier_offers
-            (product_id,retailer,source_url,supplier_sku,brand,model,barcode,pack_size,current_cost,original_displayed_price,supplier_delivery_cost,promotion_start_at,promotion_end_at,promotion_end_provided,promotion_terms,quantity_limit,stock_status,source_confidence,price_verified,last_checked_at,price_updated_at,price_change_reason)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [request.params.id, supplier.retailer || 'Not provided', supplier.sourceUrl || '', supplier.supplierSku || null, product.brand, product.model, product.barcode, product.pack_size, supplier.currentCost ?? null, supplier.originalDisplayedPrice ?? null, supplier.supplierDeliveryCost ?? 0, supplier.promotionStartAt ?? null, supplier.promotionEndAt ?? null, Boolean(supplier.promotionEndAt || supplier.promotionEndProvided), supplier.promotionTerms || null, supplier.quantityLimit || null, supplier.stockStatus || 'unknown', supplier.sourceConfidence || 'low', Boolean(supplier.supplierPriceVerified), supplier.lastCheckedAt ?? null, supplier.priceUpdatedAt ?? (supplier.currentCost != null ? new Date() : null), supplier.priceChangeReason || 'Supplier details added']);
+            (product_id,retailer,source_url,supplier_sku,brand,model,barcode,pack_size,current_cost,original_displayed_price,supplier_delivery_cost,promotion_start_at,promotion_end_at,promotion_end_provided,promotion_terms,quantity_limit,stock_status,fulfilment_type,fulfilment_signal,source_confidence,price_verified,last_checked_at,price_updated_at,price_change_reason)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [request.params.id, supplier.retailer || 'Not provided', supplier.sourceUrl || '', supplier.supplierSku || null, product.brand, product.model, product.barcode, product.pack_size, supplier.currentCost ?? null, supplier.originalDisplayedPrice ?? null, supplier.supplierDeliveryCost ?? 0, supplier.promotionStartAt ?? null, supplier.promotionEndAt ?? null, Boolean(supplier.promotionEndAt || supplier.promotionEndProvided), supplier.promotionTerms || null, supplier.quantityLimit || null, supplier.stockStatus || 'unknown', supplier.fulfilmentType || 'unknown', supplier.fulfilmentSignal || null, supplier.sourceConfidence || 'low', Boolean(supplier.supplierPriceVerified), supplier.lastCheckedAt ?? null, supplier.priceUpdatedAt ?? (supplier.currentCost != null ? new Date() : null), supplier.priceChangeReason || 'Supplier details added']);
           offerId = Number((offerResult as { insertId: number }).insertId);
         }
         const [costRows] = await connection.execute('SELECT current_cost FROM supplier_offers WHERE id=?', [offerId]);
@@ -524,7 +536,7 @@ app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, respon
         COALESCE(oi.supplier_source_url_snapshot,so.source_url) AS supplier_source_url_snapshot,
         COALESCE(oi.supplier_sku_snapshot,so.supplier_sku) AS supplier_sku_snapshot,
         COALESCE(oi.supplier_unit_cost_snapshot,oi.supplier_checkout_unit_cost,so.current_cost) AS supplier_unit_cost_snapshot,
-        oi.supplier_checkout_unit_cost
+        oi.supplier_checkout_unit_cost,oi.supplier_fulfilment_snapshot,oi.estimated_supplier_days_min,oi.estimated_supplier_days_max
         FROM order_items oi
         LEFT JOIN supplier_offers so ON so.id=(SELECT id FROM supplier_offers WHERE product_id=oi.product_id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
         WHERE oi.order_request_id=? ORDER BY oi.id`, [request.params.id]),

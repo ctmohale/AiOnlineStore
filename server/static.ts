@@ -17,7 +17,7 @@ app.get('/robots.txt', (_request, response) => response.type('text/plain').send(
 app.get('/sitemap.xml', async (_request, response, next) => {
   try {
     const products = await fetch(`${apiBase}/seo/sitemap`).then((result) => result.ok ? result.json() as Promise<{ slug: string; updated_at?: string }[]> : Promise.reject(new Error(`Catalogue returned ${result.status}`)));
-    const staticUrls = ['', '/shop'].map((route) => `<url><loc>${escapeHtml(`${storeUrl}${route || '/'}`)}</loc><changefreq>daily</changefreq><priority>${route ? '0.9' : '1.0'}</priority></url>`);
+    const staticUrls = ['', '/shop', '/about', '/contact', '/delivery-policy', '/returns-refunds', '/privacy', '/terms', '/payment-security', '/complaints'].map((route) => `<url><loc>${escapeHtml(`${storeUrl}${route || '/'}`)}</loc><changefreq>${route === '/shop' ? 'daily' : 'monthly'}</changefreq><priority>${route ? '0.8' : '1.0'}</priority></url>`);
     const productUrls = products.map((product) => `<url><loc>${escapeHtml(`${storeUrl}/product/${encodeURIComponent(product.slug)}`)}</loc>${product.updated_at ? `<lastmod>${new Date(product.updated_at).toISOString()}</lastmod>` : ''}<changefreq>daily</changefreq><priority>0.8</priority></url>`);
     response.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...staticUrls, ...productUrls].join('')}</urlset>`);
   } catch (error) { next(error); }

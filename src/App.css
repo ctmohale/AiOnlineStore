@@ -9,6 +9,7 @@ button { color:inherit; }
 main { min-height:60vh; }
 .announcement { height:34px; display:flex; align-items:center; justify-content:center; padding:0 20px; background:var(--deep); color:#e9f3ed; font-size:12px; letter-spacing:.02em; }
 .announcement span { color:#ef8a6f; padding:0 12px; }
+.announcement>svg { width:14px; margin-right:7px; color:#ef8a6f; }
 .site-header { height:80px; display:flex; align-items:center; gap:26px; padding:0 max(4vw,24px); border-bottom:1px solid rgba(22,57,47,.12); background:rgba(250,247,240,.96); position:sticky; top:0; z-index:20; backdrop-filter:blur(14px); }
 .brand { display:inline-flex; align-items:center; gap:7px; font-size:25px; font-weight:700; letter-spacing:-1.4px; white-space:nowrap; }
 .brand small { font-size:9px; text-transform:uppercase; letter-spacing:2px; font-weight:700; align-self:flex-end; margin:0 0 13px -3px; color:var(--coral); }
@@ -212,6 +213,11 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .availability svg { color:#41906b; flex:none; }
 .availability strong,.availability span { display:block; font-size:12px; }
 .availability span { font-size:10px; color:#60736a; line-height:1.5; margin-top:3px; }
+.delivery-estimate-card { display:flex; gap:12px; margin-top:12px; padding:16px; border:1px solid #d9e5dc; background:#f7fbf8; }
+.delivery-estimate-card>svg { flex:none; color:#39765a; }
+.delivery-estimate-card strong,.delivery-estimate-card span { display:block; }
+.delivery-estimate-card strong { font-size:12px; }
+.delivery-estimate-card span { margin-top:4px; color:#60736a; font-size:10px; line-height:1.55; }
 .detail-description { color:#5f6f67; line-height:1.7; font-size:14px; margin:24px 0; }
 .spec-list { border-top:1px solid var(--line); }
 .spec-list>div { display:flex; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); font-size:11px; }
@@ -287,6 +293,14 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .request-form input:focus,.request-form select:focus,.request-form textarea:focus { border-color:#5a8574; box-shadow:0 0 0 3px #e4eee8; }
 .field-row { display:grid; grid-template-columns:1fr 1fr; gap:17px; }
 .form-security { display:flex; align-items:center; justify-content:center; gap:7px; font-size:9px; color:var(--muted); }
+.checkout-delivery-estimate { display:flex; gap:11px; align-items:flex-start; padding:14px; border:1px solid #cfe0d5; background:#f1f8f3; }
+.checkout-delivery-estimate svg { flex:none; color:#39765a; }
+.checkout-delivery-estimate p { margin:0; }
+.checkout-delivery-estimate strong,.checkout-delivery-estimate span { display:block; }
+.checkout-delivery-estimate span { margin-top:3px; color:var(--muted); font-size:11px; line-height:1.5; }
+.terms-consent { display:flex!important; grid-template-columns:auto 1fr; align-items:flex-start; gap:9px!important; padding:12px 0; }
+.terms-consent input { width:auto!important; margin-top:4px; }
+.terms-consent a { text-decoration:underline; font-weight:700; }
 .form-error { color:#a24130; background:#fae5df; padding:10px; font-size:11px; }
 .checkout-item { display:grid; grid-template-columns:27px 1fr auto; gap:10px; align-items:center; margin:14px 0; }
 .item-count { width:25px; height:25px; border-radius:50%; background:var(--mint); display:grid; place-items:center; font-size:9px; }
@@ -928,6 +942,40 @@ footer a,footer p { font-size:13px; }
 .customer-order-progress { min-width:150px; text-transform:capitalize; }
 .customer-order-progress>span { font-weight:600; }
 .customer-tracking,.order-eta { color:#2b6d52!important; }
+.admin-delivery-plan { display:grid; gap:3px; margin:9px 0 12px; padding:12px; border-left:4px solid #3f8466; background:#eef6f1; }
+.admin-delivery-plan span,.admin-delivery-plan small { color:#68776f; font-size:11px; }
+
+/* Store trust and policy pages */
+.site-trust-strip { display:grid; grid-template-columns:repeat(3,1fr); background:#eef4ef; border-top:1px solid #d8e3da; }
+.site-trust-strip>div { min-height:115px; display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; align-content:center; gap:2px 13px; padding:24px max(3vw,24px); border-right:1px solid #d8e3da; }
+.site-trust-strip>div:last-child { border-right:0; }
+.site-trust-strip svg { grid-row:1/3; width:27px; color:var(--coral); }
+.site-trust-strip strong { font-size:13px; }
+.site-trust-strip span { color:var(--muted); font-size:11px; }
+.policy-page { max-width:1280px; }
+.policy-hero { display:grid; grid-template-columns:1fr auto; align-items:center; gap:50px; padding:45px 0 55px; border-bottom:1px solid var(--line); }
+.policy-hero h1 { max-width:850px; margin:0; font-size:clamp(42px,6vw,72px); line-height:1.02; letter-spacing:-.05em; }
+.policy-hero>div>p:not(.kicker) { max-width:760px; color:var(--muted); font-size:16px; line-height:1.7; }
+.policy-hero small { color:#7c8781; }
+.policy-hero>svg { width:95px; height:95px; padding:24px; border-radius:50%; background:var(--mint); color:var(--coral); }
+.policy-layout { display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:70px; align-items:start; padding-top:55px; }
+.policy-content article { padding:0 0 35px; margin-bottom:35px; border-bottom:1px solid var(--line); }
+.policy-content h2 { margin:0 0 12px; font-size:24px; }
+.policy-content p { margin:0; color:#52645c; font-size:14px; line-height:1.8; }
+.policy-content a { color:#245f49; font-weight:700; text-decoration:underline; }
+.trust-aside { position:sticky; top:110px; padding:28px; background:var(--forest); color:#fff; }
+.trust-aside>svg { width:20px; color:#f18a6e; }
+.trust-aside h2 { margin:7px 0 20px; font-size:23px; }
+.trust-aside p { margin:4px 0 19px; color:#bdcec6; font-size:11px; line-height:1.55; }
+
+@media (max-width:780px) {
+  .site-trust-strip { grid-template-columns:1fr; }
+  .site-trust-strip>div { border-right:0; border-bottom:1px solid #d8e3da; }
+  .policy-hero { grid-template-columns:1fr; }
+  .policy-hero>svg { display:none; }
+  .policy-layout { grid-template-columns:1fr; gap:35px; }
+  .trust-aside { position:static; }
+}
 
 @media (max-width:1050px) {
   .analytics-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }

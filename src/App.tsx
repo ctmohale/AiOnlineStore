@@ -12,6 +12,7 @@ import TestPayment from './pages/TestPayment';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CatalogShare from './pages/CatalogShare';
+import PolicyPage from './pages/PolicyPage';
 import { FeedbackProvider } from './components/FeedbackProvider';
 import { CatalogProvider } from './state/CatalogContext';
 import './App.css';
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/confirmation/:reference" element={<Confirmation />} />
             <Route path="/account" element={<Account />} />
             <Route path="/test-payment/:reference" element={<TestPayment />} />
+            <Route path="/:page" element={<PolicyPage />} />
           </Route>
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<AdminDashboard />} />

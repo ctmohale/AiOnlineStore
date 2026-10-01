@@ -112,6 +112,15 @@ const stockFromPage = (html: string) => {
   return 'unknown';
 };
 
+const fulfilmentFromPage = (html: string) => {
+  const visibleText = plainText(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' '));
+  const productText = visibleText.split(/Similar Products|Bought Together/i)[0];
+  if (/available\s*online\s*only|online\s*only|delivery\s*only/i.test(productText)) return { type: 'online_only', signal: 'The supplier listing says this item is online only.' };
+  if (/click\s*(?:and|&)\s*collect|collect\s*(?:in|from)\s*store|available\s*in[- ]store/i.test(productText)) return { type: 'store_stock', signal: 'The supplier listing indicates store collection or in-store availability.' };
+  if (/warehouse|dispatch(?:ed)?\s*from/i.test(productText)) return { type: 'warehouse', signal: 'The supplier listing indicates warehouse fulfilment.' };
+  return { type: 'unknown', signal: 'No explicit fulfilment method was found on the supplier listing.' };
+};
+
 const imageValues = (value: unknown): string[] => {
   if (Array.isArray(value)) return value.flatMap(imageValues);
   if (typeof value === 'string') return [value];
@@ -143,10 +152,12 @@ export async function importProductUrl(rawUrl: string) {
   const barcode = plainText(product?.gtin13 || product?.gtin14 || product?.gtin12 || '');
   const extracted = Boolean(product || title || price);
   if (!extracted) throw Object.assign(new Error('No public product metadata was found. Enter the details manually and verify them against the listing.'), { status: 422 });
+  const fulfilment = fulfilmentFromPage(html);
   return {
     title, category: plainText(product?.category || 'Uncategorised'), brand, model, barcode, packSize: '1 unit', description,
     imageUrl, imageUrls, retailer: retailerHosts.get(finalUrl.hostname.toLowerCase()) || '', sourceUrl: finalUrl.toString(), supplierSku: sku,
     currentCost: price, originalDisplayedPrice: null, stockStatus: stockFromAvailability(offer.availability) === 'unknown' ? stockFromPage(html) : stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
+    fulfilmentType: fulfilment.type, fulfilmentSignal: fulfilment.signal,
     promotionStartAt: null, promotionEndAt: null, promotionTerms: '', quantityLimit: '', supplierDeliveryCost: 0,
     sourceConfidence: product ? 'high' : 'medium', supplierPriceVerified: false, priceUpdatedAt: price ? new Date().toISOString() : null,
     priceChangeReason: 'Initial URL import', reviewNotes: 'Imported from public retailer metadata. Verify the exact model, pack size, stock and checkout price before publishing.',

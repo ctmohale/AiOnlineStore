@@ -1,0 +1,60 @@
+import { AlertTriangle, BadgeCheck, Clock3, FileText, Headphones, LockKeyhole, MapPin, RotateCcw, ShieldCheck, Truck } from 'lucide-react';
+import { Link, Navigate, useParams } from 'react-router-dom';
+
+const updated = '1 October 2026';
+const contact = <a href="mailto:hello@moyamarket.co.za">hello@moyamarket.co.za</a>;
+
+type Policy = { title: string; kicker: string; intro: string; icon: typeof ShieldCheck; sections: { title: string; body: React.ReactNode }[] };
+const policies: Record<string, Policy> = {
+  about: { title: 'A South African store built around clear checks.', kicker: 'About Moya Market', icon: MapPin, intro: 'Moya Market is an online retail storefront operated in South Africa, displaying prices in rand and delivering to South African addresses.', sections: [
+    { title: 'How the store works', body: <p>We list products sourced from established retailers such as Game and Makro. We are an independent reseller and are not endorsed by, affiliated with, or acting as an agent for those retailers. Before asking you to pay, we recheck the exact product, supplier stock, price and delivery timing.</p> },
+    { title: 'What makes an order final', body: <p>Your checkout submission is a request, not a charge. We send a confirmed quote and payment instructions only after completing our checks. A sale is concluded when payment is successfully verified and we accept the order.</p> },
+    { title: 'South African service', body: <p>Prices are shown in ZAR. Delivery is limited to addresses in South Africa. Customer support is available at {contact}, with a target response time of one business day.</p> },
+  ] },
+  'delivery-policy': { title: 'Delivery estimates that include supplier time.', kicker: 'Delivery policy', icon: Truck, intro: 'Our estimate covers the complete route: supplier to Moya Market processing to your delivery address.', sections: [
+    { title: 'How estimates are calculated', body: <p>Store-stock items are usually fastest. Warehouse items take longer, and products marked “online only” by a supplier receive extra sourcing time. The estimate then adds one business day for Moya Market processing and a province-based courier range. For a multi-item order, the slowest item sets the estimate.</p> },
+    { title: 'Before you pay', body: <p>The product page and checkout show a planning estimate. We recheck supplier availability and provide the confirmed expected date before payment. Business days exclude weekends and South African public holidays. Remote areas, supplier delays, severe weather and courier disruptions may extend delivery.</p> },
+    { title: 'Tracking and missed delivery', body: <p>When the parcel is handed to a courier, the customer account shows the courier and tracking reference where available. Please provide an address where someone can receive the parcel. Re-delivery costs caused by an incorrect address or repeated missed delivery may be charged where lawful and disclosed first.</p> },
+  ] },
+  'returns-refunds': { title: 'Fair returns, refunds and cancellations.', kicker: 'Returns & refunds', icon: RotateCcw, intro: 'We handle returns in line with applicable South African consumer law, including the Consumer Protection Act and Electronic Communications and Transactions Act.', sections: [
+    { title: 'Before payment', body: <p>You may cancel an order request at no cost before payment. If supplier stock or price changes materially, you can accept the revised quote or cancel.</p> },
+    { title: 'Change of mind', body: <p>Where the ECTA cooling-off right applies, you may cancel within seven days after receiving the goods. Statutory exclusions may apply, and the direct cost of returning goods may be for your account. Contact us before sending anything so we can provide the correct return instructions.</p> },
+    { title: 'Incorrect, damaged or defective goods', body: <p>Contact {contact} promptly with the order reference, description and clear photos. Your statutory rights are not limited by this policy. We will arrange the appropriate repair, replacement or refund remedy after assessment, as required by law.</p> },
+    { title: 'Refund timing', body: <p>Approved refunds are returned through the original payment route where possible. Bank or payment-provider processing can add time. We will communicate the status and comply with applicable statutory refund periods.</p> },
+  ] },
+  privacy: { title: 'Your information is used carefully and transparently.', kicker: 'POPIA privacy notice', icon: ShieldCheck, intro: 'This notice explains how Moya Market processes personal information under South Africa’s Protection of Personal Information Act (POPIA).', sections: [
+    { title: 'Information we process', body: <p>We process account details, contact details, delivery address, order contents, support messages, order status, security logs and payment references. Moya Market does not collect or store complete card numbers, CVV codes or banking passwords.</p> },
+    { title: 'Why and with whom', body: <p>We use information to create accounts, verify and fulfil orders, arrange delivery, prevent fraud, provide support, meet legal obligations and improve the service. Necessary information may be shared with payment providers, couriers, hosting providers, professional advisers and authorities where legally required. We do not sell personal information.</p> },
+    { title: 'Retention and safeguards', body: <p>Records are retained only as long as reasonably needed for the stated purpose, disputes and legal or accounting duties. We use access controls, password hashing, encrypted HTTPS connections, limited administrator access, security headers, validation and rate limiting. No online system can promise zero risk.</p> },
+    { title: 'Your choices and rights', body: <p>You may request access, correction or deletion where the law allows, object to certain processing, or complain to the Information Regulator. Start by contacting {contact}. The regulator is available at <a href="https://inforegulator.org.za/" target="_blank" rel="noreferrer">inforegulator.org.za</a>.</p> },
+  ] },
+  terms: { title: 'Plain-language terms for shopping with us.', kicker: 'Terms of sale', icon: FileText, intro: 'These terms apply to use of Moya Market and order requests submitted through this South African online store.', sections: [
+    { title: 'Listings and supplier checks', body: <p>Product information is prepared from supplier listings and reviewed, but supplier price and stock can change. Product images are illustrative of the exact listed model where available. A listing is an invitation to submit an order request, not a guarantee of supply.</p> },
+    { title: 'Price, payment and acceptance', body: <p>We confirm the product price, delivery charge and expected timing before payment. You are not charged when submitting a request. Only use the payment-provider link attached to your confirmed order reference. We may decline or cancel an order for unavailable stock, an obvious pricing error, suspected fraud or an address we cannot safely serve; any verified payment due back will be refunded.</p> },
+    { title: 'Delivery, ownership and risk', body: <p>Delivery follows our Delivery Policy. Ownership transfers after full cleared payment; risk is handled in accordance with applicable consumer law. Inspect the parcel and report damage or an incorrect item promptly.</p> },
+    { title: 'Your legal rights', body: <p>Nothing in these terms excludes rights that cannot lawfully be excluded under the Consumer Protection Act, ECTA, POPIA or other applicable South African law. If a clause conflicts with mandatory law, the law prevails.</p> },
+  ] },
+  'payment-security': { title: 'Payment protection without storing card details.', kicker: 'Payment security', icon: LockKeyhole, intro: 'Moya Market does not currently take card details inside this website. Payment is requested only after the order is checked.', sections: [
+    { title: 'The safe payment flow', body: <p>After supplier verification, an administrator records a payment-provider link and order reference. Open only an HTTPS link that matches the provider named in your order communication. The payment provider—not Moya Market—handles card or banking credentials.</p> },
+    { title: 'Fraud prevention', body: <p>Never share an OTP, card PIN, CVV or online-banking password with Moya Market staff. We will never ask you to install remote-access software. If a message or payment link looks unusual, do not pay; forward it to {contact} for verification.</p> },
+    { title: 'Current payment status', body: <p>Until a live payment gateway is configured, the production store uses a quote-first flow and the customer test-payment feature never charges money. We will name the live provider here before enabling real online card payments.</p> },
+  ] },
+  complaints: { title: 'A clear route to resolve a problem.', kicker: 'Complaints', icon: Headphones, intro: 'We want to resolve concerns quickly, fairly and with a written record.', sections: [
+    { title: 'Step 1 — contact Moya Market', body: <p>Email {contact} with your order reference, what happened and the outcome you want. Attach relevant photos or documents. We target acknowledgement within one business day and will keep you updated while investigating.</p> },
+    { title: 'Step 2 — escalation', body: <p>If the first response does not resolve the matter, reply with “Formal complaint” in the subject line. A senior administrator will review the order history, supplier record, payment record and delivery events.</p> },
+    { title: 'External rights', body: <p>You may also approach the relevant South African consumer or privacy authority. Privacy complaints can be directed to the <a href="https://inforegulator.org.za/" target="_blank" rel="noreferrer">Information Regulator</a>. Nothing on this page limits a statutory complaint or remedy.</p> },
+  ] },
+  contact: { title: 'Real help from a South African support team.', kicker: 'Contact us', icon: Headphones, intro: 'For orders, delivery, returns, privacy or security questions, use the contact details below.', sections: [
+    { title: 'Customer support', body: <p>Email: {contact}<br />Service area: South Africa<br />Support target: reply within one business day</p> },
+    { title: 'Include these details', body: <p>For faster help, include your order reference, account email and a short description. Never email full card details, a CVV, PIN, OTP or banking password.</p> },
+    { title: 'Supplier independence', body: <p>For a Moya Market order, contact us—not the source retailer—so we can keep a complete service record and coordinate the correct next step.</p> },
+  ] },
+};
+
+export default function PolicyPage() {
+  const { page } = useParams();
+  const policy = policies[page || ''];
+  if (!policy) return <Navigate to="/" replace />;
+  const Icon = policy.icon;
+  return <section className="section policy-page"><div className="policy-hero"><div><p className="kicker">{policy.kicker}</p><h1>{policy.title}</h1><p>{policy.intro}</p><small>Last updated {updated}</small></div><Icon /></div><div className="policy-layout"><div className="policy-content">{policy.sections.map((section) => <article key={section.title}><h2>{section.title}</h2>{section.body}</article>)}</div><aside className="trust-aside"><BadgeCheck /><h2>Shop with clear checks</h2><p>Stock and price verified before payment.</p><Clock3 /><p>Supplier-aware delivery estimate.</p><LockKeyhole /><p>No card details stored by Moya Market.</p><AlertTriangle /><p>Report suspicious messages before paying.</p><Link className="button primary full" to="/contact">Contact support</Link></aside></div></section>;
+}
