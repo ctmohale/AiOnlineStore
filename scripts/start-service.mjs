@@ -14,7 +14,7 @@ if (mode === 'web') {
   await run('api-dist/server/static.js');
 } else if (mode === 'api') {
   await run('api-dist/server/db/migrate.js', true);
-  if (process.env.RUN_SEED_ON_START === 'true') await run('api-dist/server/db/seed.js', true);
+  if (process.env.RUN_SEED_ON_START === 'true' || (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD)) await run('api-dist/server/db/seed.js', true);
   await run('api-dist/server/index.js');
 } else if (mode === 'worker') {
   await run('api-dist/worker/index.js');
