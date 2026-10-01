@@ -12,7 +12,7 @@ async function recheckRetailerOffers() {
     FROM supplier_offers o JOIN products p ON p.id=o.product_id
     WHERE p.deleted_at IS NULL AND o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       AND o.source_url<>'' AND (o.promotion_end_at<=UTC_TIMESTAMP() OR o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 HOUR))
-    ORDER BY o.last_checked_at ASC LIMIT 150`);
+    ORDER BY o.last_checked_at ASC LIMIT 300`);
   for (const row of rows as { id: number; product_id: number; source_url: string }[]) {
     if (!isSupportedProductUrl(row.source_url)) continue;
     try {
@@ -44,7 +44,7 @@ async function repriceVerifiedOffers() {
   const [rows] = await pool.execute(`SELECT p.id FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1
     WHERE p.deleted_at IS NULL AND p.status IN ('published','paused','pending_review') AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)
-      AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 500`);
+      AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1200`);
   for (const row of rows as { id: number }[]) await withTransaction(async (connection) => {
     const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
       FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 WHERE p.id=? FOR UPDATE`, [row.id]);
