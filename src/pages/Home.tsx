@@ -5,14 +5,29 @@ import ProductCard from '../components/ProductCard';
 import { money } from '../data/products';
 import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries } from '../lib/categories';
+import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
-  const featuredProducts = products.slice(0, 5);
+  const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
+  const productPool = homepageProductPool(products, 11);
+  const featuredProducts = rotatingProducts(productPool, 5, rotationBucket);
+  const homepageProducts = rotatingProducts(productPool, 6, rotationBucket, 5);
   const [activeSlide, setActiveSlide] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
   const featured = featuredProducts[activeSlide];
   const categories = categorySummaries(products).slice(0, 3);
+  useEffect(() => {
+    let interval: number | undefined;
+    const update = () => setRotationBucket(homeRotationBucket());
+    const untilNextWindow = HOME_ROTATION_MS - Date.now() % HOME_ROTATION_MS;
+    const timeout = window.setTimeout(() => {
+      update();
+      interval = window.setInterval(update, HOME_ROTATION_MS);
+    }, untilNextWindow);
+    return () => { window.clearTimeout(timeout); if (interval) window.clearInterval(interval); };
+  }, []);
+  useEffect(() => { setActiveSlide(0); }, [rotationBucket]);
   useEffect(() => { if (activeSlide >= featuredProducts.length) setActiveSlide(0); }, [activeSlide, featuredProducts.length]);
   useEffect(() => {
     if (featuredProducts.length < 2 || !autoplay) return;
@@ -52,10 +67,10 @@ export default function Home() {
     </section>
 
     <section className="section products-section">
-      <div className="section-heading"><div><p className="kicker">Freshly checked</p><h2>Good finds, right now.</h2></div><Link className="text-link" to="/shop">Shop all products <ArrowRight size={17} /></Link></div>
+      <div className="section-heading"><div><p className="kicker">Freshly checked · New selection every 10 minutes</p><h2>Good finds, right now.</h2></div><Link className="text-link" to="/shop">Shop all products <ArrowRight size={17} /></Link></div>
       {loading && <p className="catalogue-state">Loading the live catalogue…</p>}
       {!loading && error && <div className="empty-state compact"><h3>Catalogue unavailable</h3><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div>}
-      {!loading && !error && products.length > 0 && <div className="product-grid">{products.slice(0, 6).map((product) => <ProductCard key={product.id} product={product} />)}</div>}
+      {!loading && !error && homepageProducts.length > 0 && <div className="product-grid">{homepageProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>}
       {!loading && !error && products.length === 0 && <div className="empty-state compact"><h3>New finds are coming soon</h3><p>Our team is preparing the next carefully checked selection.</p></div>}
     </section>
 
