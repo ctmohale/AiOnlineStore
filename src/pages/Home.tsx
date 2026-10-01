@@ -41,12 +41,12 @@ export default function Home() {
   useEffect(() => { if (activeSlide >= featuredProducts.length) setActiveSlide(0); }, [activeSlide, featuredProducts.length]);
   useEffect(() => {
     if (featuredProducts.length < 2 || !autoplay) return;
-    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % featuredProducts.length), 5500);
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % featuredProducts.length), 9000);
     return () => window.clearInterval(timer);
   }, [autoplay, featuredProducts.length]);
   useEffect(() => {
     if (!benefitAutoplay) return;
-    const timer = window.setInterval(() => setActiveBenefit((current) => (current + 1) % heroBenefits.length), 4800);
+    const timer = window.setInterval(() => setActiveBenefit((current) => (current + 1) % heroBenefits.length), 8500);
     return () => window.clearInterval(timer);
   }, [benefitAutoplay]);
   const moveSlide = (direction: number) => setActiveSlide((current) => (current + direction + featuredProducts.length) % featuredProducts.length);
