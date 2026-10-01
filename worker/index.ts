@@ -12,7 +12,7 @@ async function recheckRetailerOffers() {
     FROM supplier_offers o JOIN products p ON p.id=o.product_id
     WHERE p.deleted_at IS NULL AND o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       AND o.source_url<>'' AND (o.promotion_end_at<=UTC_TIMESTAMP() OR o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 HOUR))
-    ORDER BY o.last_checked_at ASC LIMIT 300`);
+    ORDER BY o.last_checked_at ASC LIMIT 100`);
   for (const row of rows as { id: number; product_id: number; source_url: string }[]) {
     if (!isSupportedProductUrl(row.source_url)) continue;
     try {
@@ -108,7 +108,8 @@ async function repriceVerifiedOffers() {
       await connection.execute('UPDATE products SET selling_price=? WHERE id=?', [sellingPrice, row.id]);
       await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) VALUES (?,?,?,?,'Source pricing rule applied after supplier check')", [row.id, Number(item.offer_id), Number(item.current_cost), sellingPrice]);
     }
-    if (['paused','pending_review'].includes(String(item.status)) && ['supplier_data_stale','Supplier stock changed during daily URL recheck','New price does not cover estimated costs','gallery_incomplete','supplier_price_unverified','catalogue_quality_gate'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
+    if (['paused','pending_review'].includes(String(item.status)) && ['supplier_data_stale','supplier_confirmation_required','Supplier stock changed during daily URL recheck','New price does not cover estimated costs','gallery_incomplete','supplier_price_unverified','catalogue_quality_gate'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
+    else if (String(item.status) === 'published' && ['supplier_data_stale','supplier_confirmation_required'].includes(String(item.review_reason))) await connection.execute('UPDATE products SET review_reason=NULL WHERE id=?', [row.id]);
   });
 }
 
@@ -118,7 +119,10 @@ async function dailyRun() {
   await backfillProductGalleries();
   await recheckRetailerOffers();
   await repriceVerifiedOffers();
-  if (pool) await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.status='paused',p.review_reason=CASE WHEN p.gallery_image_count<3 THEN 'gallery_incomplete' WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' WHEN o.stock_status='out_of_stock' THEN 'supplier_out_of_stock' ELSE 'supplier_data_stale' END WHERE p.status='published' AND (p.gallery_image_count<3 OR o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status='out_of_stock' OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR))");
+  if (pool) {
+    await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) SET p.status='paused',p.review_reason=CASE WHEN p.gallery_image_count<3 THEN 'gallery_incomplete' WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' ELSE 'supplier_out_of_stock' END WHERE p.status='published' AND (p.gallery_image_count<3 OR o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status NOT IN ('in_stock','low_stock'))");
+    await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.review_reason='supplier_confirmation_required' WHERE p.status='published' AND p.deleted_at IS NULL AND (o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)) AND (p.review_reason IS NULL OR p.review_reason IN ('supplier_data_stale','supplier_confirmation_required'))");
+  }
 }
 
 async function promotionEndRecheck() {
@@ -127,7 +131,7 @@ async function promotionEndRecheck() {
   if (Number((rows as { due: number }[])[0]?.due) > 0) await dailyRun();
 }
 
-cron.schedule(process.env.WORKER_CRON || '0 */6 * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
+cron.schedule(process.env.WORKER_CRON || '0 * * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
 cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
 console.log('Mzansi Mega Store worker scheduled.');
 if (process.argv.includes('--once')) dailyRun().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });

@@ -25,7 +25,7 @@ export default function ProductDetail() {
     if (!product) return;
     const canonical = `${window.location.origin}/product/${product.slug}`;
     const description = (product.description || `Shop ${product.name} from Mzansi Mega Store.`).slice(0, 220);
-    setPageSeo({ title: `${product.name} | Mzansi Mega Store`, description, canonical, image: product.image, type: 'product', jsonLd: { '@context': 'https://schema.org', '@type': 'Product', name: product.name, description, image: product.images?.map((image) => image.url) || [product.image], sku: product.model || String(product.id), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: product.price.toFixed(2), availability: 'https://schema.org/InStock', url: canonical } } });
+    setPageSeo({ title: `${product.name} | Mzansi Mega Store`, description, canonical, image: product.image, type: 'product', jsonLd: { '@context': 'https://schema.org', '@type': 'Product', name: product.name, description, image: product.images?.map((image) => image.url) || [product.image], sku: product.model || String(product.id), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: product.price.toFixed(2), availability: 'https://schema.org/PreOrder', url: canonical } } });
   }, [product]);
   if (loading) return <div className="empty-state"><p>Loading product…</p></div>;
   if (!product) return <div className="empty-state"><h1>Product not found</h1><p>This product is not currently published.</p><Link to="/shop">Back to shop</Link></div>;
@@ -41,7 +41,7 @@ export default function ProductDetail() {
       <div className="detail-copy">
         <p className="eyebrow">{product.category} · {product.brand}</p><h1>{product.name}</h1><p className="detail-model">{product.model} · {product.packSize}</p>
         <div className="detail-price"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
-        <div className="availability"><CheckCircle2 /><div><strong>Stock confirmed before payment</strong><span>Submit a request and we'll check the supplier's current checkout price and availability.</span></div></div>
+        <div className="availability"><CheckCircle2 /><div><strong>{product.supplierCheckRequired ? 'Supplier confirmation required' : 'Stock checked—then confirmed again before payment'}</strong><span>Submit a request and we'll verify the supplier's current checkout price and availability before sending any payment link.</span></div></div>
         <div className="delivery-estimate-card"><Clock3 /><div><strong>Estimated delivery: {estimate.summary}</strong><span>{estimate.fulfilmentLabel} via {product.retailer || 'the listed supplier'}. Supplier sourcing {estimate.supplierMinDays}–{estimate.supplierMaxDays} days, order processing {estimate.processingDays} day, then courier delivery. We confirm the date before payment.</span></div></div>
         <p className="detail-description">{product.description}</p>
         <div className="spec-list">{Object.entries(product.specs).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}</div>

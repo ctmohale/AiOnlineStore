@@ -87,13 +87,13 @@ app.get('/api/products', async (request, response, next) => {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const search = String(request.query.q || '');
     const category = String(request.query.category || '');
-    const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'p.gallery_image_count >= 3', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", 'o.last_checked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)', '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
+    const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'p.gallery_image_count >= 3', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
     const ids = String(request.query.ids || '').split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 24);
     if (ids.length) { terms.push(`p.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
     response.json(await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || ''))));
   } catch (error) { next(error); }
 });
@@ -101,7 +101,7 @@ app.get('/api/products', async (request, response, next) => {
 app.get('/api/seo/sitemap', async (_request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute(`SELECT p.slug,p.updated_at FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock') AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR) AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) ORDER BY p.updated_at DESC LIMIT 50000`);
+    const [rows] = await pool.execute(`SELECT p.slug,p.updated_at FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock') AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) ORDER BY p.updated_at DESC LIMIT 50000`);
     response.set('Cache-Control', 'public, max-age=3600').json(rows);
   } catch (error) { next(error); }
 });
@@ -109,11 +109,10 @@ app.get('/api/seo/sitemap', async (_request, response, next) => {
 app.get('/api/products/:slug', async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,i.url AS image_url
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url
       FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1
       WHERE p.slug=? AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
-        AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)
         AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1`, [String(request.params.slug)]);
     const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     if (!products.length) return response.status(404).json({ error: 'Product not found' });
@@ -222,7 +221,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; retailer: string; source_url: string; supplier_sku: string | null; current_cost: number; supplier_delivery_cost: number; stock_status: string; fulfilment_type: string; fulfilment_signal: string | null; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
       if (productRows.length !== ids.length) throw Object.assign(new Error('One or more products are not available'), { status: 409 });
       const now = Date.now();
-      for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000 || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} needs a fresh supplier check`), { status: 409 });
+      for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} is no longer available to request`), { status: 409 });
       const revenue = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.selling_price) * item.quantity, 0);
       const settings = productRows[0];
       const delivery = revenue >= settings.free_threshold ? 0 : settings.delivery_charge;
@@ -245,7 +244,8 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
         const itemEstimate = deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province });
         await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot,supplier_fulfilment_snapshot,estimated_supplier_days_min,estimated_supplier_days_max) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost, itemEstimate.fulfilmentType, itemEstimate.supplierMinDays, itemEstimate.supplierMaxDays]);
       }
-      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested','Order submitted')", [orderId]);
+      const needsFreshSupplierCheck = productRows.some((product) => !product.last_checked_at || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested',?)", [orderId, needsFreshSupplierCheck ? 'Order submitted; current supplier price and stock must be reconfirmed before quoting' : 'Order submitted']);
     });
     response.status(201).json({ reference: orderReference, status: 'requested', isTest: input.testMode });
   } catch (error) { next(error); }

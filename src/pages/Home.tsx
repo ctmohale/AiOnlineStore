@@ -49,7 +49,7 @@ export default function Home() {
         {featured ? <div className="featured-slide" key={featured.id} aria-live="polite">
           {featured.image ? <Link className="hero-feature-image" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><img src={featured.image} alt={featured.name} decoding="async" fetchPriority="high" draggable={false} /></Link> : <Link className="hero-product-placeholder" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><small>Featured find</small><strong>{featured.brand || 'MZANSI'}</strong><span>{featured.name}</span><em>{featured.model || featured.packSize}</em></Link>}
           <Link className="deal-card" to={`/product/${featured.slug}`}><small>{featured.compareAt ? `Was ${money(featured.compareAt)}` : 'Current selling price'}</small><strong>{money(featured.price)}</strong><span>{featured.name}</span></Link>
-          <div className="check-card"><BadgeCheck /><div><strong>Supplier checked</strong><span>{[featured.category, featured.packSize].filter(Boolean).join(' · ')}</span></div></div>
+          <div className="check-card"><BadgeCheck /><div><strong>Confirmed before payment</strong><span>{[featured.category, featured.packSize].filter(Boolean).join(' · ')}</span></div></div>
         </div> : <div className="featured-empty"><small>Featured finds</small><strong>{loading ? 'Finding something good…' : 'New finds coming soon.'}</strong><span>{loading ? 'Loading our latest verified products.' : 'We’re preparing the next carefully checked selection.'}</span><Link className="text-link" to="/shop">Browse the catalogue <ArrowRight /></Link></div>}
         {featuredProducts.length > 1 && <div className="featured-controls" aria-label="Featured product controls">
           <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous featured product"><ChevronLeft /></button>
@@ -67,7 +67,7 @@ export default function Home() {
     </section>
 
     <section className="section products-section">
-      <div className="section-heading"><div><p className="kicker">Freshly checked · New selection every 10 minutes</p><h2>Good finds, right now.</h2></div><Link className="text-link" to="/shop">Shop all products <ArrowRight size={17} /></Link></div>
+      <div className="section-heading"><div><p className="kicker">Catalogue monitored · New selection every 10 minutes</p><h2>Good finds, right now.</h2></div><Link className="text-link" to="/shop">Shop all products <ArrowRight size={17} /></Link></div>
       {loading && <p className="catalogue-state">Loading the live catalogue…</p>}
       {!loading && error && <div className="empty-state compact"><h3>Catalogue unavailable</h3><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div>}
       {!loading && !error && homepageProducts.length > 0 && <div className="product-grid">{homepageProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>}
