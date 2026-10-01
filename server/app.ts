@@ -27,7 +27,7 @@ const productSlug = (title: string, model: string) => `${title}-${model}`.toLowe
 async function assertProductPublishable(connection: PoolConnection, productId: number | string) {
   const [rows] = await connection.execute(`SELECT p.title,p.category,p.model,p.pack_size,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,
     o.id AS offer_id,o.source_url,o.current_cost,o.original_displayed_price,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,o.supplier_delivery_cost,
-    s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.standard_markup_percent,s.supplier_stale_hours
+    s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.standard_markup_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
     FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
     JOIN pricing_settings s ON s.id=1 WHERE p.id=? AND p.deleted_at IS NULL FOR UPDATE`, [productId]);
   const product = (rows as (RowDataPacket & Record<string, unknown>)[])[0];
@@ -48,7 +48,8 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   if (product.promotion_end_at && new Date(product.promotion_end_at as string | Date).getTime() <= now) throw Object.assign(new Error('The supplier promotion has ended; recheck the price before publishing'), { status: 422 });
   const target = recommendedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent));
   if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
-  const pricing = passesPricingRules({ productRevenue: Number(product.selling_price), customerDeliveryCharged: 0, supplierProductCost: Number(product.current_cost), supplierDelivery: Number(product.supplier_delivery_cost || 0), customerDeliveryCost: Number(product.estimated_customer_delivery_cost || 0), packaging: 0, paymentFees: 0, advertisingCost: 0 }, Number(product.minimum_profit ?? product.global_minimum_profit), Number(product.minimum_margin_percent));
+  const deliveryCharged = Number(product.selling_price) >= Number(product.free_delivery_threshold) ? 0 : Number(product.standard_customer_delivery);
+  const pricing = passesPricingRules({ productRevenue: Number(product.selling_price), customerDeliveryCharged: deliveryCharged, supplierProductCost: Number(product.current_cost), supplierDelivery: Number(product.supplier_delivery_cost || 0), customerDeliveryCost: Number(product.estimated_customer_delivery_cost || 0), packaging: 0, paymentFees: 0, advertisingCost: 0 }, Number(product.minimum_profit ?? product.global_minimum_profit), Number(product.minimum_margin_percent));
   if (!pricing.passes || pricing.profit <= 0) throw Object.assign(new Error(`Estimated profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit)`), { status: 422 });
   return pricing;
 }
