@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import type { Server } from 'node:http';
 
-const state = vi.hoisted(() => ({ status: 'requested', profitFloor: 120, marginFloor: 15, updates: 0 }));
+const state = vi.hoisted(() => ({ status: 'requested', profitFloor: 120, marginFloor: 15, updates: 0, verifiedItems: 1 }));
 vi.mock('./db/pool.js', () => ({
   pool: { execute: vi.fn() },
   withTransaction: async (callback: (connection: { execute: (sql: string) => Promise<unknown[]> }) => Promise<unknown>) => callback({
     execute: async (sql: string) => {
       if (sql.startsWith('SELECT o.product_revenue')) return [[{ product_revenue: 779, status: state.status, is_test: 0, minimum_profit: state.profitFloor, minimum_margin_percent: state.marginFloor }]];
+      if (sql.startsWith('SELECT COUNT(*) AS total_items')) return [[{ total_items: 1, verified_items: state.verifiedItems, unavailable_items: 0, verified_supplier_total: state.verifiedItems ? 550 : 0 }]];
       if (sql.startsWith('UPDATE order_requests')) { state.updates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('INSERT INTO order_status_history')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected query: ${sql}`);
@@ -33,7 +34,9 @@ test('quotes only after supplier checking and enforces saved profit rules', asyn
   const payload = { supplierProductCost: 550, supplierDelivery: 0, customerDeliveryCost: 0, packagingCost: 0, paymentFeeEstimate: 0, advertisingCost: 0, customerDeliveryCharged: 0 };
   const quote = () => fetch(`${base}/api/admin/orders/4/quote`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signAdminToken({ sub: '1', email: 'admin@example.test', role: 'admin' })}` }, body: JSON.stringify(payload) });
   expect((await quote()).status).toBe(409);
-  state.status = 'checking_supplier'; state.profitFloor = 300;
+  state.status = 'checking_supplier'; state.verifiedItems = 0;
+  expect((await quote()).status).toBe(409);
+  state.verifiedItems = 1; state.profitFloor = 300;
   expect((await quote()).status).toBe(422);
   expect(state.updates).toBe(0);
   state.profitFloor = 120;
