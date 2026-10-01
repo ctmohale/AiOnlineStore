@@ -44,11 +44,11 @@ export default function Layout() {
     <main><Outlet /></main>
     <section className="site-trust-strip"><div><BadgeCheck /><strong>Checked before payment</strong><span>Current stock, price and delivery confirmed</span></div><div><MapPin /><strong>Made for South Africa</strong><span>ZAR pricing and nationwide delivery</span></div><div><LockKeyhole /><strong>Protected checkout</strong><span>HTTPS and no card details stored here</span></div></section>
     <footer>
-      <div className="footer-brand"><div className="brand light"><span className="brand-mark">m</span><span>moya</span><small>market</small></div><p>A South African online store. Smart finds, checked before you pay.</p><Link to="/about">About Moya Market</Link><Link to="/contact">Contact details</Link></div>
+      <div className="footer-brand"><div className="brand light"><span className="brand-mark">m</span><span>moya</span><small>market</small></div><p>A South African online store and trading name operated by BeeStack.</p><Link to="/about">About Moya Market</Link><Link to="/contact">Contact details</Link><a href="https://www.beestack.co.za/" target="_blank" rel="noreferrer">BeeStack company website</a></div>
       <div><h4>Shop</h4><Link to="/shop">All products</Link>{categories.slice(0, 5).map((category) => <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>{category.name}</Link>)}</div>
       <div><h4>Help &amp; policies</h4><Link to="/delivery-policy">Delivery policy</Link><Link to="/returns-refunds">Returns &amp; refunds</Link><Link to="/complaints">Complaints</Link><Link to="/account">Customer login</Link><Link to="/admin/login">Admin login</Link></div>
       <div><h4>Trust &amp; legal</h4><Link to="/payment-security">Payment security</Link><Link to="/privacy">Privacy notice</Link><Link to="/terms">Terms of sale</Link><p>Independent reseller. Game and Makro are source retailers, not affiliated partners.</p></div>
-      <div className="footer-bottom">© 2026 Moya Market · South African online store <span>Prices shown in ZAR and include VAT where applicable</span></div>
+      <div className="footer-bottom">© 2026 BeeStack, trading as Moya Market · South African online store <span>Prices shown in ZAR and include VAT where applicable</span></div>
     </footer>
   </div>;
 }
