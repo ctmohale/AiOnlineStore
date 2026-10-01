@@ -11,7 +11,7 @@ import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '..
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderSchema, orderStatusSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -218,6 +218,19 @@ app.get('/api/admin/me', requireAdmin, async (_request, response, next) => {
     const admin = (rows as RowDataPacket[])[0];
     if (!admin) return response.status(404).json({ error: 'Administrator not found' });
     response.json(admin);
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/password', loginLimiter, requireAdmin, async (request, response, next) => {
+  try {
+    const input = adminPasswordUpdateSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT password_hash FROM admins WHERE id=? LIMIT 1', [response.locals.admin.sub]);
+    const admin = (rows as (RowDataPacket & { password_hash: string })[])[0];
+    if (!admin) return response.status(404).json({ error: 'Administrator not found' });
+    if (!await bcrypt.compare(input.currentPassword, admin.password_hash)) return response.status(401).json({ error: 'Your current password is incorrect' });
+    await pool.execute('UPDATE admins SET password_hash=? WHERE id=?', [await bcrypt.hash(input.newPassword, 12), response.locals.admin.sub]);
+    response.status(204).end();
   } catch (error) { next(error); }
 });
 
