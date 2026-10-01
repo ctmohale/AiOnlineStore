@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { money } from '../data/products';
 import { useCatalog } from '../state/CatalogContext';
+import { categorySummaries } from '../lib/categories';
 
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
@@ -11,7 +12,7 @@ export default function Home() {
   const [activeSlide, setActiveSlide] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
   const featured = featuredProducts[activeSlide];
-  const categories = [...new Set(products.map((product) => product.category))].slice(0, 3);
+  const categories = categorySummaries(products).slice(0, 3);
   useEffect(() => { if (activeSlide >= featuredProducts.length) setActiveSlide(0); }, [activeSlide, featuredProducts.length]);
   useEffect(() => {
     if (featuredProducts.length < 2 || !autoplay) return;
@@ -46,7 +47,7 @@ export default function Home() {
 
     <section className="category-strip">
       <p>Browse by category</p>
-      {categories.map((category) => <Link key={category} to={`/shop?category=${encodeURIComponent(category)}`}><i>✦</i><div><strong>{category}</strong><span>View live products</span></div><ArrowRight /></Link>)}
+      {categories.map((category) => <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}><i>✦</i><div><strong>{category.name}</strong><span>{category.count} live products</span></div><ArrowRight /></Link>)}
       {!loading && categories.length === 0 && <p>New categories are coming soon.</p>}
     </section>
 

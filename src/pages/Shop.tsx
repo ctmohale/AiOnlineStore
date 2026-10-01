@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../state/CatalogContext';
+import { categorySummaries, matchesCategory } from '../lib/categories';
 
 export default function Shop() {
   const [params, setParams] = useSearchParams();
@@ -11,10 +12,10 @@ export default function Shop() {
   const query = params.get('q') || '';
   const category = params.get('category') || 'All';
   const requestedPage = Math.max(1, Number(params.get('page')) || 1);
-  const categories = ['All', ...[...new Set(products.map((product) => product.category))].sort((a, b) => a.localeCompare(b))];
+  const categories = ['All', ...categorySummaries(products).map((item) => item.name)];
   const visible = useMemo(() => {
     const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-    const filtered = products.filter((product) => (category === 'All' || product.category === category) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word)));
+    const filtered = products.filter((product) => matchesCategory(product.category, category) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word)));
     return [...filtered].sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : a.id - b.id);
   }, [category, products, query, sort]);
   const pageSize = 48;
