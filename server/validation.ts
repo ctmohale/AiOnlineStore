@@ -73,6 +73,11 @@ export const customerPasswordUpdateSchema = z.object({
   newPassword: z.string().min(10).max(128),
 }).refine((value) => value.currentPassword !== value.newPassword, { message: 'Choose a password different from your current password', path: ['newPassword'] });
 
+export const adminPasswordUpdateSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(12).max(128),
+}).refine((value) => value.currentPassword !== value.newPassword, { message: 'Choose a password different from your current password', path: ['newPassword'] });
+
 export const adminCustomerUpdateSchema = z.object({
   name: z.string().trim().min(2).max(160),
   email: z.email().max(190),
