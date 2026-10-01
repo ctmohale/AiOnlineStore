@@ -69,12 +69,12 @@ function CaseEditor({ orderId, supportCase, onSaved }:{ orderId:number; supportC
 export default function ReturnCaseManager({ orderId, orderStatus, cases, onSaved }:{ orderId:number; orderStatus:string; cases:OrderSupportCase[]; onSaved:()=>Promise<void> }) {
   const { notify } = useFeedback();
   const [busy,setBusy]=useState(false);
-  const [caseType,setCaseType]=useState<'cancellation'|'return'>('cancellation');
+  const canCancel=!['delivered','cancelled','refunded'].includes(orderStatus);
+  const canReturn=['shipped','delivered'].includes(orderStatus);
+  const [caseType,setCaseType]=useState<'cancellation'|'return'>(canCancel?'cancellation':'return');
   const [reasonCategory,setReasonCategory]=useState('changed_mind');
   const [reasonDetails,setReasonDetails]=useState('');
   const [evidence,setEvidence]=useState('');
-  const canCancel=!['delivered','cancelled','refunded'].includes(orderStatus);
-  const canReturn=['shipped','delivered'].includes(orderStatus);
   const create=async()=>{
     if(reasonDetails.trim().length<3)return notify('Add a short reason for the request.','warning');
     setBusy(true);
