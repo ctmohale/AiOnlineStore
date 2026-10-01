@@ -15,6 +15,7 @@
     "start:worker": "node api-dist/worker/index.js",
     "worker:once": "tsx worker/index.ts --once",
     "worker:import-csv": "tsx worker/import-csv.ts",
+    "catalogue:import-public": "node scripts/import-public-retailer-catalogue.mjs",
     "db:migrate": "tsx server/db/migrate.ts",
     "db:seed": "tsx server/db/seed.ts",
     "preview": "vite preview",
