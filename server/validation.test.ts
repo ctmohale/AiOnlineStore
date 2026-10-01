@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema } from './validation';
+import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema } from './validation';
 
 describe('shipment tracking', () => {
   it('requires a courier and number, and rejects unsafe tracking links', () => {
@@ -32,5 +32,16 @@ describe('product sourcing validation', () => {
     expect(result.supplier?.promotionEndAt).toBeNull();
     expect(result.supplier?.lastCheckedAt).toBeNull();
     expect(result.supplier?.priceUpdatedAt).toBeNull();
+  });
+});
+
+describe('supplier item verification', () => {
+  it('requires a confirmed price for an available item', () => {
+    expect(supplierItemVerificationSchema.safeParse({ status: 'verified', verifiedSupplierUnitCost: null }).success).toBe(false);
+    expect(supplierItemVerificationSchema.safeParse({ status: 'verified', verifiedSupplierUnitCost: 549.99 }).success).toBe(true);
+  });
+
+  it('allows an unavailable result without inventing a price', () => {
+    expect(supplierItemVerificationSchema.safeParse({ status: 'unavailable', verifiedSupplierUnitCost: null, notes: 'No stock' }).success).toBe(true);
   });
 });

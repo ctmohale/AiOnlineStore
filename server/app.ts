@@ -12,7 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -531,7 +531,8 @@ app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, respon
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const [items, history, payments] = await Promise.all([
-      pool.execute(`SELECT oi.product_title_snapshot,oi.model_snapshot,oi.pack_size_snapshot,oi.quantity,oi.agreed_unit_price,
+      pool.execute(`SELECT oi.id,oi.product_title_snapshot,oi.model_snapshot,oi.pack_size_snapshot,oi.quantity,oi.agreed_unit_price,
+        oi.supplier_verification_status,oi.verified_supplier_unit_cost,oi.supplier_stock_verified_at,oi.supplier_verification_notes,
         COALESCE(oi.supplier_retailer_snapshot,so.retailer) AS supplier_retailer_snapshot,
         COALESCE(oi.supplier_source_url_snapshot,so.source_url) AS supplier_source_url_snapshot,
         COALESCE(oi.supplier_sku_snapshot,so.supplier_sku) AS supplier_sku_snapshot,
@@ -544,6 +545,31 @@ app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, respon
       pool.execute('SELECT provider,payment_link,external_reference,verification_status,verified_at,created_at FROM payment_references WHERE order_request_id=? ORDER BY created_at DESC', [request.params.id]),
     ]);
     response.json({ items: items[0], history: history[0], payments: payments[0] });
+  } catch (error) { next(error); }
+});
+
+app.patch('/api/admin/orders/:id/items/:itemId/supplier-verification', requireAdmin, async (request, response, next) => {
+  try {
+    const input = supplierItemVerificationSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const result = await withTransaction(async (connection) => {
+      const [orderRows] = await connection.execute('SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE', [request.params.id]);
+      const order = (orderRows as (RowDataPacket & { status: string; is_test: number })[])[0];
+      if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
+      if (order.is_test) throw Object.assign(new Error('Test orders cannot enter supplier verification'), { status: 409 });
+      if (!['checking_supplier','quoted'].includes(order.status)) throw Object.assign(new Error('Start the supplier check before verifying order items'), { status: 409 });
+      const [itemRows] = await connection.execute('SELECT id,product_title_snapshot FROM order_items WHERE id=? AND order_request_id=? FOR UPDATE', [request.params.itemId, request.params.id]);
+      const item = (itemRows as (RowDataPacket & { id: number; product_title_snapshot: string })[])[0];
+      if (!item) throw Object.assign(new Error('Order item not found'), { status: 404 });
+      const verifiedCost = input.status === 'verified' ? input.verifiedSupplierUnitCost : null;
+      await connection.execute('UPDATE order_items SET supplier_verification_status=?,verified_supplier_unit_cost=?,supplier_stock_verified_at=UTC_TIMESTAMP(),supplier_verification_notes=?,supplier_verified_by_admin_id=? WHERE id=?', [input.status, verifiedCost, input.notes || null, response.locals.admin.sub, item.id]);
+      const [summaryRows] = await connection.execute("SELECT COUNT(*) AS total_items,SUM(supplier_verification_status='verified') AS verified_items,SUM(supplier_verification_status='unavailable') AS unavailable_items,SUM(CASE WHEN supplier_verification_status='verified' THEN verified_supplier_unit_cost*quantity ELSE 0 END) AS verified_supplier_total FROM order_items WHERE order_request_id=?", [request.params.id]);
+      const summary = (summaryRows as (RowDataPacket & { total_items:number; verified_items:number; unavailable_items:number; verified_supplier_total:number })[])[0];
+      await connection.execute('UPDATE order_requests SET supplier_product_cost=?,supplier_checked_at=UTC_TIMESTAMP() WHERE id=?', [Number(summary.verified_supplier_total || 0), request.params.id]);
+      await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [request.params.id,order.status,order.status,`${item.product_title_snapshot}: supplier check ${input.status}`,response.locals.admin.sub]);
+      return { ...summary, itemId: item.id, status: input.status, checkedAt: new Date().toISOString() };
+    });
+    response.json(result);
   } catch (error) { next(error); }
 });
 
@@ -600,10 +626,17 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
       if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
       if (order.is_test) throw Object.assign(new Error('Test orders cannot be quoted for real payment'), { status: 409 });
       if (!['checking_supplier', 'quoted'].includes(order.status)) throw Object.assign(new Error('Check the supplier before quoting this order'), { status: 409 });
-      const costs = { productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: input.supplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost };
+      const [verificationRows] = await connection.execute("SELECT COUNT(*) AS total_items,SUM(supplier_verification_status='verified') AS verified_items,SUM(supplier_verification_status='unavailable') AS unavailable_items,SUM(CASE WHEN supplier_verification_status='verified' THEN verified_supplier_unit_cost*quantity ELSE 0 END) AS verified_supplier_total FROM order_items WHERE order_request_id=?", [request.params.id]);
+      const verification = (verificationRows as (RowDataPacket & { total_items:number; verified_items:number; unavailable_items:number; verified_supplier_total:number })[])[0];
+      if (!verification.total_items || Number(verification.verified_items) !== Number(verification.total_items)) {
+        const reason = Number(verification.unavailable_items) > 0 ? 'One or more order items are unavailable' : 'Verify every order item before confirming the quote';
+        throw Object.assign(new Error(reason), { status: 409 });
+      }
+      const verifiedSupplierProductCost = Number(verification.verified_supplier_total || 0);
+      const costs = { productRevenue: Number(order.product_revenue), customerDeliveryCharged: input.customerDeliveryCharged, supplierProductCost: verifiedSupplierProductCost, supplierDelivery: input.supplierDelivery, customerDeliveryCost: input.customerDeliveryCost, packaging: input.packagingCost, paymentFees: input.paymentFeeEstimate, advertisingCost: input.advertisingCost };
       const pricing = passesPricingRules(costs, Number(order.minimum_profit), Number(order.minimum_margin_percent));
       if (!pricing.passes) throw Object.assign(new Error('Quote does not meet configured profit rules'), { status: 422 });
-      await connection.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, input.supplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, pricing.profit, request.params.id]);
+      await connection.execute("UPDATE order_requests SET status='quoted',customer_delivery_charged=?,supplier_product_cost=?,supplier_delivery=?,customer_delivery_cost=?,packaging_cost=?,payment_fee_estimate=?,advertising_cost=?,expected_profit=?,quoted_at=UTC_TIMESTAMP() WHERE id=?", [input.customerDeliveryCharged, verifiedSupplierProductCost, input.supplierDelivery, input.customerDeliveryCost, input.packagingCost, input.paymentFeeEstimate, input.advertisingCost, pricing.profit, request.params.id]);
       if (order.status !== 'quoted') await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,'quoted','Verified quote confirmed',?)", [request.params.id,order.status,response.locals.admin.sub]);
       return { profit: pricing.profit, margin: pricing.margin, status: 'quoted' };
     });
