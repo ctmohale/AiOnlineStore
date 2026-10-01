@@ -7,6 +7,12 @@ import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 
+const heroBenefits = [
+  { title: 'Fast nationwide delivery', copy: 'Clear delivery estimates and order updates from dispatch through arrival.', icon: Truck },
+  { title: 'Secure payment', copy: 'Protected payment links and no card details stored by Mzansi Mega Store.', icon: ShieldCheck },
+  { title: 'Easy online ordering', copy: 'Browse, add to cart and send your order request in a few simple steps.', icon: PackageCheck },
+] as const;
+
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
@@ -15,7 +21,11 @@ export default function Home() {
   const homepageProducts = rotatingProducts(productPool, 6, rotationBucket, 5);
   const [activeSlide, setActiveSlide] = useState(0);
   const [autoplay, setAutoplay] = useState(true);
+  const [activeBenefit, setActiveBenefit] = useState(0);
+  const [benefitAutoplay, setBenefitAutoplay] = useState(true);
   const featured = featuredProducts[activeSlide];
+  const benefit = heroBenefits[activeBenefit];
+  const BenefitIcon = benefit.icon;
   const categories = categorySummaries(products).slice(0, 3);
   useEffect(() => {
     let interval: number | undefined;
@@ -34,6 +44,11 @@ export default function Home() {
     const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % featuredProducts.length), 5500);
     return () => window.clearInterval(timer);
   }, [autoplay, featuredProducts.length]);
+  useEffect(() => {
+    if (!benefitAutoplay) return;
+    const timer = window.setInterval(() => setActiveBenefit((current) => (current + 1) % heroBenefits.length), 4800);
+    return () => window.clearInterval(timer);
+  }, [benefitAutoplay]);
   const moveSlide = (direction: number) => setActiveSlide((current) => (current + direction + featuredProducts.length) % featuredProducts.length);
   return <>
     <section className="hero">
@@ -42,7 +57,17 @@ export default function Home() {
         <h1>Good deals,<br /><em>checked properly.</em></h1>
         <p className="hero-lead">Useful products at considered prices, with straightforward ordering and nationwide delivery.</p>
         <div className="hero-actions"><Link className="button primary" to="/shop">Shop the latest finds <ArrowRight size={18} /></Link><a className="text-link" href="#how">See how it works</a></div>
-        <div className="hero-trust"><span><ShieldCheck /> Secure payment link</span><span><PackageCheck /> Easy online ordering</span><span><Truck /> Nationwide delivery</span></div>
+        <div className="hero-benefit-slider" role="region" aria-roledescription="carousel" aria-label="Shopping benefits">
+          <div className="hero-benefit-slide" key={benefit.title} aria-live="polite">
+            <span className="hero-benefit-icon"><BenefitIcon /></span>
+            <div className="hero-benefit-copy"><small>Why shop with us</small><strong>{benefit.title}</strong><p>{benefit.copy}</p></div>
+            <span className="hero-benefit-brand" aria-hidden="true"><i>M</i><b>zansi</b></span>
+          </div>
+          <div className="hero-benefit-controls">
+            <div>{heroBenefits.map((item, index) => <button type="button" className={index === activeBenefit ? 'active' : ''} onClick={() => setActiveBenefit(index)} aria-label={`Show ${item.title}`} aria-current={index === activeBenefit ? 'true' : undefined} key={item.title} />)}</div>
+            <button type="button" onClick={() => setBenefitAutoplay((playing) => !playing)} aria-label={benefitAutoplay ? 'Pause shopping benefits' : 'Play shopping benefits'}>{benefitAutoplay ? <Pause /> : <Play />}</button>
+          </div>
+        </div>
       </div>
       <div className="hero-art featured-showcase" role="region" aria-roledescription="carousel" aria-label="Featured products">
         <div className="sun-shape" />

@@ -29,6 +29,7 @@ const emptyProduct = {
 };
 type ProductForm = typeof emptyProduct;
 type ImageQuality = { width: number; height: number; error?: boolean };
+type ProductFilters = { category: string; status: string; stock: string; source: string; profit: string };
 
 const specificationsText = (value: AdminProduct['specifications']) => {
   let specs: Record<string, string> = {};
@@ -43,7 +44,7 @@ const textValue = (value: unknown) => value == null ? '' : String(value);
 const parseImageUrls = (value: string) => [...new Set(value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))];
 const blankReview = { exactProductMatch: false, supplierPriceChecked: false, stockChecked: false, promotionDatesChecked: false, imagesChecked: false, descriptionChecked: false };
 
-export default function ProductManager({ onChanged, initialEditId, onInitialEditHandled }: { onChanged?: () => void; initialEditId?: number; onInitialEditHandled?: () => void }) {
+export default function ProductManager({ onChanged, initialEditId, onInitialEditHandled, searchQuery = '' }: { onChanged?: () => void; initialEditId?: number; onInitialEditHandled?: () => void; searchQuery?: string }) {
   const { confirm, notify } = useFeedback();
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [editing, setEditing] = useState<AdminProduct | null>(null);
@@ -57,6 +58,29 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
   const [imageQuality, setImageQuality] = useState<ImageQuality | null>(null);
   const [review, setReview] = useState(blankReview);
   const [standardMarkup, setStandardMarkup] = useState(7);
+  const [filters, setFilters] = useState<ProductFilters>({ category: '', status: '', stock: '', source: '', profit: '' });
+  const searchText = searchQuery.trim().toLowerCase();
+  const searchTerms = searchText.split(/\s+/).filter(Boolean);
+  const filterOptions = useMemo(() => ({
+    categories: [...new Set(products.map((product) => product.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    statuses: [...new Set(products.map((product) => product.status).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    stocks: [...new Set(products.map((product) => product.stock_status || 'unknown'))].sort((a, b) => a.localeCompare(b)),
+    sources: [...new Set(products.map((product) => product.retailer).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b)),
+  }), [products]);
+  const filtersActive = Object.values(filters).some(Boolean);
+  const visibleProducts = useMemo(() => products.filter((product) => {
+    const searchable = [product.title, product.brand, product.model, product.barcode, product.pack_size, product.category, product.status, product.stock_status, product.retailer, product.supplier_sku].filter(Boolean).join(' ').toLowerCase();
+    const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0);
+    const profitState = profit <= 0 || profit < Number(product.minimum_profit ?? 0) ? 'attention' : 'healthy';
+    return searchTerms.every((term) => searchable.includes(term))
+      && (!filters.category || product.category === filters.category)
+      && (!filters.status || product.status === filters.status)
+      && (!filters.stock || (product.stock_status || 'unknown') === filters.stock)
+      && (!filters.source || product.retailer === filters.source)
+      && (!filters.profit || profitState === filters.profit);
+  }), [filters, products, searchText]);
+  const filter = (key: keyof ProductFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
+  const clearFilters = () => setFilters({ category: '', status: '', stock: '', source: '', profit: '' });
   const load = useCallback(async (showSuccess = false) => { setLoading(true); try { setProducts(await adminRequest<AdminProduct[]>('/products')); if (showSuccess) notify('The product list is up to date.', 'success', 'Products refreshed'); } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be loaded', 'error'); } finally { setLoading(false); } }, [notify]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void adminRequest<{ standard_markup_percent: number }>('/pricing-settings').then((settings) => setStandardMarkup(Number(settings.standard_markup_percent))).catch(() => {}); }, []);
@@ -120,7 +144,16 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
 
   return <>
     <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button type="button" className="outline-button" disabled={loading} onClick={() => void load(true)}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh'}</button><button type="button" className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
-      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Product</span><span>Status / stock</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{products.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); return <div className="table-row product-table-grid" key={product.id}><span><i className="table-thumb">{product.brand?.[0] || 'P'}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><span><StatusPill status={product.status} /><small>{product.stock_status?.replaceAll('_', ' ') || 'Stock unknown'}{product.review_reason ? ` · ${product.review_reason}` : ''}</small></span><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit <= 0 || profit < Number(product.minimum_profit ?? 0) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}<small>{product.last_checked_at ? `Checked ${new Date(product.last_checked_at).toLocaleString('en-ZA')}` : 'Never checked'}</small></span><span className="row-actions"><button type="button" title="Edit product" aria-label={`Edit ${product.title}`} onClick={() => edit(product)}><Edit3 /> Edit</button><button type="button" title="Delete product" aria-label={`Delete ${product.title}`} className="danger" disabled={deletingId === product.id} onClick={() => void deleteProduct(product)}><Trash2 /> {deletingId === product.id ? 'Deleting…' : 'Delete'}</button></span></div>; })}</div>}
+      {!loading && products.length > 0 && <div className="product-table-filters" aria-label="Product table filters">
+        <label>Category<select aria-label="Product category" value={filters.category} onChange={(event) => filter('category', event.target.value)}><option value="">All categories</option>{filterOptions.categories.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>Publication status<select aria-label="Publication status" value={filters.status} onChange={(event) => filter('status', event.target.value)}><option value="">All statuses</option>{filterOptions.statuses.map((value) => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
+        <label>Stock status<select aria-label="Stock status" value={filters.stock} onChange={(event) => filter('stock', event.target.value)}><option value="">All stock</option>{filterOptions.stocks.map((value) => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
+        <label>Source<select aria-label="Product source" value={filters.source} onChange={(event) => filter('source', event.target.value)}><option value="">All sources</option>{filterOptions.sources.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+        <label>Profit<select aria-label="Profit health" value={filters.profit} onChange={(event) => filter('profit', event.target.value)}><option value="">All profit</option><option value="healthy">Healthy</option><option value="attention">Needs attention</option></select></label>
+        <button type="button" className="outline-button" disabled={!filtersActive} onClick={clearFilters}>Clear filters</button>
+      </div>}
+      {!loading && (searchTerms.length > 0 || filtersActive) && <p className="product-search-status" aria-live="polite">{visibleProducts.length} of {products.length} products shown</p>}
+      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Product</span><span>Status / stock</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{visibleProducts.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); const image = product.image_url || product.images?.slice().sort((a, b) => a.sort_order - b.sort_order)[0]?.url; return <div className="table-row product-table-grid" key={product.id}><span><i className="table-thumb"><span>{product.brand?.[0] || 'P'}</span>{image && <img src={image} alt={`${product.title} thumbnail`} loading="lazy" onError={(event) => event.currentTarget.remove()} />}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><span><StatusPill status={product.status} /><small>{product.stock_status?.replaceAll('_', ' ') || 'Stock unknown'}{product.review_reason ? ` · ${product.review_reason}` : ''}</small></span><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit <= 0 || profit < Number(product.minimum_profit ?? 0) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}<small>{product.last_checked_at ? `Checked ${new Date(product.last_checked_at).toLocaleString('en-ZA')}` : 'Never checked'}</small></span><span className="row-actions"><button type="button" title="Edit product" aria-label={`Edit ${product.title}`} onClick={() => edit(product)}><Edit3 /> Edit</button><button type="button" title="Delete product" aria-label={`Delete ${product.title}`} className="danger" disabled={deletingId === product.id} onClick={() => void deleteProduct(product)}><Trash2 /> {deletingId === product.id ? 'Deleting…' : 'Delete'}</button></span></div>; })}{visibleProducts.length === 0 && products.length > 0 && <div className="table-empty">No products match the current search and filters.</div>}</div>}
       {!loading && products.length === 0 && <div className="account-empty"><PackagePlus /><h3>No active products</h3><p>Create the first catalogue draft to begin supplier review.</p></div>}
     </section>
     {open && <div className="product-modal-backdrop" role="presentation"><section className="product-modal product-workflow-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title"><header><div><p className="kicker">{editing ? 'Edit sourcing record' : 'New sourcing record'}</p><h2 id="product-form-title">{editing ? editing.title : 'Add a product'}</h2></div><button type="button" onClick={() => setOpen(false)} aria-label="Close product form"><X /></button></header><form onSubmit={submit}>
