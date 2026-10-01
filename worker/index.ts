@@ -32,6 +32,7 @@ async function recheckRetailerOffers() {
           await connection.execute("INSERT INTO product_images (product_id,url,alt_text,sort_order) SELECT id,?,CONCAT(title,' - image ',?),? FROM products WHERE id=?", [url, nextImageOrder + 1, nextImageOrder, row.product_id]);
           existingImages.add(url); nextImageOrder += 1;
         }
+        await connection.execute('UPDATE products SET gallery_checked_at=UTC_TIMESTAMP(),gallery_image_count=? WHERE id=?', [existingImages.size, row.product_id]);
         await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=CASE WHEN ? THEN NULL ELSE COALESCE(?,original_displayed_price) END,promotion_end_at=CASE WHEN ? THEN NULL ELSE promotion_end_at END,stock_status=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Daily URL recheck found a supplier price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, Boolean(expired), imported.originalDisplayedPrice, Boolean(expired), imported.stockStatus, imported.sourceConfidence, changed ? false : Boolean(locked.price_verified), changed, changed, row.id]);
         if (changed) {
           await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) SELECT id,?,?,selling_price,'Daily URL recheck found a supplier price change' FROM products WHERE id=?", [row.id, imported.currentCost, row.product_id]);
@@ -44,6 +45,40 @@ async function recheckRetailerOffers() {
       await pool.execute('UPDATE supplier_offers SET last_error=? WHERE id=?', [(error instanceof Error ? error.message : String(error)).slice(0, 2000), row.id]);
     }
   }
+}
+
+async function backfillProductGalleries() {
+  if (!pool) return;
+  const [rows] = await pool.execute(`SELECT p.id,o.source_url
+    FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
+    WHERE p.deleted_at IS NULL AND o.source_url<>''
+      AND (p.gallery_image_count<3 OR (SELECT COUNT(*) FROM product_images i WHERE i.product_id=p.id)<3)
+      AND (p.gallery_checked_at IS NULL OR p.gallery_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY))
+    ORDER BY p.gallery_checked_at IS NULL DESC,p.updated_at DESC LIMIT 120`);
+  let completed = 0, enriched = 0;
+  for (const row of rows as { id: number; source_url: string }[]) {
+    if (!isSupportedProductUrl(row.source_url)) continue;
+    try {
+      const imported = await importProductUrl(row.source_url);
+      await withTransaction(async (connection) => {
+        const [currentRows] = await connection.execute('SELECT url FROM product_images WHERE product_id=? ORDER BY sort_order,id FOR UPDATE', [row.id]);
+        const existing = new Set((currentRows as { url: string }[]).map((image) => image.url));
+        const before = existing.size;
+        let order = existing.size;
+        for (const url of imported.imageUrls) if (!existing.has(url) && order < 20) {
+          await connection.execute("INSERT INTO product_images (product_id,url,alt_text,sort_order) SELECT id,?,CONCAT(title,' - image ',?),? FROM products WHERE id=?", [url, order + 1, order, row.id]);
+          existing.add(url); order += 1;
+        }
+        await connection.execute('UPDATE products SET gallery_checked_at=UTC_TIMESTAMP(),gallery_image_count=? WHERE id=?', [existing.size, row.id]);
+        if (existing.size > before) enriched += 1;
+      });
+      completed += 1;
+    } catch (error) {
+      await pool.execute('UPDATE products SET gallery_checked_at=UTC_TIMESTAMP(),gallery_image_count=(SELECT COUNT(*) FROM product_images i WHERE i.product_id=products.id) WHERE id=?', [row.id]);
+      console.warn(`Gallery backfill failed for product ${row.id}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  console.log(`Gallery backfill checked ${completed} products and enriched ${enriched}.`);
 }
 
 async function repriceVerifiedOffers() {
@@ -81,6 +116,7 @@ async function dailyRun() {
   if (process.env.RETAILER_FEED_URL) await ingest(new PermittedRetailerFeedAdapter(process.env.RETAILER_FEED_URL));
   else console.log('No RETAILER_FEED_URL configured; skipping feed collection. CSV imports remain available via the CLI.');
   await recheckRetailerOffers();
+  await backfillProductGalleries();
   await repriceVerifiedOffers();
   if (pool) await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.status='paused',p.review_reason=CASE WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' WHEN o.stock_status='out_of_stock' THEN 'supplier_out_of_stock' ELSE 'supplier_data_stale' END WHERE p.status='published' AND (o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status='out_of_stock' OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR))");
 }

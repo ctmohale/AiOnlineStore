@@ -78,7 +78,7 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
   const minimumProfit = Number(form.minimumProfit || 0);
   const recommended = Number(form.currentCost) > 0 ? recommendedSellingPrice({ cost: Number(form.currentCost), originalPrice: optionalNumber(form.originalDisplayedPrice), promotionEndAt: form.promotionEndAt || null }, standardMarkup) : null;
   const profitHealthy = estimatedProfit >= minimumProfit;
-  const publishMissing = [!form.title && 'name', !form.category && 'category', parseImageUrls(form.imageUrls).length === 0 && 'product image', !form.model && !form.packSize && 'exact model or pack size', !form.sourceUrl && 'supplier URL', !Number(form.currentCost) && 'supplier price', !form.supplierPriceVerified && 'price verification', !form.lastCheckedAt && 'last checked time', !['in_stock', 'low_stock'].includes(form.stockStatus) && 'in-stock status'].filter(Boolean) as string[];
+  const publishMissing = [!form.title && 'name', !form.category && 'category', parseImageUrls(form.imageUrls).length < 3 && 'at least 3 genuine product images', !form.model && !form.packSize && 'exact model or pack size', !form.sourceUrl && 'supplier URL', !Number(form.currentCost) && 'supplier price', !form.supplierPriceVerified && 'price verification', !form.lastCheckedAt && 'last checked time', !['in_stock', 'low_stock'].includes(form.stockStatus) && 'in-stock status'].filter(Boolean) as string[];
 
   const importFromUrl = async () => {
     if (!form.sourceUrl) { const warning = 'Paste a Game or Makro product URL first.'; setMessage(warning); notify(warning, 'warning'); return; }

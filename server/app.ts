@@ -41,7 +41,7 @@ async function replaceProductImages(connection: PoolConnection, productId: numbe
 }
 
 async function assertProductPublishable(connection: PoolConnection, productId: number | string) {
-  const [rows] = await connection.execute(`SELECT p.title,p.category,p.model,p.pack_size,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,
+  const [rows] = await connection.execute(`SELECT p.title,p.category,p.model,p.pack_size,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,(SELECT COUNT(*) FROM product_images gallery WHERE gallery.product_id=p.id) AS image_count,
     o.id AS offer_id,o.source_url,o.current_cost,o.original_displayed_price,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,o.supplier_delivery_cost,
     s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.standard_markup_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
     FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
@@ -52,6 +52,7 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   if (!String(product.title || '').trim()) missing.push('product name');
   if (!String(product.category || '').trim()) missing.push('category');
   if (!String(product.image_url || '').startsWith('https://')) missing.push('public HTTPS product image');
+  if (Number(product.image_count || 0) < 3) missing.push('at least 3 genuine product images');
   if (!String(product.model || '').trim() && !String(product.pack_size || '').trim()) missing.push('exact model or pack size');
   if (!product.offer_id) missing.push('supplier offer');
   if (!String(product.source_url || '').trim()) missing.push('supplier URL');

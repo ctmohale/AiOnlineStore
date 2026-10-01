@@ -10,7 +10,7 @@ vi.mock('./db/pool.js', () => ({
       if (sql.startsWith('INSERT INTO price_history')) return [{ affectedRows: 1 }];
       if (sql.startsWith('UPDATE products SET selling_price=')) { db.sellingPrice = Number(params[0]); db.updates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('SELECT p.title,p.category')) return [[{
-        title: 'Test blender', category: 'Appliances', model: 'ABC', pack_size: '1', image_url: 'https://www.makro.co.za/image.jpg', selling_price: db.sellingPrice,
+        title: 'Test blender', category: 'Appliances', model: 'ABC', pack_size: '1', image_url: 'https://www.makro.co.za/image.jpg', image_count: 3, selling_price: db.sellingPrice,
         offer_id: 1, source_url: 'https://www.makro.co.za/product', current_cost: 800, original_displayed_price: 850,
         stock_status: 'in_stock', last_checked_at: new Date(), promotion_end_at: null, price_verified: true,
         supplier_delivery_cost: 0, estimated_customer_delivery_cost: 0, minimum_profit: null,

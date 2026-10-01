@@ -18,7 +18,7 @@ describe('product URL import', () => {
   it('extracts a review draft from public retailer structured data', async () => {
     const html = `<html><head><script type="application/ld+json">${JSON.stringify({
       '@type': 'Product', name: 'Test Kettle', brand: { name: 'Acme' }, model: 'KT-100', sku: 'GAME-44', gtin13: '6001234567890',
-      description: 'A useful test kettle.', image: ['https://cdn.example.test/kettle-front.jpg', { contentUrl: 'https://cdn.example.test/kettle-side.jpg' }], category: 'Appliances',
+      description: 'A useful test kettle.', image: ['https://cdn.example.test/kettle-front.jpg', { contentUrl: 'https://cdn.example.test/kettle-side.jpg' }, { url: 'https://cdn.example.test/kettle-back.jpg' }], category: 'Appliances',
       offers: { '@type': 'Offer', price: '499.99', availability: 'https://schema.org/InStock' },
     })}</script></head></html>`;
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })));
@@ -26,7 +26,7 @@ describe('product URL import', () => {
     const result = await importProductUrl('https://www.game.co.za/products/test-kettle');
 
     expect(result).toMatchObject({ title: 'Test Kettle', brand: 'Acme', model: 'KT-100', supplierSku: 'GAME-44', currentCost: 499.99, stockStatus: 'in_stock', retailer: 'Game', supplierPriceVerified: false });
-    expect(result.imageUrls).toEqual(['https://cdn.example.test/kettle-front.jpg', 'https://cdn.example.test/kettle-side.jpg']);
+    expect(result.imageUrls).toEqual(['https://cdn.example.test/kettle-front.jpg', 'https://cdn.example.test/kettle-side.jpg', 'https://cdn.example.test/kettle-back.jpg']);
   });
 
   it('reads Game price and stock when the product metadata has no Offer', async () => {
