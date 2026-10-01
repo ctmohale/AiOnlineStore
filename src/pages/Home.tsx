@@ -8,9 +8,9 @@ import { categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 
 const heroBenefits = [
-  { title: 'Fast nationwide delivery', copy: 'Clear delivery estimates and order updates from dispatch through arrival.', icon: Truck },
-  { title: 'Secure payment', copy: 'Protected payment links and no card details stored by Mzansi Mega Store.', icon: ShieldCheck },
-  { title: 'Easy online ordering', copy: 'Browse, add to cart and send your order request in a few simple steps.', icon: PackageCheck },
+  { label: 'Online shopping · Delivered nationwide', title: 'Find it. Order it.', accent: 'Get it delivered.', copy: 'Explore thousands of products for home, work and everyday life, then place your order in a few simple steps.', icon: PackageCheck, image: null, imageAlt: '', visualClass: '' },
+  { label: 'Nationwide delivery', title: 'Your order, on the move.', accent: 'Across South Africa.', copy: 'Clear estimates and order updates from dispatch to delivery.', icon: Truck, image: '/hero-delivery-truck.png', imageAlt: 'Mzansi Mega Store branded delivery truck', visualClass: 'truck' },
+  { label: 'Delivered to your door', title: 'Your order.', accent: 'Delivered with care.', copy: 'Friendly delivery and clear communication right through to the handover.', icon: ShieldCheck, image: '/hero-order-handover.png', imageAlt: 'Mzansi Mega Store courier handing a branded parcel to a customer', visualClass: 'handover' },
 ] as const;
 
 export default function Home() {
@@ -50,22 +50,25 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [benefitAutoplay]);
   const moveSlide = (direction: number) => setActiveSlide((current) => (current + direction + featuredProducts.length) % featuredProducts.length);
+  const moveHeroSlide = (direction: number) => setActiveBenefit((current) => (current + direction + heroBenefits.length) % heroBenefits.length);
   return <>
     <section className="hero">
-      <div className="hero-content">
-        <p className="kicker"><span>Local finds</span> · Straightforward shopping</p>
-        <h1>Good deals,<br /><em>checked properly.</em></h1>
-        <p className="hero-lead">Useful products at considered prices, with straightforward ordering and nationwide delivery.</p>
-        <div className="hero-actions"><Link className="button primary" to="/shop">Shop the latest finds <ArrowRight size={18} /></Link><a className="text-link" href="#how">See how it works</a></div>
-        <div className="hero-benefit-slider" role="region" aria-roledescription="carousel" aria-label="Shopping benefits">
-          <div className="hero-benefit-slide" key={benefit.title} aria-live="polite">
-            <span className="hero-benefit-icon"><BenefitIcon /></span>
-            <div className="hero-benefit-copy"><small>Why shop with us</small><strong>{benefit.title}</strong><p>{benefit.copy}</p></div>
-            <span className="hero-benefit-brand" aria-hidden="true"><i>M</i><b>zansi</b></span>
-          </div>
-          <div className="hero-benefit-controls">
-            <div>{heroBenefits.map((item, index) => <button type="button" className={index === activeBenefit ? 'active' : ''} onClick={() => setActiveBenefit(index)} aria-label={`Show ${item.title}`} aria-current={index === activeBenefit ? 'true' : undefined} key={item.title} />)}</div>
-            <button type="button" onClick={() => setBenefitAutoplay((playing) => !playing)} aria-label={benefitAutoplay ? 'Pause shopping benefits' : 'Play shopping benefits'}>{benefitAutoplay ? <Pause /> : <Play />}</button>
+      <div className="hero-content" role="region" aria-roledescription="carousel" aria-label="Store highlights">
+        <div className={`hero-message${benefit.image ? ' visual' : ''}`} key={benefit.title} aria-live="polite">
+          {benefit.image ? <div className={`hero-visual-stage ${benefit.visualClass}`}>
+            <img src={benefit.image} alt={benefit.imageAlt} decoding="async" />
+            <div className="hero-visual-caption"><p>{benefit.label}</p><h2>{benefit.title} <em>{benefit.accent}</em></h2><span>{benefit.copy}</span></div>
+          </div> : <>
+            <div className="hero-message-label"><span><BenefitIcon /></span><p>{benefit.label}</p></div>
+            <h1>{benefit.title}<br /><em>{benefit.accent}</em></h1>
+            <p className="hero-lead">{benefit.copy}</p>
+            <div className="hero-actions"><Link className="button primary" to="/shop">Start shopping <ArrowRight size={18} /></Link><a className="hero-secondary-link" href="#how">How delivery works</a></div>
+          </>}
+          <div className="hero-slide-controls">
+            <button type="button" onClick={() => moveHeroSlide(-1)} aria-label="Previous store highlight"><ChevronLeft /></button>
+            <div>{heroBenefits.map((item, index) => <button type="button" className={index === activeBenefit ? 'active' : ''} onClick={() => setActiveBenefit(index)} aria-label={`Show ${item.label}`} aria-current={index === activeBenefit ? 'true' : undefined} key={item.title} />)}</div>
+            <button type="button" onClick={() => moveHeroSlide(1)} aria-label="Next store highlight"><ChevronRight /></button>
+            <button type="button" onClick={() => setBenefitAutoplay((playing) => !playing)} aria-label={benefitAutoplay ? 'Pause store highlights' : 'Play store highlights'}>{benefitAutoplay ? <Pause /> : <Play />}</button>
           </div>
         </div>
       </div>
