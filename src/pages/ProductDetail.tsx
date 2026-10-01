@@ -6,6 +6,8 @@ import { useStore } from '../state/StoreContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useCatalog } from '../state/CatalogContext';
 import ProductVisual from '../components/ProductVisual';
+import ShareActions from '../components/ShareActions';
+import { setPageSeo } from '../lib/seo';
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -19,6 +21,12 @@ export default function ProductDetail() {
   const navigate = useNavigate();
   useEffect(() => { setImageIndex(0); setZoomed(false); }, [slug]);
   useEffect(() => { const close = (event: KeyboardEvent) => event.key === 'Escape' && setZoomed(false); window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, []);
+  useEffect(() => {
+    if (!product) return;
+    const canonical = `${window.location.origin}/product/${product.slug}`;
+    const description = (product.description || `Shop ${product.name} from Moya Market.`).slice(0, 220);
+    setPageSeo({ title: `${product.name} | Moya Market`, description, canonical, image: product.image, type: 'product', jsonLd: { '@context': 'https://schema.org', '@type': 'Product', name: product.name, description, image: product.images?.map((image) => image.url) || [product.image], sku: product.model || String(product.id), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: product.price.toFixed(2), availability: 'https://schema.org/InStock', url: canonical } } });
+  }, [product]);
   if (loading) return <div className="empty-state"><p>Loading product…</p></div>;
   if (!product) return <div className="empty-state"><h1>Product not found</h1><p>This product is not currently published.</p><Link to="/shop">Back to shop</Link></div>;
   const addToCart = () => { add(product, quantity); notify(`${quantity} × ${product.name} added to your cart.`, 'success', 'Added to cart'); navigate('/cart'); };
@@ -37,6 +45,7 @@ export default function ProductDetail() {
         <div className="spec-list">{Object.entries(product.specs).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}</div>
         <div className="buy-row"><div className="qty"><button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus /></button><span>{quantity}</span><button type="button" aria-label="Increase quantity" onClick={() => setQuantity(quantity + 1)}><Plus /></button></div><button type="button" className="button primary grow" onClick={addToCart}>Add to cart</button></div>
         <div className="detail-benefits"><span><Truck /> {settings ? product.price * quantity >= settings.freeDeliveryThreshold ? 'Free delivery' : `Free delivery from ${money(settings.freeDeliveryThreshold)}` : 'Delivery calculated at checkout'}</span><span><ShieldCheck /> Secure payment link after checks</span></div>
+        <div className="product-share"><h2>Share this product</h2><ShareActions url={`${window.location.origin}/product/${product.slug}`} title={product.name} text={`${product.name} for ${money(product.price)} at Moya Market.`} /></div>
       </div>
     </div>
     {zoomed && selectedImage && <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Full-size product image" onClick={() => setZoomed(false)}><button type="button" aria-label="Close full-size image"><X /></button><img src={selectedImage.url} alt={selectedImage.altText} onClick={(event) => event.stopPropagation()} /></div>}

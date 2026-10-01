@@ -11,6 +11,7 @@ import Account from './pages/Account';
 import TestPayment from './pages/TestPayment';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import CatalogShare from './pages/CatalogShare';
 import { FeedbackProvider } from './components/FeedbackProvider';
 import { CatalogProvider } from './state/CatalogContext';
 import './App.css';
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/shop" element={<Shop />} />
             <Route path="/product/:slug" element={<ProductDetail />} />
+            <Route path="/catalog" element={<CatalogShare />} />
             <Route path="/cart" element={<Cart />} />
             <Route path="/request" element={<Checkout />} />
             <Route path="/confirmation/:reference" element={<Confirmation />} />
