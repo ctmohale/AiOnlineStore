@@ -2,7 +2,7 @@ import { AlertTriangle, BadgeCheck, Clock3, FileText, Headphones, LockKeyhole, M
 import { Link, Navigate, useParams } from 'react-router-dom';
 
 const updated = '1 October 2026';
-const contact = <a href="mailto:info@beestack.co.za">info@beestack.co.za</a>;
+const contact = <a href="mailto:support@mzansimegastore.co.za">support@mzansimegastore.co.za</a>;
 const phone = <a href="tel:+27727512543">+27 72 751 2543</a>;
 const operator = <a href="https://www.beestack.co.za/" target="_blank" rel="noreferrer">BeeStack</a>;
 

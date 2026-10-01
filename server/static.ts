@@ -7,7 +7,7 @@ import { catalogueMeta, escapeHtml, injectHead, productMeta, type SeoProduct } f
 
 const app = express();
 const dist = path.join(process.cwd(), 'dist');
-const storeUrl = (process.env.PUBLIC_STORE_URL || process.env.FRONTEND_URL?.split(',')[0] || 'https://web-production-2cdfa.up.railway.app').replace(/\/$/, '');
+const storeUrl = (process.env.PUBLIC_STORE_URL || process.env.FRONTEND_URL?.split(',')[0] || 'https://mzansimegastore.co.za').replace(/\/$/, '');
 const apiBase = (process.env.PUBLIC_API_URL || process.env.VITE_API_URL || 'https://api-production-093e2.up.railway.app/api').replace(/\/$/, '');
 const template = () => fs.readFile(path.join(dist, 'index.html'), 'utf8');
 

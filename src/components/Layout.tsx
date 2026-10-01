@@ -49,9 +49,18 @@ export default function Layout() {
       <div><h4>Help &amp; policies</h4><Link to="/delivery-policy">Delivery policy</Link><Link to="/returns-refunds">Returns &amp; refunds</Link><Link to="/complaints">Complaints</Link><Link to="/account">Customer login</Link><Link to="/admin/login">Admin login</Link></div>
       <div><h4>Trust &amp; legal</h4><Link to="/payment-security">Payment security</Link><Link to="/privacy">Privacy notice</Link><Link to="/terms">Terms of sale</Link><p>Secure online shopping with nationwide delivery and local customer support.</p></div>
       <div className="footer-bottom">
-        <span>© 2026 BEESTACK (PTY) LTD, trading as Mzansi Mega Store · South African online store</span>
-        <span>Prices shown in ZAR and include VAT where applicable</span>
-        <a className="footer-payment-provider" href="https://www.yoco.com/za/online-payment/" target="_blank" rel="noreferrer" aria-label="Payments supported by Yoco"><small>Payments supported by</small><img src="/yoco-logo.svg" alt="Yoco" /></a>
+        <div className="footer-legal"><span>© 2026 BEESTACK (PTY) LTD, trading as Mzansi Mega Store · South African online store</span><span>Prices shown in ZAR and include VAT where applicable</span></div>
+        <div className="footer-payment-provider" aria-label="Supported payment methods">
+          <div className="footer-payment-heading"><small>Supported payment methods</small><span>Payment links via <img src="/yoco-logo.svg" alt="Yoco" /> or <b>Paystack</b></span></div>
+          <div className="footer-payment-methods">
+            <img className="capitec-pay" src="/payment-capitec-pay.png" alt="Capitec Pay" />
+            <img src="/payment-visa.svg" alt="Visa" />
+            <img src="/payment-mastercard.svg" alt="Mastercard" />
+            <img src="/payment-amex.svg" alt="American Express" />
+            <img src="/payment-apple-pay.svg" alt="Apple Pay" />
+            <img src="/payment-google-pay.svg" alt="Google Pay" />
+          </div>
+        </div>
       </div>
     </footer>
   </div>;
