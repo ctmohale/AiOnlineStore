@@ -112,6 +112,14 @@ const stockFromPage = (html: string) => {
   return 'unknown';
 };
 
+const imageValues = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(imageValues);
+  if (typeof value === 'string') return [value];
+  if (!value || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  return [record.url, record.contentUrl, record.thumbnailUrl].flatMap(imageValues);
+};
+
 export async function importProductUrl(rawUrl: string) {
   const requestedUrl = allowedUrl(rawUrl);
   const { html, finalUrl } = await fetchPublicHtml(requestedUrl);
@@ -123,10 +131,12 @@ export async function importProductUrl(rawUrl: string) {
   const offer = offerValue && typeof offerValue === 'object' ? offerValue as Record<string, unknown> : {};
   const brandValue = product?.brand;
   const brand = typeof brandValue === 'object' && brandValue ? String((brandValue as Record<string, unknown>).name || '') : String(brandValue || '');
-  const images = Array.isArray(product?.image) ? product.image : [product?.image];
+  const imageUrls = [...new Set([...imageValues(product?.image), metaValue(html, 'og:image')]
+    .map((value) => highResolutionImageUrl(String(value || '')))
+    .filter((value) => value.startsWith('https://'))) ].slice(0, 20);
   const title = plainText(product?.name || metaValue(html, 'og:title'));
   const description = plainText(product?.description || metaValue(html, 'og:description'));
-  const imageUrl = highResolutionImageUrl(String(images.find(Boolean) || metaValue(html, 'og:image') || ''));
+  const imageUrl = imageUrls[0] || '';
   const price = numberValue(offer.price ?? offer.lowPrice ?? product?.price ?? metaValue(html, 'product:price:amount'));
   const model = plainText(product?.model || product?.mpn || product?.sku || '');
   const sku = plainText(product?.sku || '');
@@ -135,7 +145,7 @@ export async function importProductUrl(rawUrl: string) {
   if (!extracted) throw Object.assign(new Error('No public product metadata was found. Enter the details manually and verify them against the listing.'), { status: 422 });
   return {
     title, category: plainText(product?.category || 'Uncategorised'), brand, model, barcode, packSize: '1 unit', description,
-    imageUrl, retailer: retailerHosts.get(finalUrl.hostname.toLowerCase()) || '', sourceUrl: finalUrl.toString(), supplierSku: sku,
+    imageUrl, imageUrls, retailer: retailerHosts.get(finalUrl.hostname.toLowerCase()) || '', sourceUrl: finalUrl.toString(), supplierSku: sku,
     currentCost: price, originalDisplayedPrice: null, stockStatus: stockFromAvailability(offer.availability) === 'unknown' ? stockFromPage(html) : stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
     promotionStartAt: null, promotionEndAt: null, promotionTerms: '', quantityLimit: '', supplierDeliveryCost: 0,
     sourceConfidence: product ? 'high' : 'medium', supplierPriceVerified: false, priceUpdatedAt: price ? new Date().toISOString() : null,

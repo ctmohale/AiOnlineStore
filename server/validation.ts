@@ -24,6 +24,15 @@ export const paymentLinkSchema = z.object({
   provider: z.enum(['yoco', 'paystack', 'other']), paymentLink: z.url().max(1500), externalReference: z.string().trim().min(2).max(255),
 });
 
+export const reviewChecklistSchema = z.object({
+  exactProductMatch: z.literal(true),
+  supplierPriceChecked: z.literal(true),
+  stockChecked: z.literal(true),
+  promotionDatesChecked: z.literal(true),
+  imagesChecked: z.literal(true),
+  descriptionChecked: z.literal(true),
+});
+
 export const productReviewSchema = z.object({
   status: z.enum(['draft', 'pending_review', 'published', 'paused', 'unavailable']),
   sellingPrice: z.number().positive(),
@@ -33,6 +42,7 @@ export const productReviewSchema = z.object({
   packaging: z.number().nonnegative().default(0),
   paymentFees: z.number().nonnegative().default(0),
   advertisingCost: z.number().nonnegative().default(0),
+  checklist: reviewChecklistSchema,
 });
 
 export const pricingSettingsSchema = z.object({
@@ -143,6 +153,7 @@ const productFields = {
   reviewNotes: optionalText(5000),
   specifications: z.record(z.string().max(100), z.string().max(500)).optional(),
   imageUrl: z.union([z.url().max(1000), z.literal(''), z.null()]).optional(),
+  imageUrls: z.array(z.url().max(1000).refine((value) => value.startsWith('https://'), 'Use HTTPS image links')).max(20).optional(),
   supplier: supplierSchema,
   status: z.enum(['draft', 'pending_review', 'published', 'paused']).optional(),
 };

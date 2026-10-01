@@ -25,6 +25,13 @@ async function recheckRetailerOffers() {
         if (!locked) return;
         const changed = locked.current_cost == null || Number(locked.current_cost) !== imported.currentCost;
         const expired = locked.promotion_end_at && new Date(locked.promotion_end_at).getTime() <= Date.now();
+        const [imageRows] = await connection.execute('SELECT url FROM product_images WHERE product_id=? ORDER BY sort_order,id', [row.product_id]);
+        const existingImages = new Set((imageRows as { url: string }[]).map((image) => image.url));
+        let nextImageOrder = existingImages.size;
+        for (const url of imported.imageUrls) if (!existingImages.has(url) && nextImageOrder < 20) {
+          await connection.execute("INSERT INTO product_images (product_id,url,alt_text,sort_order) SELECT id,?,CONCAT(title,' - image ',?),? FROM products WHERE id=?", [url, nextImageOrder + 1, nextImageOrder, row.product_id]);
+          existingImages.add(url); nextImageOrder += 1;
+        }
         await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=CASE WHEN ? THEN NULL ELSE COALESCE(?,original_displayed_price) END,promotion_end_at=CASE WHEN ? THEN NULL ELSE promotion_end_at END,stock_status=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Daily URL recheck found a supplier price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, Boolean(expired), imported.originalDisplayedPrice, Boolean(expired), imported.stockStatus, imported.sourceConfidence, changed ? false : Boolean(locked.price_verified), changed, changed, row.id]);
         if (changed) {
           await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) SELECT id,?,?,selling_price,'Daily URL recheck found a supplier price change' FROM products WHERE id=?", [row.id, imported.currentCost, row.product_id]);

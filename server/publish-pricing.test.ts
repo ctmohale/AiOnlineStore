@@ -6,7 +6,7 @@ vi.mock('./db/pool.js', () => ({
   pool: { execute: vi.fn() },
   withTransaction: async (callback: (connection: { execute: (sql: string, params: unknown[]) => Promise<unknown[]> }) => Promise<unknown>) => callback({
     execute: async (sql: string, params: unknown[]) => {
-      if (sql.startsWith('SELECT p.selling_price,o.id AS offer_id')) return [[{ selling_price: db.sellingPrice, offer_id: 1, current_cost: 800 }]];
+      if (sql.startsWith('SELECT p.selling_price,p.status')) return [[{ selling_price: db.sellingPrice, status: 'pending_review', offer_id: 1, current_cost: 800 }]];
       if (sql.startsWith('INSERT INTO price_history')) return [{ affectedRows: 1 }];
       if (sql.startsWith('UPDATE products SET selling_price=')) { db.sellingPrice = Number(params[0]); db.updates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('SELECT p.title,p.category')) return [[{
@@ -17,6 +17,7 @@ vi.mock('./db/pool.js', () => ({
         global_minimum_profit: 0, minimum_margin_percent: 0, standard_markup_percent: 7, free_delivery_threshold: 500, standard_customer_delivery: 89, supplier_stale_hours: 24,
       }]];
       if (sql.startsWith('UPDATE products SET status=')) return [{ affectedRows: 1 }];
+      if (sql.startsWith('INSERT INTO product_reviews')) return [{ affectedRows: 1 }];
       throw new Error(`Unexpected query: ${sql}`);
     },
   }),
@@ -41,7 +42,7 @@ describe('publish pricing', () => {
   it('rejects an arbitrary price and accepts the capped promotion price', async () => {
     const review = (sellingPrice: number) => fetch(`${base}/api/admin/products/5/review`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signAdminToken({ sub: '1', email: 'admin@example.test', role: 'admin' })}` },
-      body: JSON.stringify({ status: 'published', sellingPrice }),
+      body: JSON.stringify({ status: 'published', sellingPrice, checklist: { exactProductMatch: true, supplierPriceChecked: true, stockChecked: true, promotionDatesChecked: true, imagesChecked: true, descriptionChecked: true } }),
     });
     const wrong = await review(920);
     expect(wrong.status).toBe(422);
