@@ -29,6 +29,20 @@ describe('product URL import', () => {
     expect(result.imageUrls).toEqual(['https://cdn.example.test/kettle-front.jpg', 'https://cdn.example.test/kettle-side.jpg', 'https://cdn.example.test/kettle-back.jpg']);
   });
 
+  it('collects distinct gallery images from the main product section only', async () => {
+    const product = { '@type': 'Product', name: 'Test TV', image: 'https://cdn.example.test/product/tv-front.jpg', offers: { price: 4999, availability: 'https://schema.org/InStock' } };
+    const html = `<html><head><script type="application/ld+json">${JSON.stringify(product)}</script></head><body>
+      <img src="https://cdn.example.test/product/tv-side.jpg"><script>{"gallery":"https:\\/\\/cdn.example.test\\/product\\/tv-back.webp"}</script>
+      <h2>Similar Products</h2><img src="https://cdn.example.test/product/unrelated-tv.jpg"></body></html>`;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })));
+    const result = await importProductUrl('https://www.makro.co.za/product/test-tv');
+    expect(result.imageUrls).toEqual([
+      'https://cdn.example.test/product/tv-front.jpg',
+      'https://cdn.example.test/product/tv-side.jpg',
+      'https://cdn.example.test/product/tv-back.webp',
+    ]);
+  });
+
   it('reads Game price and stock when the product metadata has no Offer', async () => {
     const html = `<html><head><script type="application/ld+json">${JSON.stringify({ '@type': 'Product', name: 'Goldair Cooker', sku: '850015830', price: 'R810.00' })}</script></head><body><h1>Goldair Cooker</h1><p>Only 2 left in stock</p><button>Add</button></body></html>`;
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, { status: 200, headers: { 'content-type': 'text/html' } })));
