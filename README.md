@@ -53,7 +53,7 @@ Create one Railway project with a MySQL service and three services pointing to t
 2. **api** — build `npm ci && npm run build:api`; pre-deploy `npm run db:migrate`; start `npm run start:api`. Healthcheck path is `/health`.
 3. **worker** — build `npm ci && npm run build:api`; start `npm run start:worker`. Do not expose a public domain.
 
-Reference Railway's MySQL `DATABASE_URL` into both API and worker. Add `JWT_SECRET`, `FRONTEND_URL`, pricing values, admin seed credentials, and optionally a permitted `RETAILER_FEED_URL`. When both `ADMIN_EMAIL` and `ADMIN_PASSWORD` are present, the API updates the administrator login during deployment. Remove `ADMIN_PASSWORD` after the reset has deployed so a later deployment cannot restore an old password.
+Reference Railway's MySQL `DATABASE_URL` into both API and worker. Add `JWT_SECRET`, `FRONTEND_URL`, pricing values, admin seed credentials, and optionally a permitted `RETAILER_FEED_URL`. Set `RUN_SEED_ON_START=true` only for an intentional administrator reset, together with `ADMIN_EMAIL` and an `ADMIN_PASSWORD` of at least 12 characters. Remove the flag and password after the reset deploys.
 
 ## Launch boundaries
 
