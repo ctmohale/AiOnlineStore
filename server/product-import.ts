@@ -129,6 +129,17 @@ const imageValues = (value: unknown): string[] => {
   return [record.url, record.contentUrl, record.thumbnailUrl].flatMap(imageValues);
 };
 
+const pageProductImages = (html: string) => {
+  const productSection = html.split(/Similar Products|You may also like|Recommended for you|Bought Together/i)[0]
+    .replace(/\\u002f/gi, '/').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  const matches = productSection.match(/https:\/\/[^\s"'<>]+?\.(?:jpe?g|png|webp)(?:\?[^\s"'<>]*)?/gi) || [];
+  return matches.filter((value) => {
+    const lower = value.toLowerCase();
+    return !/(?:logo|favicon|icon|sprite|banner|placeholder|payment|badge)/.test(lower)
+      && /(?:asset|image|product|catalog|media|cdn)/.test(lower);
+  });
+};
+
 export async function importProductUrl(rawUrl: string) {
   const requestedUrl = allowedUrl(rawUrl);
   const { html, finalUrl } = await fetchPublicHtml(requestedUrl);
@@ -140,7 +151,7 @@ export async function importProductUrl(rawUrl: string) {
   const offer = offerValue && typeof offerValue === 'object' ? offerValue as Record<string, unknown> : {};
   const brandValue = product?.brand;
   const brand = typeof brandValue === 'object' && brandValue ? String((brandValue as Record<string, unknown>).name || '') : String(brandValue || '');
-  const imageUrls = [...new Set([...imageValues(product?.image), metaValue(html, 'og:image')]
+  const imageUrls = [...new Set([...imageValues(product?.image), metaValue(html, 'og:image'), ...pageProductImages(html)]
     .map((value) => highResolutionImageUrl(String(value || '')))
     .filter((value) => value.startsWith('https://'))) ].slice(0, 20);
   const title = plainText(product?.name || metaValue(html, 'og:title'));

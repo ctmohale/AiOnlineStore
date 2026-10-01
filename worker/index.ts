@@ -33,7 +33,7 @@ async function recheckRetailerOffers() {
           existingImages.add(url); nextImageOrder += 1;
         }
         await connection.execute('UPDATE products SET gallery_checked_at=UTC_TIMESTAMP(),gallery_image_count=? WHERE id=?', [existingImages.size, row.product_id]);
-        await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=CASE WHEN ? THEN NULL ELSE COALESCE(?,original_displayed_price) END,promotion_end_at=CASE WHEN ? THEN NULL ELSE promotion_end_at END,stock_status=?,fulfilment_type=?,fulfilment_signal=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Daily URL recheck found a supplier price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, Boolean(expired), imported.originalDisplayedPrice, Boolean(expired), imported.stockStatus, imported.fulfilmentType, imported.fulfilmentSignal, imported.sourceConfidence, changed ? false : Boolean(locked.price_verified), changed, changed, row.id]);
+        await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=CASE WHEN ? THEN NULL ELSE COALESCE(?,original_displayed_price) END,promotion_end_at=CASE WHEN ? THEN NULL ELSE promotion_end_at END,stock_status=?,fulfilment_type=?,fulfilment_signal=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Daily URL recheck found a supplier price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, Boolean(expired), imported.originalDisplayedPrice, Boolean(expired), imported.stockStatus, imported.fulfilmentType, imported.fulfilmentSignal, imported.sourceConfidence, changed ? false : imported.sourceConfidence === 'high', changed, changed, row.id]);
         if (changed) {
           await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) SELECT id,?,?,selling_price,'Daily URL recheck found a supplier price change' FROM products WHERE id=?", [row.id, imported.currentCost, row.product_id]);
           await connection.execute("UPDATE products SET status='pending_review',review_reason='Supplier price changed during daily URL recheck' WHERE id=?", [row.product_id]);
@@ -54,7 +54,7 @@ async function backfillProductGalleries() {
     WHERE p.deleted_at IS NULL AND o.source_url<>''
       AND (p.gallery_image_count<3 OR (SELECT COUNT(*) FROM product_images i WHERE i.product_id=p.id)<3)
       AND (p.gallery_checked_at IS NULL OR p.gallery_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY))
-    ORDER BY p.gallery_checked_at IS NULL DESC,p.updated_at DESC LIMIT 120`);
+    ORDER BY (p.status='published') DESC,p.selling_price ASC,p.gallery_checked_at IS NULL DESC,p.updated_at DESC LIMIT 300`);
   let completed = 0, enriched = 0;
   for (const row of rows as { id: number; source_url: string }[]) {
     if (!isSupportedProductUrl(row.source_url)) continue;
@@ -88,12 +88,12 @@ async function repriceVerifiedOffers() {
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)
       AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1200`);
   for (const row of rows as { id: number }[]) await withTransaction(async (connection) => {
-    const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
+    const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,p.gallery_image_count,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
       FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 WHERE p.id=? FOR UPDATE`, [row.id]);
     const item = (lockedRows as Record<string, unknown>[])[0];
     if (!item || !item.price_verified || !['in_stock','low_stock'].includes(String(item.stock_status)) || new Date(item.last_checked_at as Date).getTime() < Date.now() - Number(item.supplier_stale_hours) * 3_600_000 || (item.promotion_end_at && new Date(item.promotion_end_at as Date).getTime() <= Date.now())) return;
-    if (!String(item.image_url || '').startsWith('https://')) {
-      await connection.execute("UPDATE products SET status='pending_review',review_reason='Product image needs review' WHERE id=?", [row.id]);
+    if (!String(item.image_url || '').startsWith('https://') || Number(item.gallery_image_count || 0) < 3) {
+      await connection.execute("UPDATE products SET status='paused',review_reason='gallery_incomplete' WHERE id=?", [row.id]);
       return;
     }
     const { sellingPrice } = recommendedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent));
@@ -108,17 +108,17 @@ async function repriceVerifiedOffers() {
       await connection.execute('UPDATE products SET selling_price=? WHERE id=?', [sellingPrice, row.id]);
       await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) VALUES (?,?,?,?,'Source pricing rule applied after supplier check')", [row.id, Number(item.offer_id), Number(item.current_cost), sellingPrice]);
     }
-    if (['paused','pending_review'].includes(String(item.status)) && ['supplier_data_stale','Supplier stock changed during daily URL recheck','New price does not cover estimated costs'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
+    if (['paused','pending_review'].includes(String(item.status)) && ['supplier_data_stale','Supplier stock changed during daily URL recheck','New price does not cover estimated costs','gallery_incomplete','supplier_price_unverified','catalogue_quality_gate'].includes(String(item.review_reason))) await connection.execute("UPDATE products SET status='published',review_reason=NULL WHERE id=?", [row.id]);
   });
 }
 
 async function dailyRun() {
   if (process.env.RETAILER_FEED_URL) await ingest(new PermittedRetailerFeedAdapter(process.env.RETAILER_FEED_URL));
   else console.log('No RETAILER_FEED_URL configured; skipping feed collection. CSV imports remain available via the CLI.');
-  await recheckRetailerOffers();
   await backfillProductGalleries();
+  await recheckRetailerOffers();
   await repriceVerifiedOffers();
-  if (pool) await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.status='paused',p.review_reason=CASE WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' WHEN o.stock_status='out_of_stock' THEN 'supplier_out_of_stock' ELSE 'supplier_data_stale' END WHERE p.status='published' AND (o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status='out_of_stock' OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR))");
+  if (pool) await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.status='paused',p.review_reason=CASE WHEN p.gallery_image_count<3 THEN 'gallery_incomplete' WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' WHEN o.stock_status='out_of_stock' THEN 'supplier_out_of_stock' ELSE 'supplier_data_stale' END WHERE p.status='published' AND (p.gallery_image_count<3 OR o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status='out_of_stock' OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR))");
 }
 
 async function promotionEndRecheck() {
