@@ -70,7 +70,7 @@ app.get('/api/products', async (request, response, next) => {
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 1200`, params);
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
     response.json(rows);
   } catch (error) { next(error); }
 });
