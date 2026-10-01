@@ -31,7 +31,7 @@ export default function Shop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   return <section className="section shop-page">
-    <div className="shop-title"><p className="kicker">Current collection</p><h1>Useful things, <em>fairly priced.</em></h1><p>Every listing is reviewed before it goes live. We check again before asking you to pay.</p></div>
+    <div className="shop-title"><p className="kicker">Current collection</p><h1>Useful things, <em>fairly priced.</em></h1><p>Clear product information and straightforward ordering from cart to delivery.</p></div>
     <div className="shop-toolbar">
       <label className="shop-search"><Search size={18} /><input value={query} onChange={(event) => update('q', event.target.value)} placeholder="Search the collection" /></label>
       <label className="category-filter"><SlidersHorizontal size={18} /><span>Category</span><select value={category} onChange={(event) => update('category', event.target.value)}>{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>

@@ -11,6 +11,8 @@ export const CATEGORY_GROUPS = [
   { name: 'Office & Stationery', keywords: ['office supplies','office basics','office suite','notice board','planning','learning & development'] },
 ] as const;
 
+export const CATEGORY_NAMES = [...CATEGORY_GROUPS.map(({ name }) => name), 'More Categories'] as const;
+
 const comparable = (value: string) => value.toLowerCase().replace(/[-_/]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 export const categoryGroupFor = (category: string) => {
@@ -29,7 +31,7 @@ export const categorySummaries = (products: Product[]) => {
     const group = categoryGroupFor(product.category);
     counts.set(group, (counts.get(group) || 0) + 1);
   }
-  return [...CATEGORY_GROUPS.map(({ name }) => name), 'More Categories']
+  return CATEGORY_NAMES
     .map((name) => ({ name, count: counts.get(name) || 0 }))
     .filter(({ count }) => count > 0);
 };

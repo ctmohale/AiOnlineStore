@@ -19,7 +19,7 @@ export default function ProductCard({ product }: { product: Product }) {
       <Link to={`/product/${product.slug}`}><h3>{product.name}</h3></Link>
       <p className="product-model">{product.model}</p>
       <div className="price-row"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
-      <div className="stock-line"><span></span> {product.supplierCheckRequired ? 'Supplier recheck before quote' : 'Stock confirmed again before payment'}</div>
+      <div className="stock-line"><span></span> Available to order</div>
       <button type="button" className="quick-add" onClick={() => { add(product); notify(`${product.name} was added to your cart.`, 'success', 'Added to cart'); }}><Plus size={17} /> Add to cart</button>
     </div>
   </article>;

@@ -12,6 +12,7 @@ main { min-height:60vh; }
 .announcement>svg { width:14px; margin-right:7px; color:#ef8a6f; }
 .site-header { height:80px; display:flex; align-items:center; gap:26px; padding:0 max(4vw,24px); border-bottom:1px solid rgba(22,57,47,.12); background:rgba(250,247,240,.96); position:sticky; top:0; z-index:20; backdrop-filter:blur(14px); }
 .brand { display:inline-flex; align-items:center; gap:7px; font-size:25px; font-weight:700; letter-spacing:-1.4px; white-space:nowrap; }
+.brand .brand-mark { margin-right:-5px; }
 .brand small { font-size:9px; text-transform:uppercase; letter-spacing:2px; font-weight:700; align-self:flex-end; margin:0 0 13px -3px; color:var(--coral); }
 .brand-mark { width:31px; height:31px; border-radius:50% 50% 44% 56%; display:grid; place-items:center; background:var(--coral); color:white; font-family:Georgia,serif; font-style:italic; }
 .brand.light { color:white; }

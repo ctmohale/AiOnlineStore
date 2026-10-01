@@ -11,7 +11,7 @@ const safeJson = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003
 export function productMeta(product: SeoProduct, storeUrl: string) {
   const canonical = absoluteUrl(storeUrl, `/product/${encodeURIComponent(product.slug)}`);
   const image = product.images?.[0]?.url || product.image_url || absoluteUrl(storeUrl, '/mzansi-mega-store-card.png');
-  const description = String(product.description || `Shop ${product.title} from Mzansi Mega Store. Stock and supplier price are checked before payment.`).replace(/\s+/g, ' ').trim().slice(0, 220);
+  const description = String(product.description || `Shop ${product.title} from Mzansi Mega Store with nationwide South African delivery.`).replace(/\s+/g, ' ').trim().slice(0, 220);
   const title = `${product.title} | Mzansi Mega Store`;
   const jsonLd = { '@context': 'https://schema.org', '@type': 'Product', name: product.title, description, image: (product.images?.map((item) => item.url).filter(Boolean) || [image]), sku: product.model || String(product.id), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, url: canonical, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: Number(product.selling_price).toFixed(2), availability: 'https://schema.org/InStock', url: canonical, seller: { '@type': 'Organization', name: 'Mzansi Mega Store' } } };
   return `<title>${escapeHtml(title)}</title>
@@ -29,7 +29,7 @@ export function catalogueMeta(products: SeoProduct[], title: string, storeUrl: s
   const cleanTitle = title.trim().slice(0, 90) || 'Selected deals from Mzansi Mega Store';
   const canonical = absoluteUrl(storeUrl, requestPath);
   const image = products[0]?.images?.[0]?.url || products[0]?.image_url || absoluteUrl(storeUrl, '/mzansi-mega-store-card.png');
-  const description = products.length ? `${products.length} selected products: ${products.slice(0, 4).map((item) => item.title).join(', ')}. Stock and price checked before payment.` : 'Browse selected products from Mzansi Mega Store.';
+  const description = products.length ? `${products.length} selected products from Mzansi Mega Store: ${products.slice(0, 4).map((item) => item.title).join(', ')}.` : 'Browse selected products from Mzansi Mega Store.';
   const list = { '@context': 'https://schema.org', '@type': 'ItemList', name: cleanTitle, url: canonical, numberOfItems: products.length, itemListElement: products.map((product, index) => ({ '@type': 'ListItem', position: index + 1, url: absoluteUrl(storeUrl, `/product/${encodeURIComponent(product.slug)}`), name: product.title })) };
   return `<title>${escapeHtml(cleanTitle)} | Mzansi Mega Store</title><meta name="description" content="${escapeHtml(description)}" /><link rel="canonical" href="${escapeHtml(canonical)}" />
 <meta property="og:type" content="website" /><meta property="og:site_name" content="Mzansi Mega Store" /><meta property="og:title" content="${escapeHtml(cleanTitle)}" /><meta property="og:description" content="${escapeHtml(description)}" /><meta property="og:url" content="${escapeHtml(canonical)}" /><meta property="og:image" content="${escapeHtml(image)}" />

@@ -31,7 +31,7 @@ export default function ProductDetail() {
   if (!product) return <div className="empty-state"><h1>Product not found</h1><p>This product is not currently published.</p><Link to="/shop">Back to shop</Link></div>;
   const addToCart = () => { add(product, quantity); notify(`${quantity} × ${product.name} added to your cart.`, 'success', 'Added to cart'); navigate('/cart'); };
   const images = product.images?.length ? product.images : product.image ? [{ url: product.image, altText: product.name }] : [];
-  const estimate = product.deliveryEstimate || { fulfilmentLabel: 'Supplier fulfilment being confirmed', supplierMinDays: 2, supplierMaxDays: 6, processingDays: 1, summary: '6–12 business days' };
+  const estimate = product.deliveryEstimate || { fulfilmentLabel: 'Delivery timing being prepared', supplierMinDays: 2, supplierMaxDays: 6, processingDays: 1, summary: '6–12 business days' };
   const selectedImage = images[Math.min(imageIndex, images.length - 1)];
   const moveImage = (step: number) => setImageIndex((current) => (current + step + images.length) % images.length);
   return <section className="section detail-page">
@@ -41,8 +41,8 @@ export default function ProductDetail() {
       <div className="detail-copy">
         <p className="eyebrow">{product.category} · {product.brand}</p><h1>{product.name}</h1><p className="detail-model">{product.model} · {product.packSize}</p>
         <div className="detail-price"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
-        <div className="availability"><CheckCircle2 /><div><strong>{product.supplierCheckRequired ? 'Supplier confirmation required' : 'Stock checked—then confirmed again before payment'}</strong><span>Submit a request and we'll verify the supplier's current checkout price and availability before sending any payment link.</span></div></div>
-        <div className="delivery-estimate-card"><Clock3 /><div><strong>Estimated delivery: {estimate.summary}</strong><span>{estimate.fulfilmentLabel} via {product.retailer || 'the listed supplier'}. Supplier sourcing {estimate.supplierMinDays}–{estimate.supplierMaxDays} days, order processing {estimate.processingDays} day, then courier delivery. We confirm the date before payment.</span></div></div>
+        <div className="availability"><CheckCircle2 /><div><strong>Available to order</strong><span>Add this product to your cart and continue to secure checkout.</span></div></div>
+        <div className="delivery-estimate-card"><Clock3 /><div><strong>Estimated delivery: {estimate.summary}</strong><span>Item preparation {estimate.supplierMinDays}–{estimate.supplierMaxDays} days, order processing {estimate.processingDays} day, then courier delivery.</span></div></div>
         <p className="detail-description">{product.description}</p>
         <div className="spec-list">{Object.entries(product.specs).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value}</strong></div>)}</div>
         <div className="buy-row"><div className="qty"><button type="button" aria-label="Decrease quantity" onClick={() => setQuantity(Math.max(1, quantity - 1))}><Minus /></button><span>{quantity}</span><button type="button" aria-label="Increase quantity" onClick={() => setQuantity(quantity + 1)}><Plus /></button></div><button type="button" className="button primary grow" onClick={addToCart}>Add to cart</button></div>
