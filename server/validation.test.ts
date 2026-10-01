@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema } from './validation';
+import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema } from './validation';
 
 describe('shipment tracking', () => {
   it('requires a courier and number, and rejects unsafe tracking links', () => {
@@ -43,5 +43,18 @@ describe('supplier item verification', () => {
 
   it('allows an unavailable result without inventing a price', () => {
     expect(supplierItemVerificationSchema.safeParse({ status: 'unavailable', verifiedSupplierUnitCost: null, notes: 'No stock' }).success).toBe(true);
+  });
+});
+
+describe('cancellation and return case validation', () => {
+  it('requires a meaningful reason when opening a case', () => {
+    expect(supportCaseCreateSchema.safeParse({ caseType: 'cancellation', reasonCategory: 'changed_mind', reasonDetails: '' }).success).toBe(false);
+    expect(supportCaseCreateSchema.safeParse({ caseType: 'return', reasonCategory: 'defective', reasonDetails: 'Unit does not power on', evidenceUrls: ['https://example.test/photo.jpg'] }).success).toBe(true);
+  });
+
+  it('requires the amount before resolving a refund', () => {
+    const base = { status: 'resolved', resolution: 'refund' };
+    expect(supportCaseUpdateSchema.safeParse({ ...base, refundAmount: null }).success).toBe(false);
+    expect(supportCaseUpdateSchema.safeParse({ ...base, refundAmount: 499 }).success).toBe(true);
   });
 });
