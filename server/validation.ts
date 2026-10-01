@@ -36,7 +36,7 @@ export const productReviewSchema = z.object({
 });
 
 export const pricingSettingsSchema = z.object({
-  minimumProfit: z.number().nonnegative(), minimumMarginPercent: z.number().min(0).max(100), freeDeliveryThreshold: z.number().nonnegative(), standardCustomerDelivery: z.number().nonnegative(), supplierStaleHours: z.number().int().min(1).max(168),
+  minimumProfit: z.number().nonnegative(), minimumMarginPercent: z.number().min(0).max(100), standardMarkupPercent: z.number().min(5).max(10), freeDeliveryThreshold: z.number().nonnegative(), standardCustomerDelivery: z.number().nonnegative(), supplierStaleHours: z.number().int().min(1).max(168),
 });
 
 export const orderStatusSchema = z.object({

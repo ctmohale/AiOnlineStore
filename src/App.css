@@ -432,7 +432,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .card-heading .product-actions .outline-button:hover { border-color:var(--forest); background:#f1f5f2; }
 .card-heading .product-actions button:focus-visible { outline:3px solid rgba(232,105,74,.32); outline-offset:2px; }
 .card-heading .product-actions button svg { width:16px; height:16px; }
-.product-table-grid { grid-template-columns:1.8fr .65fr .65fr .72fr .65fr .7fr 1.15fr; }
+.product-table-grid { grid-template-columns:1.65fr 1.1fr .65fr .72fr .65fr 1fr 1.15fr; }
 .customer-table-grid { grid-template-columns:1.6fr .8fr .45fr .65fr .65fr .55fr; }
 .customer-search { min-height:44px; padding:0 12px; border:1px solid #d9ddda; background:#fff; display:flex; align-items:center; gap:7px; }
 .customer-search svg { width:15px; }

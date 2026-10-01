@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
-import { calculateProfit, passesPricingRules } from '../shared/domain.js';
+import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '../shared/domain.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
@@ -25,16 +25,17 @@ const reference = () => `MY-${new Date().getFullYear()}-${crypto.randomBytes(3).
 const productSlug = (title: string, model: string) => `${title}-${model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 170) + `-${crypto.randomBytes(3).toString('hex')}`;
 
 async function assertProductPublishable(connection: PoolConnection, productId: number | string) {
-  const [rows] = await connection.execute(`SELECT p.title,p.category,p.model,p.pack_size,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,
-    o.id AS offer_id,o.source_url,o.current_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,o.supplier_delivery_cost,
-    s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.supplier_stale_hours
-    FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
+  const [rows] = await connection.execute(`SELECT p.title,p.category,p.model,p.pack_size,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,i.url AS image_url,
+    o.id AS offer_id,o.source_url,o.current_cost,o.original_displayed_price,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,o.supplier_delivery_cost,
+    s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.standard_markup_percent,s.supplier_stale_hours
+    FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
     JOIN pricing_settings s ON s.id=1 WHERE p.id=? AND p.deleted_at IS NULL FOR UPDATE`, [productId]);
   const product = (rows as (RowDataPacket & Record<string, unknown>)[])[0];
   if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
   const missing: string[] = [];
   if (!String(product.title || '').trim()) missing.push('product name');
   if (!String(product.category || '').trim()) missing.push('category');
+  if (!String(product.image_url || '').startsWith('https://')) missing.push('public HTTPS product image');
   if (!String(product.model || '').trim() && !String(product.pack_size || '').trim()) missing.push('exact model or pack size');
   if (!product.offer_id) missing.push('supplier offer');
   if (!String(product.source_url || '').trim()) missing.push('supplier URL');
@@ -45,8 +46,10 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   const now = Date.now();
   if (now - new Date(product.last_checked_at as string | Date).getTime() > Number(product.supplier_stale_hours) * 3_600_000) throw Object.assign(new Error('The supplier check is stale; recheck it before publishing'), { status: 422 });
   if (product.promotion_end_at && new Date(product.promotion_end_at as string | Date).getTime() <= now) throw Object.assign(new Error('The supplier promotion has ended; recheck the price before publishing'), { status: 422 });
+  const target = recommendedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent));
+  if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
   const pricing = passesPricingRules({ productRevenue: Number(product.selling_price), customerDeliveryCharged: 0, supplierProductCost: Number(product.current_cost), supplierDelivery: Number(product.supplier_delivery_cost || 0), customerDeliveryCost: Number(product.estimated_customer_delivery_cost || 0), packaging: 0, paymentFees: 0, advertisingCost: 0 }, Number(product.minimum_profit ?? product.global_minimum_profit), Number(product.minimum_margin_percent));
-  if (!pricing.passes) throw Object.assign(new Error(`Estimated profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit)`), { status: 422 });
+  if (!pricing.passes || pricing.profit <= 0) throw Object.assign(new Error(`Estimated profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit)`), { status: 422 });
   return pricing;
 }
 
@@ -401,7 +404,7 @@ app.get('/api/admin/pricing-settings', requireAdmin, async (_request, response, 
 });
 
 app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response, next) => {
-  try { const input = pricingSettingsSchema.parse(request.body); if (!pool) return response.status(503).json({ error: 'Database not configured' }); await pool.execute('UPDATE pricing_settings SET minimum_profit=?,minimum_margin_percent=?,free_delivery_threshold=?,standard_customer_delivery=?,supplier_stale_hours=? WHERE id=1', [input.minimumProfit,input.minimumMarginPercent,input.freeDeliveryThreshold,input.standardCustomerDelivery,input.supplierStaleHours]); response.json(input); } catch (error) { next(error); }
+  try { const input = pricingSettingsSchema.parse(request.body); if (!pool) return response.status(503).json({ error: 'Database not configured' }); await pool.execute('UPDATE pricing_settings SET minimum_profit=?,minimum_margin_percent=?,standard_markup_percent=?,free_delivery_threshold=?,standard_customer_delivery=?,supplier_stale_hours=? WHERE id=1', [input.minimumProfit,input.minimumMarginPercent,input.standardMarkupPercent,input.freeDeliveryThreshold,input.standardCustomerDelivery,input.supplierStaleHours]); response.json(input); } catch (error) { next(error); }
 });
 
 app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
