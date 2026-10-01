@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 describe('request-first catalogue visibility policy', () => {
   const appSource = fs.readFileSync(path.join(process.cwd(), 'server', 'app.ts'), 'utf8');
   const workerSource = fs.readFileSync(path.join(process.cwd(), 'worker', 'index.ts'), 'utf8');
-  const migration = fs.readFileSync(path.join(process.cwd(), 'server', 'db', 'migrations', '020_restore_browsable_catalogue.sql'), 'utf8');
+  const staleMigration = fs.readFileSync(path.join(process.cwd(), 'server', 'db', 'migrations', '020_restore_browsable_catalogue.sql'), 'utf8');
+  const galleryMigration = fs.readFileSync(path.join(process.cwd(), 'server', 'db', 'migrations', '021_restore_single_image_products.sql'), 'utf8');
 
   it('keeps stale but otherwise valid products browsable for supplier confirmation', () => {
     const publicProductsRoute = appSource.slice(appSource.indexOf("app.get('/api/products'"), appSource.indexOf("app.get('/api/seo/sitemap'"));
@@ -14,10 +15,17 @@ describe('request-first catalogue visibility policy', () => {
   });
 
   it('restores only products paused for supplier-data age', () => {
-    expect(migration).toContain("p.review_reason='supplier_data_stale'");
-    expect(migration).toContain("o.stock_status IN ('in_stock','low_stock')");
-    expect(migration).toContain('o.price_verified=TRUE');
-    expect(migration).toContain("p.status='published'");
+    expect(staleMigration).toContain("p.review_reason='supplier_data_stale'");
+    expect(staleMigration).toContain("o.stock_status IN ('in_stock','low_stock')");
+    expect(staleMigration).toContain('o.price_verified=TRUE');
+    expect(staleMigration).toContain("p.status='published'");
+  });
+
+  it('accepts one genuine image while keeping invalid supplier records blocked', () => {
+    expect(galleryMigration).toContain('gallery.image_count>=1');
+    expect(galleryMigration).toContain("WHERE url LIKE 'https://%'");
+    expect(galleryMigration).toContain("o.stock_status IN ('in_stock','low_stock')");
+    expect(galleryMigration).toContain('o.price_verified=TRUE');
   });
 
   it('refreshes frequently without pausing a product solely because of age', () => {

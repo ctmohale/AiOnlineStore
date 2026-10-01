@@ -56,7 +56,7 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   if (!String(product.title || '').trim()) missing.push('product name');
   if (!String(product.category || '').trim()) missing.push('category');
   if (!String(product.image_url || '').startsWith('https://')) missing.push('public HTTPS product image');
-  if (Number(product.image_count || 0) < 3) missing.push('at least 3 genuine product images');
+  if (Number(product.image_count || 0) < 1) missing.push('at least one genuine product image');
   if (!String(product.model || '').trim() && !String(product.pack_size || '').trim()) missing.push('exact model or pack size');
   if (!product.offer_id) missing.push('supplier offer');
   if (!String(product.source_url || '').trim()) missing.push('supplier URL');
@@ -87,7 +87,7 @@ app.get('/api/products', async (request, response, next) => {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const search = String(request.query.q || '');
     const category = String(request.query.category || '');
-    const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'p.gallery_image_count >= 3', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
+    const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'p.gallery_image_count >= 1', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
@@ -101,7 +101,7 @@ app.get('/api/products', async (request, response, next) => {
 app.get('/api/seo/sitemap', async (_request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute(`SELECT p.slug,p.updated_at FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock') AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) ORDER BY p.updated_at DESC LIMIT 50000`);
+    const [rows] = await pool.execute(`SELECT p.slug,p.updated_at FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock') AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) ORDER BY p.updated_at DESC LIMIT 50000`);
     response.set('Cache-Control', 'public, max-age=3600').json(rows);
   } catch (error) { next(error); }
 });
@@ -112,7 +112,7 @@ app.get('/api/products/:slug', async (request, response, next) => {
     const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url
       FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1
-      WHERE p.slug=? AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
+      WHERE p.slug=? AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
         AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1`, [String(request.params.slug)]);
     const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     if (!products.length) return response.status(404).json({ error: 'Product not found' });
@@ -217,7 +217,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
     await withTransaction(async (connection) => {
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
-      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=3 AND o.price_verified=TRUE FOR UPDATE`, ids);
+      const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE FOR UPDATE`, ids);
       const productRows = rows as (RowDataPacket & { id: number; title: string; model: string; pack_size: string; selling_price: number; estimated_customer_delivery_cost: number; retailer: string; source_url: string; supplier_sku: string | null; current_cost: number; supplier_delivery_cost: number; stock_status: string; fulfilment_type: string; fulfilment_signal: string | null; last_checked_at: Date; promotion_end_at: Date | null; stale_hours: number; free_threshold: number; delivery_charge: number })[];
       if (productRows.length !== ids.length) throw Object.assign(new Error('One or more products are not available'), { status: 409 });
       const now = Date.now();

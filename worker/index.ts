@@ -92,7 +92,7 @@ async function repriceVerifiedOffers() {
       FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 WHERE p.id=? FOR UPDATE`, [row.id]);
     const item = (lockedRows as Record<string, unknown>[])[0];
     if (!item || !item.price_verified || !['in_stock','low_stock'].includes(String(item.stock_status)) || new Date(item.last_checked_at as Date).getTime() < Date.now() - Number(item.supplier_stale_hours) * 3_600_000 || (item.promotion_end_at && new Date(item.promotion_end_at as Date).getTime() <= Date.now())) return;
-    if (!String(item.image_url || '').startsWith('https://') || Number(item.gallery_image_count || 0) < 3) {
+    if (!String(item.image_url || '').startsWith('https://') || Number(item.gallery_image_count || 0) < 1) {
       await connection.execute("UPDATE products SET status='paused',review_reason='gallery_incomplete' WHERE id=?", [row.id]);
       return;
     }
@@ -120,7 +120,7 @@ async function dailyRun() {
   await recheckRetailerOffers();
   await repriceVerifiedOffers();
   if (pool) {
-    await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) SET p.status='paused',p.review_reason=CASE WHEN p.gallery_image_count<3 THEN 'gallery_incomplete' WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' ELSE 'supplier_out_of_stock' END WHERE p.status='published' AND (p.gallery_image_count<3 OR o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status NOT IN ('in_stock','low_stock'))");
+    await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) SET p.status='paused',p.review_reason=CASE WHEN p.gallery_image_count<1 THEN 'gallery_incomplete' WHEN o.price_verified=FALSE THEN 'supplier_price_unverified' WHEN o.promotion_end_at<=UTC_TIMESTAMP() THEN 'promotion_expired' ELSE 'supplier_out_of_stock' END WHERE p.status='published' AND (p.gallery_image_count<1 OR o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.stock_status NOT IN ('in_stock','low_stock'))");
     await pool.execute("UPDATE products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 SET p.review_reason='supplier_confirmation_required' WHERE p.status='published' AND p.deleted_at IS NULL AND (o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)) AND (p.review_reason IS NULL OR p.review_reason IN ('supplier_data_stale','supplier_confirmation_required'))");
   }
 }
