@@ -51,9 +51,10 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
 }
 
 app.get('/health', async (_request, response) => {
-  if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'database_required' });
-  try { await pool.query('SELECT 1'); response.json({ status: 'ok', database: 'connected' }); }
-  catch { response.status(503).json({ status: 'unhealthy', database: 'unavailable' }); }
+  const revision = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || 'unknown';
+  if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'database_required', revision });
+  try { await pool.query('SELECT 1'); response.json({ status: 'ok', database: 'connected', revision }); }
+  catch { response.status(503).json({ status: 'unhealthy', database: 'unavailable', revision }); }
 });
 
 app.get('/api/products', async (request, response, next) => {
