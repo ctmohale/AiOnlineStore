@@ -90,10 +90,12 @@ em { font-family:'Playfair Display',Georgia,serif; color:var(--coral); font-weig
 .section-heading { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:37px; }
 .section-heading h2,.how-intro h2,.delivery-banner h2,.admin-card h2 { margin:0; font-size:clamp(35px,4vw,52px); letter-spacing:-.04em; }
 .product-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; }
-.catalogue-pagination { display:flex; justify-content:center; align-items:center; gap:18px; margin-top:32px; }
-.catalogue-pagination button { border:1px solid #18372c; background:#fff; color:#18372c; border-radius:999px; padding:10px 18px; cursor:pointer; font:inherit; font-weight:700; }
+.catalogue-pagination { display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:12px; margin-top:36px; }
+.catalogue-pagination button { min-width:42px; min-height:42px; border:1px solid #18372c; background:#fff; color:#18372c; border-radius:999px; padding:9px 15px; cursor:pointer; font:inherit; font-weight:700; }
 .catalogue-pagination button:disabled { opacity:.4; cursor:not-allowed; }
-.catalogue-pagination span { color:#5d6f67; font-weight:700; }
+.catalogue-pagination button.active { background:var(--forest); color:#fff; }
+.page-numbers,.page-number-group { display:flex; align-items:center; gap:7px; }
+.page-number-group i { color:#7a8781; font-style:normal; }
 .product-card { background:var(--paper); border:1px solid #e0dfd7; border-radius:16px; min-width:0; overflow:hidden; transition:.25s; }
 .product-card:hover { transform:translateY(-5px); box-shadow:var(--shadow); }
 .product-image { aspect-ratio:1.2; display:block; position:relative; margin:12px 12px 0; overflow:hidden; border:1px solid #ecece7; border-radius:14px; background:#fff; }
@@ -144,13 +146,15 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .shop-title { max-width:650px; margin-bottom:50px; }
 .shop-title h1,.page-title h1,.checkout-header h1 { font-size:58px; }
 .shop-title>p:last-child,.page-title>p:last-child,.checkout-header>p:last-child { color:var(--muted); line-height:1.6; }
-.shop-toolbar { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:15px 0; display:flex; gap:22px; align-items:center; }
-.shop-search { display:flex; align-items:center; gap:8px; border:1px solid var(--line); padding:9px 12px; background:#fff; min-width:250px; }
-.shop-search input { border:0; outline:0; width:100%; }
-.filter-pills { display:flex; align-items:center; gap:7px; flex:1; }
-.filter-pills button { border:1px solid var(--line); background:transparent; padding:8px 12px; border-radius:30px; font-size:10px; cursor:pointer; }
-.filter-pills button.active { background:var(--forest); color:#fff; border-color:var(--forest); }
-.shop-toolbar select { padding:9px 12px; border:1px solid var(--line); background:#fff; font-size:11px; }
+.shop-toolbar { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:15px 0; display:grid; grid-template-columns:minmax(240px,1.2fr) minmax(260px,1fr) minmax(180px,.65fr); gap:14px; align-items:stretch; max-width:100%; }
+.shop-search,.category-filter,.sort-filter { min-width:0; min-height:48px; box-sizing:border-box; }
+.shop-search { display:flex; align-items:center; gap:8px; border:1px solid var(--line); padding:9px 12px; background:#fff; }
+.shop-search input { min-width:0; border:0; outline:0; width:100%; }
+.category-filter,.sort-filter { display:grid; align-items:center; border:1px solid var(--line); background:#fff; padding:5px 11px; }
+.category-filter { grid-template-columns:auto auto minmax(0,1fr); gap:8px; }
+.sort-filter { grid-template-columns:auto minmax(0,1fr); gap:8px; }
+.category-filter span,.sort-filter span { color:var(--muted); font-size:11px; white-space:nowrap; }
+.shop-toolbar select { min-width:0; width:100%; border:0; outline:0; background:#fff; padding:7px 26px 7px 6px; font-size:12px; color:var(--ink); text-overflow:ellipsis; }
 .results-count { font-size:10px; color:var(--muted); margin:26px 0 16px; }
 .empty-state { min-height:65vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
 .empty-state h1 { font-size:40px; margin:20px 0 5px; }
@@ -598,8 +602,8 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .delivery-banner .button { grid-column:1/-1; }
   footer { grid-template-columns:1fr 1fr; }
   .footer-brand,footer>div:last-of-type { grid-column:1/-1; }
-  .shop-toolbar { align-items:stretch; flex-direction:column; }
-  .filter-pills { flex-wrap:wrap; }
+  .shop-toolbar { grid-template-columns:1fr; align-items:stretch; }
+  .category-filter,.sort-filter { width:100%; }
   .detail-grid { grid-template-columns:1fr; }
   .detail-copy h1,.shop-title h1,.page-title h1,.checkout-header h1 { font-size:45px; }
   .cart-layout,.checkout-layout { grid-template-columns:1fr; }
@@ -643,6 +647,9 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .request-form { padding:24px 18px; }
   .confirmation-card { padding:40px 22px; }
   .confirmation-card h1 { font-size:42px; }
+  .catalogue-pagination { gap:8px; }
+  .catalogue-pagination>button { flex:1; }
+  .page-numbers { order:-1; width:100%; justify-content:center; }
   .account-heading { align-items:flex-start; flex-direction:column; gap:20px; }
   .account-panel { padding:21px 16px; }
   .account-settings-grid { grid-template-columns:1fr; }
