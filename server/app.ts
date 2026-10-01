@@ -70,7 +70,7 @@ app.get('/api/products', async (request, response, next) => {
     const params: (string | number)[] = [];
     if (search) { terms.push('(p.title LIKE ? OR p.brand LIKE ? OR p.model LIKE ?)'); params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
     if (category) { terms.push('p.category = ?'); params.push(category); }
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 600`, params);
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 WHERE ${terms.join(' AND ')} ORDER BY (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 1200`, params);
     response.json(rows);
   } catch (error) { next(error); }
 });
@@ -268,7 +268,7 @@ app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, ne
 });
 
 app.get('/api/admin/products', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 1000"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC LIMIT 2000"); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/admin/products/import-url', requireAdmin, async (request, response, next) => {
