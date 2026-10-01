@@ -12,7 +12,7 @@ async function recheckRetailerOffers() {
     FROM supplier_offers o JOIN products p ON p.id=o.product_id
     WHERE p.deleted_at IS NULL AND o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       AND o.source_url<>'' AND (o.promotion_end_at<=UTC_TIMESTAMP() OR o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 HOUR))
-    ORDER BY o.last_checked_at ASC LIMIT 100`);
+    ORDER BY o.last_checked_at ASC LIMIT 150`);
   for (const row of rows as { id: number; product_id: number; source_url: string }[]) {
     if (!isSupportedProductUrl(row.source_url)) continue;
     try {
