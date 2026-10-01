@@ -115,6 +115,17 @@ export const orderFulfilmentSchema = z.object({
   actualAdvertisingCost: optionalMoney,
 }).refine((value) => Object.keys(value).length > 0, 'At least one fulfilment field is required');
 
+export const supplierItemVerificationSchema = z.object({
+  status: z.enum(['verified', 'unavailable']),
+  verifiedSupplierUnitCost: z.number().positive().max(10_000_000).nullable().optional(),
+  notes: z.string().trim().max(500).nullable().optional(),
+}).superRefine((value, context) => {
+  if (value.status === 'verified' && value.verifiedSupplierUnitCost == null) {
+    context.addIssue({ code: 'custom', path: ['verifiedSupplierUnitCost'], message: 'Enter the supplier cost confirmed during this check' });
+  }
+});
+
+
 const supplierFields = {
   retailer: optionalText(120),
   sourceUrl: z.union([z.url().max(1500), z.literal(''), z.null()]).optional(),
