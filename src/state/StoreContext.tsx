@@ -14,13 +14,20 @@ type StoreContextValue = {
 };
 
 const StoreContext = createContext<StoreContextValue | null>(null);
+const CART_KEY = 'mzansi-mega-store-cart';
+const LEGACY_CART_KEY = 'moya-cart';
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { products, loading, error } = useCatalog();
   const [cart, setCart] = useState<CartLine[]>(() => {
-    try { return JSON.parse(localStorage.getItem('moya-cart') || '[]'); } catch { return []; }
+    try {
+      const stored = localStorage.getItem(CART_KEY) || localStorage.getItem(LEGACY_CART_KEY) || '[]';
+      if (!localStorage.getItem(CART_KEY) && stored !== '[]') localStorage.setItem(CART_KEY, stored);
+      localStorage.removeItem(LEGACY_CART_KEY);
+      return JSON.parse(stored);
+    } catch { return []; }
   });
-  useEffect(() => localStorage.setItem('moya-cart', JSON.stringify(cart)), [cart]);
+  useEffect(() => localStorage.setItem(CART_KEY, JSON.stringify(cart)), [cart]);
   useEffect(() => {
     if (loading || error) return;
     setCart((lines) => lines.flatMap((line) => {

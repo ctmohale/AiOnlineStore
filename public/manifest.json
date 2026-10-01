@@ -1,11 +1,11 @@
 {
-  "short_name": "Moya Market",
-  "name": "Moya Market — Smart finds, checked properly",
+  "short_name": "Mzansi Mega",
+  "name": "Mzansi Mega Store — Big choice. Mzansi value.",
   "icons": [
     {
-      "src": "/favicon.png",
-      "type": "image/png",
-      "sizes": "64x64"
+      "src": "/mzansi-mega-store-icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
     }
   ],
   "start_url": ".",

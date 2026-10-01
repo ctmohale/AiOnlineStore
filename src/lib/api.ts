@@ -1,3 +1,5 @@
+import { getAdminToken, getCustomerToken } from './storage';
+
 export type OrderPayload = {
   testMode?: boolean;
   customer: { name: string; email: string; phone: string; addressLine1: string; suburb: string; city: string; province: string; postalCode: string; notes?: string };
@@ -14,7 +16,7 @@ export async function publicRequest<T>(path: string) {
 }
 
 export async function createOrder(payload: OrderPayload) {
-  const token = localStorage.getItem('moya-customer-token');
+  const token = getCustomerToken();
   const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error || 'Unable to submit order request');
@@ -25,7 +27,7 @@ export type Customer = { id: number; email: string; name: string; phone: string 
 export type CustomerOrder = { reference: string; status: string; is_test: number | boolean; test_paid_at?: string | null; courier_name?: string | null; tracking_number?: string | null; tracking_url?: string | null; expected_ship_at?: string | null; expected_delivery_at?: string | null; delivered_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string };
 
 export async function testPayment(reference: string, outcome: 'success' | 'failure') {
-  const token = localStorage.getItem('moya-customer-token');
+  const token = getCustomerToken();
   const response = await fetch(`${API_URL}/customer/orders/${encodeURIComponent(reference)}/test-payment`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ outcome }) });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || 'Test payment could not be completed');
@@ -43,7 +45,7 @@ export const customerLogin = (email: string, password: string) => customerAuth('
 export const customerRegister = (name: string, email: string, phone: string, password: string) => customerAuth('register', { name, email, phone, password });
 
 export async function customerRequest<T>(path: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('moya-customer-token');
+  const token = getCustomerToken();
   const response = await fetch(`${API_URL}/customer${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
   const body = response.status === 204 ? null : await response.json();
   if (!response.ok) throw Object.assign(new Error(body.error || 'Unable to load your account'), { status: response.status });
@@ -58,7 +60,7 @@ export async function adminLogin(email: string, password: string) {
 }
 
 export async function adminRequest<T>(path: string, options: RequestInit = {}) {
-  const token = sessionStorage.getItem('moya-admin-token');
+  const token = getAdminToken();
   const response = await fetch(`${API_URL}/admin${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
   const body = response.status === 204 ? null : await response.json();
   if (!response.ok) throw new Error(body?.error || 'Admin request failed');

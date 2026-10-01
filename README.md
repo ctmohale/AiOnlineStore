@@ -1,4 +1,4 @@
-# Moya Market MVP
+# Mzansi Mega Store MVP
 
 A launch-focused South African reseller storefront and operations dashboard. Customers request an order first; staff verify the exact supplier product, live checkout price, stock, and delivery before sending a manual card-payment link.
 

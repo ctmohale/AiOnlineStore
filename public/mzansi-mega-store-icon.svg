@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Mzansi Mega Store</title>
+  <rect width="512" height="512" rx="118" fill="#173e32"/>
+  <circle cx="256" cy="256" r="174" fill="#e8694a"/>
+  <path d="M130 335V177h55l71 83 71-83h55v158h-62v-77l-64 73-64-73v77z" fill="#fffdf8"/>
+</svg>

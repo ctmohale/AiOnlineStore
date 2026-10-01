@@ -1,4 +1,4 @@
-# Moya Market REST API
+# Mzansi Mega Store REST API
 
 Base URL: `/api`. JSON is used for requests and responses. Admin routes require `Authorization: Bearer <token>`.
 

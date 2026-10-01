@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ request: vi.fn(), confirm: vi.fn(), notify: vi
 vi.mock('../../lib/api', () => ({ adminRequest: mocks.request }));
 vi.mock('../FeedbackProvider', () => ({ useFeedback: () => ({ confirm: mocks.confirm, notify: mocks.notify }) }));
 
-const order = { id: 4, ref: 'MY-TEST', status: 'requested', customer: 'Test Customer', email: 'test@example.test', phone: '0600000000', address: '1 Test Street', isTest: false };
+const order = { id: 4, ref: 'MMS-TEST', status: 'requested', customer: 'Test Customer', email: 'test@example.test', phone: '0600000000', address: '1 Test Street', isTest: false };
 
 afterEach(() => vi.clearAllMocks());
 

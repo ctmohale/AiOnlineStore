@@ -7,7 +7,7 @@ export class PermittedRetailerFeedAdapter implements SourceAdapter {
   readonly name = 'permitted-retailer-feed';
   constructor(private readonly feedUrl: string, private readonly retailer = 'Permitted retailer') {}
   async *collect(): AsyncIterable<CandidateProduct> {
-    const response = await fetch(this.feedUrl, { headers: { 'User-Agent': 'MoyaMarket/1.0 product-feed-client' }, signal: AbortSignal.timeout(20_000) });
+    const response = await fetch(this.feedUrl, { headers: { 'User-Agent': 'MzansiMegaStore/1.0 product-feed-client' }, signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`Retailer feed returned ${response.status}`);
     const rows = feedSchema.parse(await response.json());
     for (const row of rows) yield { ...row, retailer: this.retailer, saleEndDate: row.saleEndDate ? new Date(row.saleEndDate) : undefined, checkedAt: new Date() };

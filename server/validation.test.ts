@@ -17,7 +17,7 @@ describe('customer account validation', () => {
   });
 
   it('accepts an admin profile update without forcing a password reset', () => {
-    expect(adminCustomerUpdateSchema.parse({ name: 'Moya Customer', email: 'customer@example.com', phone: '', newPassword: '' }).phone).toBeNull();
+    expect(adminCustomerUpdateSchema.parse({ name: 'Example Customer', email: 'customer@example.com', phone: '', newPassword: '' }).phone).toBeNull();
   });
 });
 

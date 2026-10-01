@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { pool } from './pool.js';
 
 if (!pool) throw new Error('DATABASE_URL is required to seed data');
-const email = process.env.ADMIN_EMAIL || 'admin@moyamarket.co.za';
+const email = process.env.ADMIN_EMAIL || 'admin@beestack.co.za';
 const password = process.env.ADMIN_PASSWORD;
 if (!password || password.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters');
 const hash = await bcrypt.hash(password, 12);

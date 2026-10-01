@@ -11,7 +11,7 @@ describe('live store catalogue', () => {
     const product = { id: 77, slug: 'gallery-kettle', title: 'Gallery Kettle', brand: 'Acme', model: 'GK-1', pack_size: '1 unit', category: 'Appliances', description: 'A complete product.', specifications: { Capacity: '1.7L' }, selling_price: 599, original_displayed_price: 699, image_url: 'https://images.example.test/front.jpg', images: [{ url: 'https://images.example.test/front.jpg', alt_text: 'Kettle front', sort_order: 0 }, { url: 'https://images.example.test/side.jpg', alt_text: 'Kettle side', sort_order: 1 }] };
     cy.intercept('GET', '**/api/products', [product]);
     cy.intercept('GET', '**/api/store-settings', { freeDeliveryThreshold: 500, standardCustomerDelivery: 89 });
-    cy.intercept('POST', '**/api/orders', { statusCode: 201, body: { reference: 'MY-E2E-001' } }).as('order');
+    cy.intercept('POST', '**/api/orders', { statusCode: 201, body: { reference: 'MMS-E2E-001' } }).as('order');
     cy.visit('/shop');
     cy.contains('Gallery Kettle').click();
     cy.contains('1 / 2');
@@ -34,6 +34,6 @@ describe('live store catalogue', () => {
     cy.contains('Send order request').click();
     cy.contains('Send request').click();
     cy.wait('@order').its('request.body.items.0.productId').should('equal', 77);
-    cy.url().should('include', '/confirmation/MY-E2E-001');
+    cy.url().should('include', '/confirmation/MMS-E2E-001');
   });
 });

@@ -46,4 +46,4 @@ app.use((request, response) => {
 });
 
 const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log(`Moya Market web listening on ${port}`));
+app.listen(port, () => console.log(`Mzansi Mega Store web listening on ${port}`));

@@ -30,7 +30,7 @@ describe('customer test payment', () => {
   });
   afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
 
-  const pay = (sub: string, outcome: string) => fetch(`${base}/api/customer/orders/MY-TEST/test-payment`, {
+  const pay = (sub: string, outcome: string) => fetch(`${base}/api/customer/orders/MMS-TEST/test-payment`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signCustomerToken({ sub, email: 'customer@example.test', role: 'customer' })}` }, body: JSON.stringify({ outcome }),
   });
 

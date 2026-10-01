@@ -1,12 +1,12 @@
-const API_URL = process.env.MOYA_API_URL || 'https://api-production-093e2.up.railway.app/api';
-const ADMIN_EMAIL = process.env.MOYA_ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.MOYA_ADMIN_PASSWORD;
+const API_URL = process.env.MZANSI_MEGA_STORE_API_URL || 'https://api-production-093e2.up.railway.app/api';
+const ADMIN_EMAIL = process.env.MZANSI_MEGA_STORE_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.MZANSI_MEGA_STORE_ADMIN_PASSWORD;
 const TARGET_COUNT = Math.min(500, Math.max(1, Number(process.env.TARGET_COUNT || 500)));
 const MIN_SELLING_PRICE = Math.max(0, Number(process.env.MIN_SELLING_PRICE || 200));
 const DRY_RUN = process.env.IMPORT_LIVE !== 'true';
 const checkedAt = new Date().toISOString();
 
-if (!DRY_RUN && (!ADMIN_EMAIL || !ADMIN_PASSWORD)) throw new Error('MOYA_ADMIN_EMAIL and MOYA_ADMIN_PASSWORD are required for a live import');
+if (!DRY_RUN && (!ADMIN_EMAIL || !ADMIN_PASSWORD)) throw new Error('MZANSI_MEGA_STORE_ADMIN_EMAIL and MZANSI_MEGA_STORE_ADMIN_PASSWORD are required for a live import');
 
 function initialState(html) {
   const marker = 'window.__INITIAL_STATE__ = ';
@@ -93,7 +93,7 @@ async function collectMakro() {
   const requests = catalogues.flatMap(([name, baseUrl, count]) => Array.from({ length: Number(count) }, (_, index) => ({ name, baseUrl, page: index + 1 })));
   const pages = await parallelMap(requests, 6, async ({ name, baseUrl, page }) => {
     const url = new URL(String(baseUrl)); url.searchParams.set('page', String(page));
-    const response = await fetch(url, { headers: { 'User-Agent': 'MoyaMarket/1.0 product-review-client' } });
+    const response = await fetch(url, { headers: { 'User-Agent': 'MzansiMegaStore/1.0 product-review-client' } });
     if (!response.ok) throw new Error(`Makro ${name} page ${page} returned ${response.status}`);
     return { name, page, products: findMakroProducts(initialState(await response.text())) };
   });
@@ -108,7 +108,7 @@ async function collectMakro() {
 }
 
 async function gameRequest(path, options = {}) {
-  const response = await fetch(`https://www.game.co.za${path}`, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'MoyaMarket/1.0 product-review-client', ...options.headers } });
+  const response = await fetch(`https://www.game.co.za${path}`, { ...options, headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'MzansiMegaStore/1.0 product-review-client', ...options.headers } });
   if (!response.ok) throw new Error(`Game request returned ${response.status}`);
   return response.json();
 }

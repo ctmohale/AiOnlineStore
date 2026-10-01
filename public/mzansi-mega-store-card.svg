@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Mzansi Mega Store</title>
+  <desc id="description">Big choice. Mzansi value.</desc>
+  <rect width="1200" height="630" fill="#faf7f0"/>
+  <circle cx="210" cy="315" r="132" fill="#e8694a"/>
+  <path d="M112 376V254h43l55 64 55-64h43v122h-48v-59l-50 56-50-56v59z" fill="#fffdf8"/>
+  <text x="400" y="290" fill="#173e32" font-family="Arial, Helvetica, sans-serif" font-size="82" font-weight="700">Mzansi Mega Store</text>
+  <text x="405" y="365" fill="#e8694a" font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="600">Big choice. Mzansi value.</text>
+  <text x="405" y="425" fill="#6b756f" font-family="Arial, Helvetica, sans-serif" font-size="25">South African online shopping, checked before payment.</text>
+</svg>

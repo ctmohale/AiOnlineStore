@@ -129,6 +129,6 @@ async function promotionEndRecheck() {
 
 cron.schedule(process.env.WORKER_CRON || '0 */6 * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
 cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
-console.log('Moya Market worker scheduled.');
+console.log('Mzansi Mega Store worker scheduled.');
 if (process.argv.includes('--once')) dailyRun().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
 else void dailyRun().catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });

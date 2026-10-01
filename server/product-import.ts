@@ -44,7 +44,7 @@ const allowedUrl = (value: string) => {
 async function fetchPublicHtml(initialUrl: URL) {
   let url = initialUrl;
   for (let redirect = 0; redirect < 4; redirect++) {
-    const response = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'MoyaMarket/1.0 product-review-client', Accept: 'text/html,application/xhtml+xml' }, signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(url, { redirect: 'manual', headers: { 'User-Agent': 'MzansiMegaStore/1.0 product-review-client', Accept: 'text/html,application/xhtml+xml' }, signal: AbortSignal.timeout(15_000) });
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get('location');
       if (!location) throw Object.assign(new Error('The retailer returned an invalid redirect'), { status: 422 });

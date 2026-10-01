@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import StatusPill from '../components/StatusPill';
 import { money } from '../data/products';
 import { customerLogin, customerRegister, customerRequest, type Customer, type CustomerOrder } from '../lib/api';
+import { CUSTOMER_TOKEN_KEY, getCustomerToken } from '../lib/storage';
 import { publicOrderStatus } from '../lib/orderStatus';
 import { useFeedback } from '../components/FeedbackProvider';
 
@@ -12,7 +13,7 @@ export default function Account() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
-  const [loading, setLoading] = useState(Boolean(localStorage.getItem('moya-customer-token')));
+  const [loading, setLoading] = useState(Boolean(getCustomerToken()));
   const [submitting, setSubmitting] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -24,14 +25,14 @@ export default function Account() {
       setCustomer(profile); setOrders(orderRows);
     } catch (accountError) {
       if (accountError instanceof Error && 'status' in accountError && accountError.status === 401) {
-        localStorage.removeItem('moya-customer-token'); setCustomer(null); setOrders([]);
+        localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); setOrders([]);
       } else {
         setError('Order status could not be refreshed. Please try again.');
       }
     }
     finally { setLoading(false); }
   };
-  useEffect(() => { if (localStorage.getItem('moya-customer-token')) void loadAccount(); }, []);
+  useEffect(() => { if (getCustomerToken()) void loadAccount(); }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setSubmitting(true); setError('');
@@ -40,14 +41,14 @@ export default function Account() {
       const result = mode === 'login'
         ? await customerLogin(String(data.get('email')), String(data.get('password')))
         : await customerRegister(String(data.get('name')), String(data.get('email')), String(data.get('phone')), String(data.get('password')));
-      localStorage.setItem('moya-customer-token', result.token);
+      localStorage.setItem(CUSTOMER_TOKEN_KEY, result.token);
       setCustomer(result.customer);
       await loadAccount();
       notify(mode === 'login' ? 'You are signed in.' : 'Your account was created.', 'success');
     } catch (authError) { const message = authError instanceof Error ? authError.message : 'Unable to continue'; setError(message); notify(message, 'error'); }
     finally { setSubmitting(false); }
   };
-  const logout = async () => { if (!await confirm({ title: 'Sign out?', message: 'You can sign in again at any time to view your order requests.', confirmLabel: 'Sign out' })) return; localStorage.removeItem('moya-customer-token'); setCustomer(null); setOrders([]); notify('You have been signed out.', 'success'); };
+  const logout = async () => { if (!await confirm({ title: 'Sign out?', message: 'You can sign in again at any time to view your order requests.', confirmLabel: 'Sign out' })) return; localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); setOrders([]); notify('You have been signed out.', 'success'); };
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -55,7 +56,7 @@ export default function Account() {
     setSavingProfile(true); setError('');
     try {
       const result = await customerRequest<{ customer: Customer; token: string }>('/me', { method: 'PATCH', body: JSON.stringify({ name: data.get('name'), email: data.get('email'), phone: data.get('phone') }) });
-      localStorage.setItem('moya-customer-token', result.token); setCustomer(result.customer); notify('Your profile details were updated.', 'success', 'Profile updated');
+      localStorage.setItem(CUSTOMER_TOKEN_KEY, result.token); setCustomer(result.customer); notify('Your profile details were updated.', 'success', 'Profile updated');
     } catch (profileError) { const message = profileError instanceof Error ? profileError.message : 'Your profile could not be updated'; setError(message); notify(message, 'error'); }
     finally { setSavingProfile(false); }
   };
@@ -88,6 +89,6 @@ export default function Account() {
   </section>;
 
   return <section className="account-auth"><div className="account-benefits"><span className="account-icon"><UserRound /></span><p className="kicker">Customer account</p><h1>Keep your requests<br /><em>in one place.</em></h1><p>Sign in to view your order-request history. You can still shop and check out as a guest at any time.</p><div><span><PackageSearch /> Track request status</span><span><ShieldCheck /> Secure account access</span><span><LockKeyhole /> No card details stored</span></div></div>
-    <form className="account-form" onSubmit={submit}><div className="account-tabs"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); }}>Create account</button></div><h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2><p>{mode === 'login' ? 'Access your Moya Market requests.' : 'It only takes a minute.'}</p>{mode === 'register' && <><label>Full name<input name="name" autoComplete="name" required minLength={2} /></label><label>Phone number<input name="phone" autoComplete="tel" required pattern="[0-9+ ]{9,15}" placeholder="082 123 4567" /></label></>}<label>Email address<input name="email" type="email" autoComplete="email" required /></label><label>Password<input name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={mode === 'register' ? 10 : 1} /></label>{mode === 'register' && <small>Use at least 10 characters.</small>}{error && <p className="form-error">{error}</p>}<button className="button primary full" disabled={submitting}>{submitting ? 'Please wait…' : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight /></>}</button><p className="guest-note">Prefer not to register? <Link to="/shop">Continue shopping as a guest.</Link></p></form>
+    <form className="account-form" onSubmit={submit}><div className="account-tabs"><button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => { setMode('login'); setError(''); }}>Sign in</button><button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => { setMode('register'); setError(''); }}>Create account</button></div><h2>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h2><p>{mode === 'login' ? 'Access your Mzansi Mega Store requests.' : 'It only takes a minute.'}</p>{mode === 'register' && <><label>Full name<input name="name" autoComplete="name" required minLength={2} /></label><label>Phone number<input name="phone" autoComplete="tel" required pattern="[0-9+ ]{9,15}" placeholder="082 123 4567" /></label></>}<label>Email address<input name="email" type="email" autoComplete="email" required /></label><label>Password<input name="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={mode === 'register' ? 10 : 1} /></label>{mode === 'register' && <small>Use at least 10 characters.</small>}{error && <p className="form-error">{error}</p>}<button className="button primary full" disabled={submitting}>{submitting ? 'Please wait…' : <>{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowRight /></>}</button><p className="guest-note">Prefer not to register? <Link to="/shop">Continue shopping as a guest.</Link></p></form>
   </section>;
 }

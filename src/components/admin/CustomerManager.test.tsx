@@ -7,7 +7,7 @@ import CustomerManager from './CustomerManager';
 
 vi.mock('../../lib/api', () => ({ adminRequest: vi.fn() }));
 
-const customer = { id: 7, name: 'Moya Customer', email: 'customer@example.com', phone: '082 123 4567', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', order_count: 2, last_order_at: null };
+const customer = { id: 7, name: 'Example Customer', email: 'customer@example.com', phone: '082 123 4567', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', order_count: 2, last_order_at: null };
 
 describe('CustomerManager', () => {
   beforeEach(() => {
@@ -22,9 +22,9 @@ describe('CustomerManager', () => {
   it('confirms and saves customer profile and password updates', async () => {
     const user = userEvent.setup();
     render(<FeedbackProvider><CustomerManager /></FeedbackProvider>);
-    expect(await screen.findByText('Moya Customer')).toBeInTheDocument();
+    expect(await screen.findByText('Example Customer')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Edit Moya Customer' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Example Customer' }));
     await user.type(screen.getByLabelText(/New temporary password/), 'temporary-password');
     await user.click(screen.getByRole('button', { name: 'Save customer' }));
     const dialog = screen.getByRole('alertdialog');
