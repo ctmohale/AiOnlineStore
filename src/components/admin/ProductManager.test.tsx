@@ -99,4 +99,76 @@ describe('ProductManager actions', () => {
     expect(screen.getByText('Test Kettle')).toBeInTheDocument();
     expect(screen.getByText('Example Phone')).toBeInTheDocument();
   });
+  it('selects only filtered unpublished products and clears selection when filters change', async () => {
+    const user = userEvent.setup();
+    render(<FeedbackProvider><ProductManager /></FeedbackProvider>);
+    await screen.findByText('Test Kettle');
+    await user.click(screen.getByRole('checkbox', { name: 'Select all filtered products' }));
+    expect(screen.getByRole('checkbox', { name: 'Select Test Kettle' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select Example Phone' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish selected (1)' })).toBeEnabled();
+    await user.selectOptions(screen.getByLabelText('Product source'), 'Makro');
+    expect(screen.getByRole('button', { name: 'Publish selected (0)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Publish filtered (0)' })).toBeDisabled();
+  });
+
+  it('requires every review confirmation and publishes only selected products', async () => {
+    const user = userEvent.setup();
+    let published = false;
+    vi.mocked(adminRequest).mockImplementation(async (path, options) => {
+      if (path === '/products' && !options) return [{ ...product, status: published ? 'published' : 'draft' }, secondProduct];
+      if (path === '/products/91/review') { published = true; return { status: 'published' }; }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<FeedbackProvider><ProductManager /></FeedbackProvider>);
+    await screen.findByText('Test Kettle');
+    await user.click(screen.getByRole('checkbox', { name: 'Select Test Kettle' }));
+    await user.click(screen.getByRole('button', { name: 'Publish selected (1)' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Publish 1 products' })).toBeDisabled();
+    expect(adminRequest).not.toHaveBeenCalledWith('/products/91/review', expect.anything());
+    for (const checkbox of within(dialog).getAllByRole('checkbox')) await user.click(checkbox);
+    await user.click(within(dialog).getByRole('button', { name: 'Publish 1 products' }));
+    await waitFor(() => expect(adminRequest).toHaveBeenCalledWith('/products/91/review', expect.objectContaining({ method: 'PATCH' })));
+    const [, options] = vi.mocked(adminRequest).mock.calls.find(([path]) => path === '/products/91/review')!;
+    expect(JSON.parse(String(options?.body)).checklist).toEqual({ exactProductMatch:true, supplierPriceChecked:true, stockChecked:true, promotionDatesChecked:true, imagesChecked:true, descriptionChecked:true });
+    expect(adminRequest).not.toHaveBeenCalledWith('/products/92/review', expect.anything());
+    expect(await screen.findByText('1 published; 0 could not be published.')).toBeInTheDocument();
+  });
+
+  it('publishes filtered results with partial failures and shows the blocked product reason', async () => {
+    const user = userEvent.setup();
+    const third = { ...product, id:93, title:'Third Kettle', status:'pending_review' };
+    vi.mocked(adminRequest).mockImplementation(async (path, options) => {
+      if (path === '/products' && !options) return [product, secondProduct, third];
+      if (path === '/products/91/review') return { status:'published' };
+      if (path === '/products/93/review') throw new Error('The supplier check is stale; recheck it before publishing');
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<FeedbackProvider><ProductManager /></FeedbackProvider>);
+    await screen.findByText('Test Kettle');
+    await user.selectOptions(screen.getByLabelText('Product source'), 'Game');
+    await user.click(screen.getByRole('button', { name: 'Publish filtered (2)' }));
+    const dialog=screen.getByRole('dialog');
+    for (const checkbox of within(dialog).getAllByRole('checkbox')) await user.click(checkbox);
+    await user.click(within(dialog).getByRole('button', { name:'Publish 2 products' }));
+    expect(await screen.findByText('1 published; 1 could not be published.')).toBeInTheDocument();
+    expect(screen.getByText('The supplier check is stale; recheck it before publishing')).toBeInTheDocument();
+    expect(adminRequest).not.toHaveBeenCalledWith('/products/92/review', expect.anything());
+  });
+
+  it('loads every catalogue page before filtering and selecting', async () => {
+    const user=userEvent.setup();
+    vi.mocked(adminRequest).mockImplementation(async (path) => {
+      if (path === '/products') return Array.from({length:5000}, () => product);
+      if (path === '/products?offset=5000') return [{ ...secondProduct, status:'pending_review' }];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<FeedbackProvider><ProductManager /></FeedbackProvider>);
+    await screen.findByText('Example Phone');
+    expect(adminRequest).toHaveBeenCalledWith('/products?offset=5000');
+    await user.selectOptions(screen.getByLabelText('Product source'),'Makro');
+    expect(screen.getByRole('button',{name:'Publish filtered (1)'})).toBeEnabled();
+  });
+
 });
