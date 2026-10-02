@@ -8,6 +8,8 @@ export type Product = {
   category: string;
   price: number;
   compareAt?: number;
+  promotionStartAt?: string;
+  promotionEndAt?: string;
   image: string;
   images?: { url: string; altText: string }[];
   accent: string;
@@ -28,6 +30,7 @@ export type Product = {
 export type PublicProductRow = {
   id: number; slug: string; title: string; brand: string; model: string; pack_size: string; category: string;
   description: string; specifications: Record<string, string> | string | null; selling_price: number;
+  promotion_start_at?: string | null; promotion_end_at?: string | null;
   original_displayed_price?: number | null; image_url: string | null;
   images?: { url: string; alt_text?: string; sort_order?: number }[];
   retailer?: string; stock_status?: string; fulfilment_type?: NonNullable<Product['fulfilmentType']>; fulfilment_signal?: string | null;
@@ -48,6 +51,7 @@ export const mapPublicProduct = (row: PublicProductRow): Product => {
   return ({
   id: Number(row.id), slug: row.slug, name: row.title, brand: row.brand || '', model: row.model || '', packSize: row.pack_size || '',
   category: row.category, price: Number(row.selling_price), compareAt: row.original_displayed_price && Number(row.original_displayed_price) > Number(row.selling_price) ? Number(row.original_displayed_price) : undefined,
+  promotionStartAt: row.promotion_start_at || undefined, promotionEndAt: row.promotion_end_at || undefined,
   image: images[0]?.url || '', images, accent: accents[Number(row.id) % accents.length], short: row.description?.slice(0, 140) || '', description: row.description || '',
   specs: parseSpecs(row.specifications), status: 'published', retailer: row.retailer || 'Supplier', stockStatus: row.stock_status || 'unknown', fulfilmentType: row.fulfilment_type || 'unknown', fulfilmentSignal: row.fulfilment_signal || undefined, supplierCheckRequired: Boolean(row.supplier_check_required), supplierLastCheckedAt: row.last_checked_at || undefined,
   deliveryEstimate: row.delivery_estimate || { fulfilmentLabel: 'Supplier fulfilment being confirmed', supplierMinDays: 2, supplierMaxDays: 6, processingDays: 1, courierMinDays: 3, courierMaxDays: 5, totalMinDays: 6, totalMaxDays: 12, summary: '6–12 business days' },

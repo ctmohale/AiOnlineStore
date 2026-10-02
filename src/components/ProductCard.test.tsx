@@ -1,0 +1,20 @@
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it, vi } from 'vitest';
+import { mapPublicProduct } from '../data/products';
+import ProductCard from './ProductCard';
+vi.mock('../state/StoreContext', () => ({ useStore: () => ({ add: vi.fn() }) }));
+vi.mock('./FeedbackProvider', () => ({ useFeedback: () => ({ notify: vi.fn() }) }));
+const product = mapPublicProduct({ id: 51, slug: 'huggies', title: 'Huggies Nappies', brand: 'Huggies', model: '', pack_size: '84 pieces', category: 'Baby nappies', description: '', specifications: {}, selling_price: 400, original_displayed_price: 800, image_url: null });
+describe('sale product cards', () => {
+  it('renders a discount sticker and the honest missing-date label for a sale', () => {
+    render(<MemoryRouter><ProductCard product={product} /></MemoryRouter>);
+    expect(screen.getByText('50% OFF')).toHaveClass('product-sale-sticker');
+    expect(screen.getByText('Sale end date not provided')).toBeInTheDocument();
+  });
+  it('shows neither sale sticker nor end-date message for a regular price', () => {
+    render(<MemoryRouter><ProductCard product={{ ...product, compareAt: undefined }} /></MemoryRouter>);
+    expect(screen.queryByText(/% OFF/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sale end/)).not.toBeInTheDocument();
+  });
+});

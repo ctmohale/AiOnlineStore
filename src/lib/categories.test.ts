@@ -1,28 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORY_NAMES, categoryGroupFor, matchesCategory } from './categories';
+import type { Product } from '../data/products';
+import { categoryGroupFor, categorySummaries, matchesCategory } from './categories';
 
-describe('catalogue category groups', () => {
-  it('normalises supplier separators into customer-friendly groups', () => {
-    expect(categoryGroupFor('Kitchen-Large-Appliances')).toBe('Home Appliances');
-    expect(categoryGroupFor('Laptops-Tablets-Computers')).toBe('Electronics & Computing');
-    expect(categoryGroupFor('Baby-Travel')).toBe('Health, Beauty & Baby');
+describe('separate catalogue categories', () => {
+  it('keeps individual supplier categories instead of broad department groups', () => {
+    expect(categoryGroupFor('Digital Cameras')).toBe('Digital Cameras');
+    expect(categoryGroupFor('Computer Accessories')).toBe('Computer Accessories');
+    expect(categoryGroupFor('Car Accessories')).toBe('Car Accessories');
+    expect(categoryGroupFor('Personal-Care')).toBe('Personal Care');
+    expect(categoryGroupFor('Kitchen-Large-Appliances')).toBe('Kitchen Large Appliances');
   });
-
-  it('supports grouped navigation and legacy exact category links', () => {
-    expect(matchesCategory('Digital Cameras', 'Electronics & Computing')).toBe(true);
-    expect(matchesCategory('Digital Cameras', 'Digital Cameras')).toBe(true);
-    expect(matchesCategory('Digital Cameras', 'Home Appliances')).toBe(false);
+  it('gives all baby categories a single dedicated Baby category', () => {
+    for (const category of ['Baby-Travel', 'Baby nappies', 'Nursery Furniture & Decor', 'Toddlers Toys', 'Bath Time']) {
+      expect(categoryGroupFor(category)).toBe('Baby');
+    }
+    expect(categoryGroupFor('General', 'Huggies Extra Care Nappies Size 2 Tape Diapers')).toBe('Baby');
+    expect(categoryGroupFor('Healthcare-Vitamins')).toBe('Healthcare Vitamins');
   });
-
-  it('uses product details to classify vague supplier categories', () => {
-    expect(categoryGroupFor('refurbished', 'Dell Latitude notebook')).toBe('Electronics & Computing');
-    expect(categoryGroupFor('pre-owned', 'Apple iPhone 12')).toBe('Electronics & Computing');
-    expect(categoryGroupFor('CSD Pet', 'Coca-Cola Original Taste Soft Drink')).toBe('Food & Household');
-    expect(categoryGroupFor('General', 'Standing water dispenser')).toBe('Home Appliances');
-    expect(categoryGroupFor('Binoculars & Telescopes', 'Celestron spotting scope')).toBe('Outdoor & Sports');
+  it('supports exact existing category links and normalized labels', () => {
+    expect(matchesCategory('Personal-Care', 'Personal Care')).toBe(true);
+    expect(matchesCategory('Baby-Travel', 'Baby')).toBe(true);
+    expect(matchesCategory('Baby-Travel', 'Baby-Travel')).toBe(true);
+    expect(matchesCategory('Digital Cameras', 'Computer Accessories')).toBe(false);
   });
-
-  it('does not expose a vague catch-all department', () => {
-    expect(CATEGORY_NAMES).not.toContain('More Categories');
+  it('counts each product once and combines only equivalent labels and baby categories', () => {
+    const products = ['Personal-Care', 'Personal Care', 'Baby nappies', 'Baby-Travel', 'Digital Cameras', 'Computer Accessories']
+      .map((category, id) => ({ id, category, name: '', brand: '', model: '' } as Product));
+    expect(categorySummaries(products)).toEqual([
+      { name: 'Baby', count: 2 }, { name: 'Computer Accessories', count: 1 },
+      { name: 'Digital Cameras', count: 1 }, { name: 'Personal Care', count: 2 },
+    ]);
   });
 });
