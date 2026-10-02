@@ -1452,3 +1452,10 @@ footer a,footer p { font-size:13px; }
 .global-loading small { margin-top:3px; color:#617368; font-size:12px; }
 @keyframes store-loading-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .global-loading-symbol>span,.global-loading-symbol::after { animation:none; } }
+
+.global-loading-backdrop { position:fixed; inset:0; z-index:2500; display:grid; place-items:center; background:rgba(8,24,17,.58); backdrop-filter:blur(2px); }
+.global-loading-backdrop .global-loading { position:relative; top:auto; left:auto; transform:none; padding:24px 32px; gap:20px; border-radius:20px; background:#fff; box-shadow:0 20px 70px rgba(0,0,0,.3); }
+.global-loading-backdrop .global-loading-symbol { width:64px; height:64px; }
+.global-loading-backdrop .global-loading-symbol b { font-size:26px; }
+.global-loading-backdrop .global-loading strong { font-size:18px; }
+.global-loading-backdrop .global-loading small { font-size:14px; }

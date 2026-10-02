@@ -11,8 +11,8 @@ export default function GlobalLoading() {
     return () => window.clearTimeout(timer);
   }, [busy]);
   if (!busy || !visible) return null;
-  return <div className="global-loading" role="status" aria-live="polite" aria-atomic="true">
+  return <div className="global-loading-backdrop"><div className="global-loading" role="status" aria-live="polite" aria-atomic="true">
     <span className="global-loading-symbol" aria-hidden="true"><span /><b>M</b></span>
     <div><strong>Loading data</strong><small>Please wait a moment…</small></div>
-  </div>;
+  </div></div>;
 }
