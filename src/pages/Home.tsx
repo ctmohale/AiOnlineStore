@@ -9,6 +9,7 @@ import {
   Headphones,
   HeartPulse,
   Laptop,
+  LayoutGrid,
   PackageCheck,
   ShieldCheck,
   ShoppingBasket,
@@ -24,7 +25,7 @@ import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import ProductVisual from '../components/ProductVisual';
 import { money } from '../data/products';
-import { categorySummaries } from '../lib/categories';
+import { CATEGORY_NAMES, categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 import { useCatalog } from '../state/CatalogContext';
 
@@ -50,6 +51,9 @@ export default function Home() {
   const [activeSlide, setActiveSlide] = useState(0);
   const featured = heroProducts[activeSlide];
   const categories = categorySummaries(products).slice(0, 8);
+  const navigationCategories = categories.length > 0
+    ? categories
+    : CATEGORY_NAMES.slice(0, 8).map((name) => ({ name, count: 0 }));
 
   useEffect(() => {
     let interval: number | undefined;
@@ -75,6 +79,11 @@ export default function Home() {
   };
 
   return <div className="retail-home">
+    <section className="retail-department-bar" aria-label="Shop departments">
+      <Link className="retail-department-title" to="/shop"><LayoutGrid /><span>Shop departments</span><ChevronRight /></Link>
+      <nav aria-label="Product departments">{navigationCategories.map((category) => <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>{category.name}</Link>)}</nav>
+    </section>
+
     <section className="retail-hero" aria-label="Featured promotion">
       <div className="retail-hero-copy">
         <span className="retail-promo-label">Big choice · Mzansi value</span>
