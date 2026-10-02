@@ -11,13 +11,12 @@ export default function ProductCard({ product }: { product: Product }) {
   return <article className="product-card">
     <Link to={`/product/${product.slug}`} className="product-image">
       {product.badge && <span className="product-badge">{product.badge}</span>}
-      <ProductVisual product={product} />
+      <ProductVisual product={product} showModel={false} />
       <span className="view-product">View product <ArrowRight size={15} /></span>
     </Link>
     <div className="product-copy">
       <p className="eyebrow">{product.category} · {product.packSize}</p>
       <Link to={`/product/${product.slug}`}><h3>{product.name}</h3></Link>
-      <p className="product-model">{product.model}</p>
       <div className="price-row"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
       <div className="stock-line"><span></span> Available to order</div>
       <button type="button" className="quick-add" onClick={() => { add(product); notify(`${product.name} was added to your cart.`, 'success', 'Added to cart'); }}><Plus size={17} /> Add to cart</button>

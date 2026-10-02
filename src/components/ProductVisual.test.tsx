@@ -25,4 +25,9 @@ describe('ProductVisual', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(screen.getByText('Product illustration')).toBeInTheDocument();
   });
+
+  it('can hide internal model codes on customer-facing cards', () => {
+    render(<ProductVisual product={{ ...product, model: 'E1504FA-382B1W' }} showModel={false} />);
+    expect(screen.queryByText('E1504FA-382B1W')).not.toBeInTheDocument();
+  });
 });
