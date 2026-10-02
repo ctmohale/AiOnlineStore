@@ -61,6 +61,7 @@ export default function Shop() {
     <section className="shop-page-hero">
       <nav aria-label="Breadcrumb"><Link to="/"><Home /> Home</Link><ChevronRight /><span>Shop</span></nav>
       <div className="shop-page-hero-copy"><span>Mzansi Mega Store catalogue</span><h1>Shop all products.</h1><p>Everyday essentials, appliances, technology and more—with clear ZAR pricing and nationwide delivery.</p></div>
+      <div className="shop-page-hero-image"><img src="/hero-order-handover.png" alt="Mzansi Mega Store courier handing a customer her delivery" /></div>
       <div className="shop-page-trust" aria-label="Shopping benefits"><span><PackageCheck /><b>{products.length.toLocaleString('en-ZA')}</b> products</span><span><Truck /><b>Nationwide</b> delivery</span><span><ShieldCheck /><b>Secure</b> payment links</span></div>
     </section>
 
