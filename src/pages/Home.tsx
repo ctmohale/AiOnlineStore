@@ -7,6 +7,8 @@ import {
   Headphones,
   LayoutGrid,
   PackageCheck,
+  Pause,
+  Play,
   ShieldCheck,
   ShoppingBasket,
   Sparkles,
@@ -34,6 +36,36 @@ const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; 
   'More Categories': { icon: Sparkles, tone: 'purple' },
 };
 
+const heroStories = [
+  {
+    label: 'Big choice · Mzansi value',
+    title: 'Everything you need,',
+    accent: 'all in one place.',
+    copy: 'Shop thousands of products for home, work and everyday life—with delivery across South Africa.',
+    image: null,
+    imageAlt: '',
+    visualClass: '',
+  },
+  {
+    label: 'Fast nationwide delivery',
+    title: 'Mzansi on the move.',
+    accent: 'Across South Africa.',
+    copy: 'Clear delivery estimates and useful order updates from checkout to arrival.',
+    image: '/hero-delivery-truck.png',
+    imageAlt: 'Mzansi Mega Store branded delivery truck',
+    visualClass: 'truck',
+  },
+  {
+    label: 'Delivered to your door',
+    title: 'Your order.',
+    accent: 'Delivered with care.',
+    copy: 'Friendly delivery and clear communication right through to the handover.',
+    image: '/hero-order-handover.png',
+    imageAlt: 'Mzansi Mega Store courier handing a branded parcel to a customer',
+    visualClass: 'handover',
+  },
+] as const;
+
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
@@ -42,7 +74,10 @@ export default function Home() {
   const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
   const popularProducts = rotatingProducts(productPool, 5, rotationBucket, 10);
   const [activeSlide, setActiveSlide] = useState(0);
+  const [activeStory, setActiveStory] = useState(0);
+  const [storyAutoplay, setStoryAutoplay] = useState(true);
   const featured = heroProducts[activeSlide];
+  const story = heroStories[activeStory];
   const categories = categorySummaries(products).slice(0, 8);
   const navigationCategories = categories.length > 0
     ? categories
@@ -65,11 +100,17 @@ export default function Home() {
     const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % heroProducts.length), 9000);
     return () => window.clearInterval(timer);
   }, [heroProducts.length]);
+  useEffect(() => {
+    if (!storyAutoplay) return;
+    const timer = window.setInterval(() => setActiveStory((current) => (current + 1) % heroStories.length), 9500);
+    return () => window.clearInterval(timer);
+  }, [storyAutoplay]);
 
   const moveSlide = (direction: number) => {
     if (!heroProducts.length) return;
     setActiveSlide((current) => (current + direction + heroProducts.length) % heroProducts.length);
   };
+  const moveStory = (direction: number) => setActiveStory((current) => (current + direction + heroStories.length) % heroStories.length);
 
   return <div className="retail-home">
     <section className="retail-department-bar" aria-label="Shop departments">
@@ -83,17 +124,30 @@ export default function Home() {
 
     <section className="retail-hero" aria-label="Featured promotion">
       <div className="retail-hero-copy">
-        <span className="retail-promo-label">Big choice · Mzansi value</span>
-        <h1>Everything you need,<br /><em>all in one place.</em></h1>
-        <p>Shop thousands of products for home, work and everyday life—with delivery across South Africa.</p>
-        <div className="retail-hero-actions">
-          <Link className="retail-primary-action" to="/shop">Shop all products <ArrowRight /></Link>
-          <Link className="retail-secondary-action" to="/shop">Browse great value</Link>
+        <div className={`retail-story-slide${story.image ? ' visual' : ''}`} key={story.title} aria-live="polite">
+          {story.image ? <div className={`retail-story-visual ${story.visualClass}`}>
+            <img src={story.image} alt={story.imageAlt} decoding="async" />
+            <div className="retail-story-caption"><div><span>{story.label}</span><h2>{story.title}<br /><em>{story.accent}</em></h2></div><p>{story.copy}</p></div>
+          </div> : <>
+            <span className="retail-promo-label">{story.label}</span>
+            <h1>{story.title}<br /><em>{story.accent}</em></h1>
+            <p>{story.copy}</p>
+            <div className="retail-hero-actions">
+              <Link className="retail-primary-action" to="/shop">Shop all products <ArrowRight /></Link>
+              <Link className="retail-secondary-action" to="/shop">Browse great value</Link>
+            </div>
+            <div className="retail-hero-promises">
+              <span><BadgeCheck /> Clear ZAR pricing</span>
+              <span><Truck /> Nationwide delivery</span>
+              <span><ShieldCheck /> Secure payment links</span>
+            </div>
+          </>}
         </div>
-        <div className="retail-hero-promises">
-          <span><BadgeCheck /> Clear ZAR pricing</span>
-          <span><Truck /> Nationwide delivery</span>
-          <span><ShieldCheck /> Secure payment links</span>
+        <div className="retail-story-controls" aria-label="Store highlight controls">
+          <button type="button" onClick={() => moveStory(-1)} aria-label="Previous store highlight"><ChevronLeft /></button>
+          <span>{heroStories.map((item, index) => <button type="button" key={item.title} className={index === activeStory ? 'active' : ''} onClick={() => setActiveStory(index)} aria-label={`Show ${item.label}`} aria-current={index === activeStory ? 'true' : undefined} />)}</span>
+          <button type="button" onClick={() => moveStory(1)} aria-label="Next store highlight"><ChevronRight /></button>
+          <button type="button" onClick={() => setStoryAutoplay((playing) => !playing)} aria-label={storyAutoplay ? 'Pause store highlights' : 'Play store highlights'}>{storyAutoplay ? <Pause /> : <Play />}</button>
         </div>
       </div>
       <div className="retail-featured" aria-live="polite">
