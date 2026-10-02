@@ -51,6 +51,31 @@ describe('ProductManager actions', () => {
     });
   });
 
+  it('finds the reported Huggies product beyond the first 5000 catalogue records', async () => {
+    const firstPage = Array.from({ length: 5000 }, (_, index) => ({ ...product, id: index + 1000 }));
+    const huggies = { ...product, id: 51, title: 'Huggies Extra Care Nappies Size 2 Tape Diapers', selling_price: 918.85, category: 'Baby nappies', status: 'published' };
+    vi.mocked(adminRequest).mockImplementation(async (path) => {
+      if (path === '/products') return firstPage;
+      if (path === '/products?offset=5000') return [huggies];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<FeedbackProvider><ProductManager searchQuery="Huggies Extra Care Nappies Size 2" /></FeedbackProvider>);
+    expect(await screen.findByText(huggies.title)).toBeInTheDocument();
+    expect(screen.getByText('1 of 5001 products shown')).toBeInTheDocument();
+    expect(adminRequest).toHaveBeenCalledWith('/products?offset=5000');
+  });
+
+  it('stops safely when an older API ignores the requested offset', async () => {
+    const firstPage = Array.from({ length: 5000 }, (_, index) => ({ ...product, id: index + 1000 }));
+    vi.mocked(adminRequest).mockImplementation(async (path) => {
+      if (path.startsWith('/products')) return firstPage;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    render(<FeedbackProvider><ProductManager searchQuery="Huggies" /></FeedbackProvider>);
+    expect(await screen.findByText('The catalogue API needs to finish updating before all products can be loaded. Refresh shortly.')).toBeInTheDocument();
+    expect(vi.mocked(adminRequest).mock.calls.filter(([path]) => path.startsWith('/products'))).toHaveLength(2);
+  });
+
   it('uses the custom confirmation dialog and deletes only after confirmation', async () => {
     const user = userEvent.setup();
     render(<FeedbackProvider><ProductManager /></FeedbackProvider>);
