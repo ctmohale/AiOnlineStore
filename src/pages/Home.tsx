@@ -73,7 +73,7 @@ export default function Home() {
 
   return <div className="retail-home">
     <section className="retail-department-bar" aria-label="Shop departments">
-      <Link className="retail-department-title" to="/shop"><LayoutGrid /><span>Shop departments</span><ChevronRight /></Link>
+      <div className="retail-department-heading"><div><LayoutGrid /><span><strong>Shop departments</strong><small>Browse our most popular categories</small></span></div><Link to="/shop">View all products <ArrowRight /></Link></div>
       <nav aria-label="Product departments">{navigationCategories.map((category) => {
         const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
         const Icon = presentation.icon;
@@ -120,17 +120,6 @@ export default function Home() {
       <div><CreditCard /><span><strong>Secure ways to pay</strong><small>Yoco and Paystack payment links</small></span></div>
       <div><Headphones /><span><strong>Local customer support</strong><small>Help before and after your order</small></span></div>
       <div><BadgeCheck /><span><strong>Useful product details</strong><small>Shop with the information you need</small></span></div>
-    </section>
-
-    <section className="retail-section retail-categories">
-      <div className="retail-section-heading"><div><span>Shop by department</span><h2>Find what you need, faster.</h2></div><Link to="/shop">View all products <ArrowRight /></Link></div>
-      {categories.length > 0 ? <div className="retail-category-grid">{categories.map((category) => {
-        const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
-        const Icon = presentation.icon;
-        return <Link className={`retail-category-card ${presentation.tone}`} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>
-          <span>{presentation.image ? <img src={presentation.image} alt="" loading="lazy" /> : Icon ? <Icon /> : null}</span><strong>{category.name}</strong><small>{category.count.toLocaleString('en-ZA')} products</small><ArrowRight />
-        </Link>;
-      })}</div> : !loading && <div className="retail-empty-line">Departments will appear when the catalogue is available.</div>}
     </section>
 
     <section className="retail-promo-grid" aria-label="Store promotions">
