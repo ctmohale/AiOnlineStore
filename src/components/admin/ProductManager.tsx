@@ -47,6 +47,12 @@ const blankReview = { exactProductMatch: false, supplierPriceChecked: false, sto
 export default function ProductManager({ onChanged, initialEditId, onInitialEditHandled, searchQuery = '' }: { onChanged?: () => void; initialEditId?: number; onInitialEditHandled?: () => void; searchQuery?: string }) {
   const { confirm, notify } = useFeedback();
   const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkTargets, setBulkTargets] = useState<AdminProduct[]>([]);
+  const [bulkReview, setBulkReview] = useState(blankReview);
+  const [publishing, setPublishing] = useState(false);
+  const [publishProgress, setPublishProgress] = useState(0);
+  const [publishFailures, setPublishFailures] = useState<{ id: number; title: string; reason: string }[]>([]);
   const [editing, setEditing] = useState<AdminProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyProduct);
   const [open, setOpen] = useState(false);
@@ -79,9 +85,15 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
       && (!filters.source || product.retailer === filters.source)
       && (!filters.profit || profitState === filters.profit);
   }), [filters, products, searchText]);
+  useEffect(() => { setSelectedIds(new Set()); }, [filters, searchText]);
+  const selectableProducts = visibleProducts.filter((product) => product.status !== 'published');
+  const selectedProducts = selectableProducts.filter((product) => selectedIds.has(product.id));
+  const allSelected = selectableProducts.length > 0 && selectedProducts.length === selectableProducts.length;
+  const toggleSelection = (id: number) => setSelectedIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const preparePublish = (targets: AdminProduct[]) => { setBulkTargets([...targets]); setBulkReview(blankReview); setPublishProgress(0); };
   const filter = (key: keyof ProductFilters, value: string) => setFilters((current) => ({ ...current, [key]: value }));
   const clearFilters = () => setFilters({ category: '', status: '', stock: '', source: '', profit: '' });
-  const load = useCallback(async (showSuccess = false) => { setLoading(true); try { setProducts(await adminRequest<AdminProduct[]>('/products')); if (showSuccess) notify('The product list is up to date.', 'success', 'Products refreshed'); } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be loaded', 'error'); } finally { setLoading(false); } }, [notify]);
+  const load = useCallback(async (showSuccess = false) => { setLoading(true); try { const loaded = new Map<number, AdminProduct>(); let offset = 0; while (true) { const page = await adminRequest<AdminProduct[]>(offset ? `/products?offset=${offset}` : '/products'); const before = loaded.size; for (const product of page) loaded.set(product.id, product); if (page.length < 5000) break; if (loaded.size === before) throw new Error('The catalogue API needs to finish updating before all products can be loaded. Refresh shortly.'); offset += page.length; } setProducts([...loaded.values()]); if (showSuccess) notify('The product list is up to date.', 'success', 'Products refreshed'); } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be loaded', 'error'); } finally { setLoading(false); } }, [notify]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void adminRequest<{ standard_markup_percent: number }>('/pricing-settings').then((settings) => setStandardMarkup(Number(settings.standard_markup_percent))).catch(() => {}); }, []);
   useEffect(() => { setImageQuality(null); }, [form.imageUrls]);
@@ -142,6 +154,33 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
     finally { setDeletingId(null); }
   };
 
+  const publishBatch = async () => {
+    if (publishing || !bulkTargets.length || !Object.values(bulkReview).every(Boolean)) return;
+    const targets = [...bulkTargets];
+    const checklist = { ...bulkReview };
+    setPublishing(true); setPublishFailures([]);
+    const failed: { id: number; title: string; reason: string }[] = [];
+    const published = new Set<number>();
+    let cursor = 0, completed = 0;
+    async function worker() {
+      while (cursor < targets.length) {
+        const product = targets[cursor++];
+        try {
+          await adminRequest(`/products/${product.id}/review`, { method: 'PATCH', body: JSON.stringify({ status: 'published', sellingPrice: Number(product.selling_price), checklist }) });
+          published.add(product.id);
+        } catch (error) { failed.push({ id: product.id, title: product.title, reason: error instanceof Error ? error.message : 'Publication failed' }); }
+        completed++; setPublishProgress(completed);
+      }
+    }
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, targets.length) }, worker));
+      setPublishFailures(failed);
+      setSelectedIds((current) => new Set([...current].filter((id) => !published.has(id))));
+      setBulkTargets([]); await load(); onChanged?.();
+      notify(`${published.size} published; ${failed.length} could not be published.`, failed.length ? 'warning' : 'success', 'Bulk publication complete');
+    } finally { setPublishing(false); }
+  };
+
   return <>
     <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button type="button" className="outline-button" disabled={loading} onClick={() => void load(true)}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh'}</button><button type="button" className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
       {!loading && products.length > 0 && <div className="product-table-filters" aria-label="Product table filters">
@@ -153,9 +192,18 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
         <button type="button" className="outline-button" disabled={!filtersActive} onClick={clearFilters}>Clear filters</button>
       </div>}
       {!loading && (searchTerms.length > 0 || filtersActive) && <p className="product-search-status" aria-live="polite">{visibleProducts.length} of {products.length} products shown</p>}
-      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Product</span><span>Status / stock</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{visibleProducts.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); const image = product.image_url || product.images?.slice().sort((a, b) => a.sort_order - b.sort_order)[0]?.url; return <div className="table-row product-table-grid" key={product.id}><span><i className="table-thumb"><span>{product.brand?.[0] || 'P'}</span>{image && <img src={image} alt={`${product.title} thumbnail`} loading="lazy" onError={(event) => event.currentTarget.remove()} />}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><span><StatusPill status={product.status} /><small>{product.stock_status?.replaceAll('_', ' ') || 'Stock unknown'}{product.review_reason ? ` · ${product.review_reason}` : ''}</small></span><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit <= 0 || profit < Number(product.minimum_profit ?? 0) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}<small>{product.last_checked_at ? `Checked ${new Date(product.last_checked_at).toLocaleString('en-ZA')}` : 'Never checked'}</small></span><span className="row-actions"><button type="button" title="Edit product" aria-label={`Edit ${product.title}`} onClick={() => edit(product)}><Edit3 /> Edit</button><button type="button" title="Delete product" aria-label={`Delete ${product.title}`} className="danger" disabled={deletingId === product.id} onClick={() => void deleteProduct(product)}><Trash2 /> {deletingId === product.id ? 'Deleting…' : 'Delete'}</button></span></div>; })}{visibleProducts.length === 0 && products.length > 0 && <div className="table-empty">No products match the current search and filters.</div>}</div>}
+      {!loading && products.length > 0 && <div className="product-bulk-toolbar">
+        <label><input type="checkbox" aria-label="Select all filtered products" checked={allSelected} disabled={!selectableProducts.length} ref={(input) => { if (input) input.indeterminate = selectedProducts.length > 0 && !allSelected; }} onChange={() => setSelectedIds(allSelected ? new Set() : new Set(selectableProducts.map((product) => product.id)))} />Select all filtered ({selectableProducts.length})</label>
+        <span>{selectedProducts.length} selected</span>
+        <button type="button" className="outline-button" disabled={!selectedProducts.length} onClick={() => setSelectedIds(new Set())}>Clear selection</button>
+        <button type="button" className="solid-button" disabled={!selectedProducts.length} onClick={() => preparePublish(selectedProducts)}>Publish selected ({selectedProducts.length})</button>
+        <button type="button" className="outline-button" disabled={!selectableProducts.length} onClick={() => preparePublish(selectableProducts)}>Publish filtered ({selectableProducts.length})</button>
+      </div>}
+      {publishFailures.length > 0 && <section className="bulk-publication-results" aria-label="Publication failures"><h3>{publishFailures.length} products still need attention</h3><p>Successful products were published. These products were kept in their previous status.</p><ul>{publishFailures.map((failure) => <li key={failure.id}><button type="button" onClick={() => { const product = products.find((item) => item.id === failure.id); if (product) edit(product); }}>{failure.title}</button><span>{failure.reason}</span></li>)}</ul></section>}
+      {loading ? <p className="table-loading">Loading products…</p> : <div className="data-table"><div className="table-head product-table-grid"><span>Select</span><span>Product</span><span>Status / stock</span><span>Selling</span><span>Supplier cost</span><span>Est. profit</span><span>Source</span><span>Actions</span></div>{visibleProducts.map((product) => { const profit = Number(product.selling_price) - Number(product.current_cost || 0) - Number(product.supplier_delivery_cost || 0) - Number(product.estimated_customer_delivery_cost || 0); const image = product.image_url || product.images?.slice().sort((a, b) => a.sort_order - b.sort_order)[0]?.url; return <div className="table-row product-table-grid" key={product.id}><span><input type="checkbox" aria-label={`Select ${product.title}`} checked={selectedIds.has(product.id)} disabled={product.status === 'published'} onChange={() => toggleSelection(product.id)} /></span><span><i className="table-thumb"><span>{product.brand?.[0] || 'P'}</span>{image && <img src={image} alt={`${product.title} thumbnail`} loading="lazy" onError={(event) => event.currentTarget.remove()} />}</i><b>{product.title}<small>{product.model || 'No model'} · {product.pack_size || 'No pack size'}</small></b></span><span><StatusPill status={product.status} /><small>{product.stock_status?.replaceAll('_', ' ') || 'Stock unknown'}{product.review_reason ? ` · ${product.review_reason}` : ''}</small></span><strong>{money(Number(product.selling_price))}</strong><span>{product.current_cost == null ? 'Not provided' : money(Number(product.current_cost))}</span><span className={profit <= 0 || profit < Number(product.minimum_profit ?? 0) ? 'profit-low' : 'profit-good'}>{money(profit)}</span><span>{product.retailer || 'No supplier'}<small>{product.last_checked_at ? `Checked ${new Date(product.last_checked_at).toLocaleString('en-ZA')}` : 'Never checked'}</small></span><span className="row-actions"><button type="button" title="Edit product" aria-label={`Edit ${product.title}`} onClick={() => edit(product)}><Edit3 /> Edit</button><button type="button" title="Delete product" aria-label={`Delete ${product.title}`} className="danger" disabled={deletingId === product.id} onClick={() => void deleteProduct(product)}><Trash2 /> {deletingId === product.id ? 'Deleting…' : 'Delete'}</button></span></div>; })}{visibleProducts.length === 0 && products.length > 0 && <div className="table-empty">No products match the current search and filters.</div>}</div>}
       {!loading && products.length === 0 && <div className="account-empty"><PackagePlus /><h3>No active products</h3><p>Create the first catalogue draft to begin supplier review.</p></div>}
     </section>
+    {bulkTargets.length > 0 && <div className="product-modal-backdrop"><section className="product-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-publish-title"><header><h2 id="bulk-publish-title">Publish {bulkTargets.length} products?</h2><button type="button" aria-label="Close bulk publication" disabled={publishing} onClick={() => setBulkTargets([])}><X /></button></header><div className="bulk-publish-content"><p>This applies to the {bulkTargets.length} products chosen when this dialog opened. Published products are excluded.</p><details><summary>View products to publish</summary><ul>{bulkTargets.map((product) => <li key={product.id}>{product.title} · {product.retailer || 'No supplier'} · {money(Number(product.selling_price))}</li>)}</ul></details><p>Confirm these checks for every product in this batch. Unverified prices, missing images, stale checks, unavailable stock and pricing failures will still block publication.</p><section className="review-checklist">{Object.entries({ exactProductMatch: 'Every exact model and variant matches the supplier', supplierPriceChecked: 'Every supplier checkout price is current', stockChecked: 'Stock is currently available for every product', promotionDatesChecked: 'Every promotion date and term was checked', imagesChecked: 'All useful product images were added for every product', descriptionChecked: 'Every description and specification is accurate' }).map(([key, label]) => <label key={key}><input type="checkbox" disabled={publishing} checked={bulkReview[key as keyof typeof bulkReview]} onChange={(event) => setBulkReview((current) => ({ ...current, [key]: event.target.checked }))} />{label}</label>)}</section><p aria-live="polite">{publishing ? `Processed ${publishProgress} of ${bulkTargets.length} products…` : 'Each product is validated and the review is recorded separately.'}</p><button type="button" className="solid-button" disabled={publishing || !Object.values(bulkReview).every(Boolean)} onClick={() => void publishBatch()}>{publishing ? 'Publishing…' : `Publish ${bulkTargets.length} products`}</button></div></section></div>}
     {open && <div className="product-modal-backdrop" role="presentation"><section className="product-modal product-workflow-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title"><header><div><p className="kicker">{editing ? 'Edit sourcing record' : 'New sourcing record'}</p><h2 id="product-form-title">{editing ? editing.title : 'Add a product'}</h2></div><button type="button" onClick={() => setOpen(false)} aria-label="Close product form"><X /></button></header><form onSubmit={submit}>
       <section className="url-importer"><div><Link2 /><label>Supplier product URL<input type="url" value={form.sourceUrl} onChange={(event) => field('sourceUrl', event.target.value)} placeholder="https://www.game.co.za/... or https://www.makro.co.za/..." /></label></div><button type="button" className="solid-button" disabled={importing} onClick={() => void importFromUrl()}><Sparkles /> {importing ? 'Reading listing…' : 'Add from URL'}</button><p>Imports public product metadata only. Always review the exact model, checkout price and stock.</p></section>
       <div className="workflow-section-heading"><span>1</span><div><h3>Product and listing</h3><p>Keep the core record short; save incomplete work as a draft.</p></div></div>
