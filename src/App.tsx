@@ -15,11 +15,13 @@ import CatalogShare from './pages/CatalogShare';
 import PolicyPage from './pages/PolicyPage';
 import { FeedbackProvider } from './components/FeedbackProvider';
 import { CatalogProvider } from './state/CatalogContext';
+import GlobalLoading from './components/GlobalLoading';
 import './App.css';
 
 export default function App() {
   return (
     <FeedbackProvider>
+      <GlobalLoading />
       <BrowserRouter>
         <CatalogProvider>
           <StoreProvider>
