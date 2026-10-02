@@ -57,3 +57,23 @@ test('opens order operations in a modal from the full-width order list', async (
   await user.click(screen.getByRole('button', { name: 'Close order operations' }));
   expect(screen.queryByRole('dialog', { name: 'MMS-1004' })).not.toBeInTheDocument();
 });
+
+test('shows and hides each administrator password field independently', async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><FeedbackProvider><AdminDashboard /></FeedbackProvider></MemoryRouter>);
+
+  await waitFor(() => expect(adminRequest).toHaveBeenCalledWith('/pricing-settings'));
+  await user.click(screen.getByRole('button', { name: 'Pricing settings' }));
+
+  const currentPassword = screen.getByLabelText('Current password');
+  const newPassword = screen.getByLabelText('New password');
+  expect(currentPassword).toHaveAttribute('type', 'password');
+  expect(newPassword).toHaveAttribute('type', 'password');
+
+  await user.click(screen.getByRole('button', { name: 'Show current password' }));
+  expect(currentPassword).toHaveAttribute('type', 'text');
+  expect(newPassword).toHaveAttribute('type', 'password');
+
+  await user.click(screen.getByRole('button', { name: 'Show new password' }));
+  expect(newPassword).toHaveAttribute('type', 'text');
+});
