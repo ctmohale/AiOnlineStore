@@ -15,7 +15,7 @@ describe('product sale display', () => {
   });
   it('shows the supplied end date in South African time and handles a missing date', () => {
     expect(productSale({ ...sale, promotionEndAt: '2026-10-03T20:00:00Z' }, now)?.endLabel).toContain('22:00 SAST');
-    expect(productSale(sale, now)?.endLabel).toBe('Sale end date not provided');
+    expect(productSale(sale, now)?.endLabel).toBeNull();
   });
   it('does not label full-price, future or expired promotions as sales', () => {
     expect(productSale({ ...sale, compareAt: 435.85 }, now)).toBeNull();

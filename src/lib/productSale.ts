@@ -9,6 +9,6 @@ export const productSale = (product: Product, now = Date.now()) => {
   if (percent < 2) return null;
   return {
     discountLabel: `${percent}%`,
-    endLabel: end === null ? 'Sale end date not provided' : `Sale ends ${new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(end)} SAST`,
+    endLabel: end === null ? null : `Sale ends ${new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(end)} SAST`,
   };
 };

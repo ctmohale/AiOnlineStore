@@ -7,10 +7,10 @@ vi.mock('../state/StoreContext', () => ({ useStore: () => ({ add: vi.fn() }) }))
 vi.mock('./FeedbackProvider', () => ({ useFeedback: () => ({ notify: vi.fn() }) }));
 const product = mapPublicProduct({ id: 51, slug: 'huggies', title: 'Huggies Nappies', brand: 'Huggies', model: '', pack_size: '84 pieces', category: 'Baby nappies', description: '', specifications: {}, selling_price: 400, original_displayed_price: 800, image_url: null });
 describe('sale product cards', () => {
-  it('renders a discount sticker and the honest missing-date label for a sale', () => {
+  it('renders a discount sticker without a date message when the end date is missing', () => {
     render(<MemoryRouter><ProductCard product={product} /></MemoryRouter>);
     expect(screen.getByText('50% OFF')).toHaveClass('product-sale-sticker');
-    expect(screen.getByText('Sale end date not provided')).toBeInTheDocument();
+    expect(screen.queryByText(/Sale end/)).not.toBeInTheDocument();
   });
   it('hides tiny-sale labels, dates and crossed-out prices on cards', () => {
     const { container } = render(<MemoryRouter><ProductCard product={{ ...product, price: 3449, compareAt: 3499, promotionEndAt: '2099-10-05T21:59:00Z' }} /></MemoryRouter>);
