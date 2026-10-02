@@ -49,9 +49,9 @@ const heroStories = [
     title: 'Mzansi on the move.',
     accent: 'Across South Africa.',
     copy: 'Clear delivery estimates and useful order updates from checkout to arrival.',
-    image: '/hero-delivery-truck.png',
-    imageAlt: 'Mzansi Mega Store branded delivery truck',
-    visualClass: 'truck',
+    image: '/hero-delivery-van.png',
+    imageAlt: 'Mzansi Mega Store branded courier delivery van',
+    visualClass: 'van',
   },
   {
     label: 'Delivered to your door',
