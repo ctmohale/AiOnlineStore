@@ -1,32 +1,56 @@
-import { ArrowRight, BadgeCheck, Banknote, CheckCircle2, ChevronLeft, ChevronRight, PackageCheck, Pause, Play, SearchCheck, ShieldCheck, Truck } from 'lucide-react';
+import {
+  ArrowRight,
+  BadgeCheck,
+  BriefcaseBusiness,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Dumbbell,
+  Headphones,
+  HeartPulse,
+  Laptop,
+  PackageCheck,
+  ShieldCheck,
+  ShoppingBasket,
+  Sofa,
+  Sparkles,
+  Truck,
+  Wrench,
+  WashingMachine,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import ProductVisual from '../components/ProductVisual';
 import { money } from '../data/products';
-import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
+import { useCatalog } from '../state/CatalogContext';
 
-const heroBenefits = [
-  { label: 'Online shopping · Delivered nationwide', title: 'Find it. Order it.', accent: 'Get it delivered.', copy: 'Explore thousands of products for home, work and everyday life, then place your order in a few simple steps.', icon: PackageCheck, image: null, imageAlt: '', visualClass: '' },
-  { label: 'Nationwide delivery', title: 'Your order, on the move.', accent: 'Across South Africa.', copy: 'Clear estimates and order updates from dispatch to delivery.', icon: Truck, image: '/hero-delivery-truck.png', imageAlt: 'Mzansi Mega Store branded delivery truck', visualClass: 'truck' },
-  { label: 'Delivered to your door', title: 'Your order.', accent: 'Delivered with care.', copy: 'Friendly delivery and clear communication right through to the handover.', icon: ShieldCheck, image: '/hero-order-handover.png', imageAlt: 'Mzansi Mega Store courier handing a branded parcel to a customer', visualClass: 'handover' },
-] as const;
+const categoryPresentation: Record<string, { icon: LucideIcon; tone: string }> = {
+  'Electronics & Computing': { icon: Laptop, tone: 'blue' },
+  'Home Appliances': { icon: WashingMachine, tone: 'orange' },
+  'Home & Furniture': { icon: Sofa, tone: 'green' },
+  'Tools & Automotive': { icon: Wrench, tone: 'gold' },
+  'Outdoor & Sports': { icon: Dumbbell, tone: 'mint' },
+  'Health, Beauty & Baby': { icon: HeartPulse, tone: 'rose' },
+  'Food & Household': { icon: ShoppingBasket, tone: 'yellow' },
+  'Office & Stationery': { icon: BriefcaseBusiness, tone: 'slate' },
+  'More Categories': { icon: Sparkles, tone: 'purple' },
+};
 
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
-  const productPool = homepageProductPool(products, 11);
-  const featuredProducts = rotatingProducts(productPool, 5, rotationBucket);
-  const homepageProducts = rotatingProducts(productPool, 6, rotationBucket, 5);
+  const productPool = homepageProductPool(products, 16);
+  const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
+  const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
+  const popularProducts = rotatingProducts(productPool, 5, rotationBucket, 10);
   const [activeSlide, setActiveSlide] = useState(0);
-  const [autoplay, setAutoplay] = useState(true);
-  const [activeBenefit, setActiveBenefit] = useState(0);
-  const [benefitAutoplay, setBenefitAutoplay] = useState(true);
-  const featured = featuredProducts[activeSlide];
-  const benefit = heroBenefits[activeBenefit];
-  const BenefitIcon = benefit.icon;
-  const categories = categorySummaries(products).slice(0, 3);
+  const featured = heroProducts[activeSlide];
+  const categories = categorySummaries(products).slice(0, 8);
+
   useEffect(() => {
     let interval: number | undefined;
     const update = () => setRotationBucket(homeRotationBucket());
@@ -38,80 +62,94 @@ export default function Home() {
     return () => { window.clearTimeout(timeout); if (interval) window.clearInterval(interval); };
   }, []);
   useEffect(() => { setActiveSlide(0); }, [rotationBucket]);
-  useEffect(() => { if (activeSlide >= featuredProducts.length) setActiveSlide(0); }, [activeSlide, featuredProducts.length]);
+  useEffect(() => { if (activeSlide >= heroProducts.length) setActiveSlide(0); }, [activeSlide, heroProducts.length]);
   useEffect(() => {
-    if (featuredProducts.length < 2 || !autoplay) return;
-    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % featuredProducts.length), 9000);
+    if (heroProducts.length < 2) return;
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % heroProducts.length), 9000);
     return () => window.clearInterval(timer);
-  }, [autoplay, featuredProducts.length]);
-  useEffect(() => {
-    if (!benefitAutoplay) return;
-    const timer = window.setInterval(() => setActiveBenefit((current) => (current + 1) % heroBenefits.length), 8500);
-    return () => window.clearInterval(timer);
-  }, [benefitAutoplay]);
-  const moveSlide = (direction: number) => setActiveSlide((current) => (current + direction + featuredProducts.length) % featuredProducts.length);
-  const moveHeroSlide = (direction: number) => setActiveBenefit((current) => (current + direction + heroBenefits.length) % heroBenefits.length);
-  return <>
-    <section className="hero">
-      <div className="hero-content" role="region" aria-roledescription="carousel" aria-label="Store highlights">
-        <div className={`hero-message${benefit.image ? ' visual' : ''}`} key={benefit.title} aria-live="polite">
-          {benefit.image ? <div className={`hero-visual-stage ${benefit.visualClass}`}>
-            <img src={benefit.image} alt={benefit.imageAlt} decoding="async" />
-            <div className="hero-visual-caption"><p>{benefit.label}</p><h2>{benefit.title} <em>{benefit.accent}</em></h2><span>{benefit.copy}</span></div>
-          </div> : <>
-            <div className="hero-message-label"><span><BenefitIcon /></span><p>{benefit.label}</p></div>
-            <h1>{benefit.title}<br /><em>{benefit.accent}</em></h1>
-            <p className="hero-lead">{benefit.copy}</p>
-            <div className="hero-actions"><Link className="button primary" to="/shop">Start shopping <ArrowRight size={18} /></Link><a className="hero-secondary-link" href="#how">How delivery works</a></div>
-          </>}
-          <div className="hero-slide-controls">
-            <button type="button" onClick={() => moveHeroSlide(-1)} aria-label="Previous store highlight"><ChevronLeft /></button>
-            <div>{heroBenefits.map((item, index) => <button type="button" className={index === activeBenefit ? 'active' : ''} onClick={() => setActiveBenefit(index)} aria-label={`Show ${item.label}`} aria-current={index === activeBenefit ? 'true' : undefined} key={item.title} />)}</div>
-            <button type="button" onClick={() => moveHeroSlide(1)} aria-label="Next store highlight"><ChevronRight /></button>
-            <button type="button" onClick={() => setBenefitAutoplay((playing) => !playing)} aria-label={benefitAutoplay ? 'Pause store highlights' : 'Play store highlights'}>{benefitAutoplay ? <Pause /> : <Play />}</button>
-          </div>
+  }, [heroProducts.length]);
+
+  const moveSlide = (direction: number) => {
+    if (!heroProducts.length) return;
+    setActiveSlide((current) => (current + direction + heroProducts.length) % heroProducts.length);
+  };
+
+  return <div className="retail-home">
+    <section className="retail-hero" aria-label="Featured promotion">
+      <div className="retail-hero-copy">
+        <span className="retail-promo-label">Big choice · Mzansi value</span>
+        <h1>Everything you need,<br /><em>all in one place.</em></h1>
+        <p>Shop thousands of products for home, work and everyday life—with delivery across South Africa.</p>
+        <div className="retail-hero-actions">
+          <Link className="retail-primary-action" to="/shop">Shop all products <ArrowRight /></Link>
+          <Link className="retail-secondary-action" to="/shop">Browse great value</Link>
+        </div>
+        <div className="retail-hero-promises">
+          <span><BadgeCheck /> Clear ZAR pricing</span>
+          <span><Truck /> Nationwide delivery</span>
+          <span><ShieldCheck /> Secure payment links</span>
         </div>
       </div>
-      <div className="hero-art featured-showcase" role="region" aria-roledescription="carousel" aria-label="Featured products">
-        <div className="sun-shape" />
-        {featured ? <div className="featured-slide" key={featured.id} aria-live="polite">
-          {featured.image ? <Link className="hero-feature-image" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><img src={featured.image} alt={featured.name} decoding="async" fetchPriority="high" draggable={false} /></Link> : <Link className="hero-product-placeholder" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><small>Featured find</small><strong>{featured.brand || 'MZANSI'}</strong><span>{featured.name}</span><em>{featured.model || featured.packSize}</em></Link>}
-          <Link className="deal-card" to={`/product/${featured.slug}`}><small>{featured.compareAt ? `Was ${money(featured.compareAt)}` : 'Current selling price'}</small><strong>{money(featured.price)}</strong><span>{featured.name}</span></Link>
-          <div className="check-card"><BadgeCheck /><div><strong>Available from Mzansi Mega Store</strong><span>{[featured.category, featured.packSize].filter(Boolean).join(' · ')}</span></div></div>
-        </div> : <div className="featured-empty"><small>Featured finds</small><strong>{loading ? 'Finding something good…' : 'New finds coming soon.'}</strong><span>{loading ? 'Loading our latest products.' : 'We’re preparing the next featured selection.'}</span><Link className="text-link" to="/shop">Browse the catalogue <ArrowRight /></Link></div>}
-        {featuredProducts.length > 1 && <div className="featured-controls" aria-label="Featured product controls">
-          <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous featured product"><ChevronLeft /></button>
-          <div>{featuredProducts.map((product, index) => <button type="button" className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} aria-current={index === activeSlide ? 'true' : undefined} key={product.id} />)}</div>
-          <button type="button" onClick={() => moveSlide(1)} aria-label="Next featured product"><ChevronRight /></button>
-          <button type="button" onClick={() => setAutoplay((playing) => !playing)} aria-label={autoplay ? 'Pause featured product slideshow' : 'Play featured product slideshow'}>{autoplay ? <Pause /> : <Play />}</button>
+      <div className="retail-featured" aria-live="polite">
+        {featured ? <>
+          <Link className="retail-featured-visual" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><ProductVisual product={featured} large /></Link>
+          <div className="retail-featured-copy">
+            <span>{featured.compareAt ? 'Special price' : 'Featured today'}</span>
+            <Link to={`/product/${featured.slug}`}><h2>{featured.name}</h2></Link>
+            <p>{[featured.brand, featured.packSize].filter(Boolean).join(' · ')}</p>
+            <div><strong>{money(featured.price)}</strong>{featured.compareAt && <del>{money(featured.compareAt)}</del>}</div>
+            <Link to={`/product/${featured.slug}`}>View deal <ArrowRight /></Link>
+          </div>
+        </> : <div className="retail-featured-empty"><PackageCheck /><strong>{loading ? 'Loading today’s finds…' : 'Fresh deals are on the way.'}</strong><span>Browse the full catalogue while we prepare this feature.</span></div>}
+        {heroProducts.length > 1 && <div className="retail-featured-controls" aria-label="Featured deals controls">
+          <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous deal"><ChevronLeft /></button>
+          <span>{heroProducts.map((product, index) => <button type="button" key={product.id} className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} />)}</span>
+          <button type="button" onClick={() => moveSlide(1)} aria-label="Next deal"><ChevronRight /></button>
         </div>}
       </div>
     </section>
 
-    <section className="category-strip">
-      <p>Browse by category</p>
-      {categories.map((category) => <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}><i>✦</i><div><strong>{category.name}</strong><span>{category.count} live products</span></div><ArrowRight /></Link>)}
-      {!loading && categories.length === 0 && <p>New categories are coming soon.</p>}
+    <section className="retail-benefit-bar" aria-label="Shopping benefits">
+      <div><Truck /><span><strong>Delivery nationwide</strong><small>Clear estimates at checkout</small></span></div>
+      <div><CreditCard /><span><strong>Secure ways to pay</strong><small>Yoco and Paystack payment links</small></span></div>
+      <div><Headphones /><span><strong>Local customer support</strong><small>Help before and after your order</small></span></div>
+      <div><BadgeCheck /><span><strong>Useful product details</strong><small>Shop with the information you need</small></span></div>
     </section>
 
-    <section className="section products-section">
-      <div className="section-heading"><div><p className="kicker">Catalogue monitored · New selection every 10 minutes</p><h2>Good finds, right now.</h2></div><Link className="text-link" to="/shop">Shop all products <ArrowRight size={17} /></Link></div>
+    <section className="retail-section retail-categories">
+      <div className="retail-section-heading"><div><span>Shop by department</span><h2>Find what you need, faster.</h2></div><Link to="/shop">View all products <ArrowRight /></Link></div>
+      {categories.length > 0 ? <div className="retail-category-grid">{categories.map((category) => {
+        const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
+        const Icon = presentation.icon;
+        return <Link className={`retail-category-card ${presentation.tone}`} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>
+          <span><Icon /></span><strong>{category.name}</strong><small>{category.count.toLocaleString('en-ZA')} products</small><ArrowRight />
+        </Link>;
+      })}</div> : !loading && <div className="retail-empty-line">Departments will appear when the catalogue is available.</div>}
+    </section>
+
+    <section className="retail-promo-grid" aria-label="Store promotions">
+      <article className="retail-promo-card value"><div><span>Made for everyday value</span><h2>More choice.<br />Less running around.</h2><p>From appliances and technology to home essentials, browse one growing catalogue.</p><Link to="/shop">Explore the catalogue <ArrowRight /></Link></div><ShoppingBasket /></article>
+      <article className="retail-promo-card delivery"><div><span>Across South Africa</span><h2>Delivery that<br />comes to you.</h2><p>{settings ? `Free delivery from ${money(settings.freeDeliveryThreshold)}. Standard delivery is ${money(settings.standardCustomerDelivery)} below the threshold.` : 'Delivery charges and estimates are shown clearly during checkout.'}</p><a href="#delivery">See delivery details <ArrowRight /></a></div><Truck /></article>
+    </section>
+
+    <section className="retail-section retail-products-section">
+      <div className="retail-section-heading"><div><span>Featured savings</span><h2>Top deals for you.</h2></div><Link to="/shop">Shop all deals <ArrowRight /></Link></div>
       {loading && <p className="catalogue-state">Loading the live catalogue…</p>}
       {!loading && error && <div className="empty-state compact"><h3>Catalogue unavailable</h3><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div>}
-      {!loading && !error && homepageProducts.length > 0 && <div className="product-grid">{homepageProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>}
-      {!loading && !error && products.length === 0 && <div className="empty-state compact"><h3>New finds are coming soon</h3><p>Our team is preparing the next featured selection.</p></div>}
+      {!loading && !error && dealProducts.length > 0 && <div className="retail-product-grid">{dealProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>}
     </section>
 
-    <section className="how-section" id="how">
-      <div className="how-intro"><p className="kicker">A calmer way to shop</p><h2>Order simply.<br /><em>Shop confidently.</em></h2><p>Browse our range and enjoy clear order updates from checkout to delivery.</p></div>
-      <div className="steps">
-        <div><span>01</span><SearchCheck /><h3>Find something useful</h3><p>Browse our small, carefully selected range and request what you need.</p></div>
-        <div><span>02</span><CheckCircle2 /><h3>We prepare your order</h3><p>Our team reviews your items, total and delivery information.</p></div>
-        <div><span>03</span><Banknote /><h3>Pay securely</h3><p>We send a secure Yoco or Paystack link only after your quote is confirmed.</p></div>
-        <div><span>04</span><Truck /><h3>We get it to you</h3><p>We pack your order and keep you updated through nationwide delivery.</p></div>
-      </div>
-    </section>
+    {!loading && !error && popularProducts.length > 0 && <section className="retail-section retail-products-section retail-products-alt">
+      <div className="retail-section-heading"><div><span>Popular right now</span><h2>More worth browsing.</h2></div><Link to="/shop">Browse everything <ArrowRight /></Link></div>
+      <div className="retail-product-grid">{popularProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>
+    </section>}
 
-    <section className="delivery-banner" id="delivery"><div><Truck /></div><div><p className="kicker">Delivery, made simple</p><h2>{settings ? `Free delivery from ${money(settings.freeDeliveryThreshold)}.` : 'Delivery calculated from live settings.'}</h2><p>{settings ? `For smaller orders, ${money(settings.standardCustomerDelivery)} delivery is added.` : 'Current delivery charges appear once store settings load.'} No hidden costs.</p></div><Link className="button cream" to="/shop">Start shopping <ArrowRight size={18} /></Link></section>
-  </>;
+    {!loading && !error && products.length === 0 && <section className="retail-section"><div className="empty-state compact"><h3>New finds are coming soon</h3><p>Our team is preparing the next catalogue selection.</p></div></section>}
+
+    <section className="retail-delivery" id="delivery">
+      <div><Truck /></div>
+      <div><span>Simple nationwide delivery</span><h2>From our catalogue to your door.</h2><p>See your delivery estimate before placing your order, then follow progress from your customer account.</p></div>
+      <Link to="/shop">Start shopping <ArrowRight /></Link>
+    </section>
+  </div>;
 }
