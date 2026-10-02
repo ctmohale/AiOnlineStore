@@ -10,6 +10,7 @@ it('shows an accessible spinner for slow requests and hides after the last reque
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
   act(() => { vi.advanceTimersByTime(200); });
   expect(screen.getByRole('status')).toHaveTextContent('Loading data');
+  expect(screen.getByRole('status').parentElement).toHaveClass('global-loading-backdrop');
   act(() => first()); expect(screen.getByRole('status')).toBeInTheDocument();
   act(() => second()); expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
