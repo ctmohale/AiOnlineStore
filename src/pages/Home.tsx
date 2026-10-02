@@ -1,23 +1,16 @@
 import {
   ArrowRight,
   BadgeCheck,
-  BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
   CreditCard,
-  Dumbbell,
   Headphones,
-  HeartPulse,
-  Laptop,
   LayoutGrid,
   PackageCheck,
   ShieldCheck,
   ShoppingBasket,
-  Sofa,
   Sparkles,
   Truck,
-  Wrench,
-  WashingMachine,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -29,15 +22,15 @@ import { CATEGORY_NAMES, categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 import { useCatalog } from '../state/CatalogContext';
 
-const categoryPresentation: Record<string, { icon: LucideIcon; tone: string }> = {
-  'Electronics & Computing': { icon: Laptop, tone: 'blue' },
-  'Home Appliances': { icon: WashingMachine, tone: 'orange' },
-  'Home & Furniture': { icon: Sofa, tone: 'green' },
-  'Tools & Automotive': { icon: Wrench, tone: 'gold' },
-  'Outdoor & Sports': { icon: Dumbbell, tone: 'mint' },
-  'Health, Beauty & Baby': { icon: HeartPulse, tone: 'rose' },
-  'Food & Household': { icon: ShoppingBasket, tone: 'yellow' },
-  'Office & Stationery': { icon: BriefcaseBusiness, tone: 'slate' },
+const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; tone: string }> = {
+  'Electronics & Computing': { image: '/category-electronics.png', tone: 'blue' },
+  'Home Appliances': { image: '/category-appliances.png', tone: 'orange' },
+  'Home & Furniture': { image: '/category-home-furniture.png', tone: 'green' },
+  'Tools & Automotive': { image: '/category-tools-automotive.png', tone: 'gold' },
+  'Outdoor & Sports': { image: '/category-outdoor-sports.png', tone: 'mint' },
+  'Health, Beauty & Baby': { image: '/category-health-beauty-baby.png', tone: 'rose' },
+  'Food & Household': { image: '/category-food-household.png', tone: 'yellow' },
+  'Office & Stationery': { image: '/category-office-stationery.png', tone: 'slate' },
   'More Categories': { icon: Sparkles, tone: 'purple' },
 };
 
@@ -81,7 +74,11 @@ export default function Home() {
   return <div className="retail-home">
     <section className="retail-department-bar" aria-label="Shop departments">
       <Link className="retail-department-title" to="/shop"><LayoutGrid /><span>Shop departments</span><ChevronRight /></Link>
-      <nav aria-label="Product departments">{navigationCategories.map((category) => <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>{category.name}</Link>)}</nav>
+      <nav aria-label="Product departments">{navigationCategories.map((category) => {
+        const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
+        const Icon = presentation.icon;
+        return <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>{presentation.image ? <img src={presentation.image} alt="" /> : Icon ? <Icon /> : null}<span>{category.name}</span></Link>;
+      })}</nav>
     </section>
 
     <section className="retail-hero" aria-label="Featured promotion">
@@ -131,7 +128,7 @@ export default function Home() {
         const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
         const Icon = presentation.icon;
         return <Link className={`retail-category-card ${presentation.tone}`} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>
-          <span><Icon /></span><strong>{category.name}</strong><small>{category.count.toLocaleString('en-ZA')} products</small><ArrowRight />
+          <span>{presentation.image ? <img src={presentation.image} alt="" loading="lazy" /> : Icon ? <Icon /> : null}</span><strong>{category.name}</strong><small>{category.count.toLocaleString('en-ZA')} products</small><ArrowRight />
         </Link>;
       })}</div> : !loading && <div className="retail-empty-line">Departments will appear when the catalogue is available.</div>}
     </section>
