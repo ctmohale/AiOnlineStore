@@ -6,16 +6,7 @@ import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries, matchesCategory } from '../lib/categories';
 import { matchesProductSearch } from '../lib/productSearch';
 
-const departmentImages: Record<string, string> = {
-  'Electronics & Computing': '/category-electronics.png',
-  'Home Appliances': '/category-appliances.png',
-  'Home & Furniture': '/category-home-furniture.png',
-  'Tools & Automotive': '/category-tools-automotive.png',
-  'Outdoor & Sports': '/category-outdoor-sports.png',
-  'Health, Beauty & Baby': '/category-health-beauty-baby.png',
-  'Food & Household': '/category-food-household.png',
-  'Office & Stationery': '/category-office-stationery.png',
-};
+const departmentImages: Record<string, string> = { Baby: '/category-health-beauty-baby.png' };
 
 const priceOptions = [
   { value: 'all', label: 'All prices' },
@@ -29,10 +20,12 @@ export default function Shop() {
   const { products, loading, error, refresh } = useCatalog();
   const [sort, setSort] = useState('featured');
   const [priceRange, setPriceRange] = useState('all');
+  const [categorySearch, setCategorySearch] = useState('');
   const query = params.get('q') || '';
   const category = params.get('category') || 'All';
   const requestedPage = Math.max(1, Number(params.get('page')) || 1);
   const categoryData = categorySummaries(products);
+  const filteredCategories = categoryData.filter((item) => item.name.toLowerCase().includes(categorySearch.trim().toLowerCase()));
   const searchMatches = useMemo(() => products.filter((product) => matchesProductSearch(product, query)), [products, query]);
   const visible = useMemo(() => {
     const filtered = searchMatches.filter((product) => {
@@ -51,7 +44,7 @@ export default function Shop() {
   const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const paginationItems = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter((item) => item >= 1 && item <= pageCount).sort((a, b) => a - b);
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value && value !== 'All') next.set(key, value); else next.delete(key); next.delete('page'); setParams(next); };
-  const clearFilters = () => { setPriceRange('all'); setParams({}); };
+  const clearFilters = () => { setCategorySearch(''); setPriceRange('all'); setParams({}); };
   const searchAllProducts = () => { setPriceRange('all'); const next = new URLSearchParams(params); next.delete('category'); next.delete('page'); setParams(next); };
   const goToPage = (nextPage: number) => {
     const next = new URLSearchParams(params);
@@ -67,8 +60,8 @@ export default function Shop() {
     </section>
 
     <section className="shop-department-strip" aria-labelledby="shop-departments-heading">
-      <div className="shop-department-strip-heading"><div><SlidersHorizontal /><span><strong id="shop-departments-heading">Shop by department</strong><small>Find what you need faster</small></span></div><button type="button" className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}>View all</button></div>
-      <div className="shop-department-links">{categoryData.slice(0, 8).map((item) => <button type="button" className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}>
+      <div className="shop-department-strip-heading"><div><SlidersHorizontal /><span><strong id="shop-departments-heading">Shop by category</strong><small>Find what you need faster</small></span></div><button type="button" className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}>View all</button></div>
+      <div className="shop-department-links">{filteredCategories.map((item) => <button type="button" className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}>
         <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
     </section>
@@ -76,7 +69,7 @@ export default function Shop() {
     <div className="shop-catalogue-layout">
       <aside className="shop-filter-panel" aria-label="Product filters">
         <div className="shop-filter-title"><div><SlidersHorizontal /><strong>Filters</strong></div>{(category !== 'All' || priceRange !== 'all' || query) && <button type="button" onClick={clearFilters}>Clear all</button>}</div>
-        <div className="shop-filter-group"><h2>Department</h2><button type="button" aria-pressed={category === 'All'} className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}><span aria-hidden="true">{category === 'All' && <Check />}</span><b>All products</b><small>{products.length.toLocaleString('en-ZA')}</small></button>{categoryData.map((item) => <button type="button" aria-pressed={category === item.name} className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}><span aria-hidden="true">{category === item.name && <Check />}</span><b>{item.name}</b><small>{item.count.toLocaleString('en-ZA')}</small></button>)}</div>
+        <div className="shop-filter-group"><h2>Category</h2><input type="search" aria-label="Find a category" placeholder="Find a category" value={categorySearch} onChange={(event) => setCategorySearch(event.target.value)} /><button type="button" aria-pressed={category === 'All'} className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}><span aria-hidden="true">{category === 'All' && <Check />}</span><b>All products</b><small>{products.length.toLocaleString('en-ZA')}</small></button>{filteredCategories.map((item) => <button type="button" aria-pressed={category === item.name} className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}><span aria-hidden="true">{category === item.name && <Check />}</span><b>{item.name}</b><small>{item.count.toLocaleString('en-ZA')}</small></button>)}</div>
         <div className="shop-filter-group"><h2>Price</h2>{priceOptions.map((option) => <button type="button" aria-pressed={priceRange === option.value} className={priceRange === option.value ? 'active' : ''} onClick={() => { setPriceRange(option.value); update('page', ''); }} key={option.value}><span aria-hidden="true">{priceRange === option.value && <Check />}</span><b>{option.label}</b></button>)}</div>
       </aside>
 
@@ -87,7 +80,7 @@ export default function Shop() {
         </div>
         <div className="shop-results-summary"><div><h2 id="shop-results-heading">{category === 'All' ? 'All products' : category}</h2><p aria-live="polite">{visible.length.toLocaleString('en-ZA')} {visible.length === 1 ? 'product' : 'products'}{pageCount > 1 ? ` · Page ${currentPage} of ${pageCount}` : ''}</p></div>{(category !== 'All' || priceRange !== 'all' || query) && <div className="shop-active-filters">{category !== 'All' && <button type="button" onClick={() => update('category', 'All')}>{category}<X /></button>}{priceRange !== 'all' && <button type="button" onClick={() => setPriceRange('all')}>{priceOptions.find((option) => option.value === priceRange)?.label}<X /></button>}{query && <button type="button" onClick={() => update('q', '')}>“{query}”<X /></button>}</div>}</div>
 
-        {!loading && !error && hiddenMatches > 0 && <div className="search-hidden-matches" role="status"><p>{hiddenMatches} matching {hiddenMatches === 1 ? 'product is' : 'products are'} hidden by your department or price filters.</p><button type="button" className="button primary" onClick={searchAllProducts}>Search all products</button></div>}
+        {!loading && !error && hiddenMatches > 0 && <div className="search-hidden-matches" role="status"><p>{hiddenMatches} matching {hiddenMatches === 1 ? 'product is' : 'products are'} hidden by your category or price filters.</p><button type="button" className="button primary" onClick={searchAllProducts}>Search all products</button></div>}
         {loading ? <p className="catalogue-state">Loading the live catalogue…</p> : error ? <div className="empty-state compact"><h2>Catalogue unavailable</h2><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div> : visible.length ? <><div className="product-grid shop-product-grid">{pageProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{pageCount > 1 && <nav className="catalogue-pagination" aria-label="Catalogue pages"><button type="button" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>Previous</button><div className="page-numbers">{paginationItems.map((pageNumber, index) => <span className="page-number-group" key={pageNumber}>{index > 0 && pageNumber - paginationItems[index - 1] > 1 ? <i aria-hidden="true">…</i> : null}<button type="button" className={pageNumber === currentPage ? 'active' : ''} aria-label={`Go to page ${pageNumber}`} aria-current={pageNumber === currentPage ? 'page' : undefined} onClick={() => goToPage(pageNumber)}>{pageNumber}</button></span>)}</div><button type="button" disabled={currentPage === pageCount} onClick={() => goToPage(currentPage + 1)}>Next</button></nav>}</> : <div className="empty-state compact"><h2>{products.length ? 'No exact matches yet' : 'No products published yet'}</h2><p>{products.length ? 'Try another search or clear your filters.' : 'Verified products added in Admin will appear here.'}</p>{products.length > 0 && <button type="button" className="button primary" onClick={clearFilters}>Clear filters <ArrowRight /></button>}</div>}
       </section>
     </div>
