@@ -39,7 +39,7 @@ export default function Shop() {
         : priceRange === '500-2000' ? product.price >= 500 && product.price < 2000
           : priceRange === 'over-2000' ? product.price >= 2000
             : true;
-      return matchesPrice && matchesCategory(product.category, category) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word));
+      return matchesPrice && matchesCategory(product.category, category, `${product.name} ${product.brand} ${product.model}`) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word));
     });
     return [...filtered].sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : a.id - b.id);
   }, [category, priceRange, products, query, sort]);

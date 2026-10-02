@@ -11,7 +11,6 @@ import {
   Play,
   ShieldCheck,
   ShoppingBasket,
-  Sparkles,
   Truck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -33,7 +32,6 @@ const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; 
   'Health, Beauty & Baby': { image: '/category-health-beauty-baby.png', tone: 'rose' },
   'Food & Household': { image: '/category-food-household.png', tone: 'yellow' },
   'Office & Stationery': { image: '/category-office-stationery.png', tone: 'slate' },
-  'More Categories': { icon: Sparkles, tone: 'purple' },
 };
 
 const heroStories = [
@@ -116,7 +114,7 @@ export default function Home() {
     <section className="retail-department-bar" aria-label="Shop departments">
       <Link className="retail-department-title" to="/shop"><LayoutGrid /><span>Shop departments</span><ChevronRight /></Link>
       <nav aria-label="Product departments">{navigationCategories.map((category) => {
-        const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
+        const presentation = categoryPresentation[category.name] || categoryPresentation['Home & Furniture'];
         const Icon = presentation.icon;
         return <Link key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>{presentation.image ? <img src={presentation.image} alt="" /> : Icon ? <Icon /> : null}<span>{category.name}</span></Link>;
       })}</nav>
@@ -179,7 +177,7 @@ export default function Home() {
     <section className="retail-section retail-categories">
       <div className="retail-section-heading"><div><span>Shop by department</span><h2>Find what you need, faster.</h2></div><Link to="/shop">View all products <ArrowRight /></Link></div>
       {categories.length > 0 ? <div className="retail-category-grid">{categories.map((category) => {
-        const presentation = categoryPresentation[category.name] || categoryPresentation['More Categories'];
+        const presentation = categoryPresentation[category.name] || categoryPresentation['Home & Furniture'];
         const Icon = presentation.icon;
         return <Link className={`retail-category-card ${presentation.tone}`} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`}>
           <span>{presentation.image ? <img src={presentation.image} alt="" loading="lazy" /> : Icon ? <Icon /> : null}</span><strong>{category.name}</strong><small>{category.count.toLocaleString('en-ZA')} products</small><ArrowRight />
