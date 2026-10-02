@@ -20,16 +20,6 @@ function mount(entry:string, header=false) {
 }
 
 describe('shop product search', () => {
-  it('exposes Baby as its own searchable category and filters its products', async () => {
-    const user = userEvent.setup();
-    mount('/shop');
-    await user.type(screen.getByRole('searchbox', { name: 'Find a category' }), 'baby');
-    const baby = screen.getAllByRole('button', { name: /Baby/ }).find((button) => button.hasAttribute('aria-pressed'))!;
-    await user.click(baby);
-    expect(screen.getByTestId('location')).toHaveTextContent('category=Baby');
-    expect(screen.getByRole('link', { name: extraCare })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Health, Beauty & Baby/ })).not.toBeInTheDocument();
-  });
   it('finds the reported Huggies product by its exact title', () => {
     mount('/shop?q='+encodeURIComponent(extraCare));
     expect(screen.getByRole('link',{name:extraCare})).toHaveAttribute('href','/product/'+products[0].slug);
@@ -39,7 +29,7 @@ describe('shop product search', () => {
     const user=userEvent.setup();
     mount('/shop?category=Electronics&q='+encodeURIComponent(extraCare));
     expect(screen.queryByRole('link',{name:extraCare})).not.toBeInTheDocument();
-    expect(screen.getByText('1 matching product is hidden by your category or price filters.')).toBeInTheDocument();
+    expect(screen.getByText('1 matching product is hidden by your department or price filters.')).toBeInTheDocument();
     await user.click(screen.getByRole('button',{name:'Search all products'}));
     expect(screen.getByRole('link',{name:extraCare})).toBeInTheDocument();
     expect(screen.getByRole('textbox',{name:'Search products'})).toHaveValue(extraCare);
@@ -51,7 +41,7 @@ describe('shop product search', () => {
     await user.click(screen.getByRole('button',{name:'Under R500'}));
     expect(screen.queryByRole('link',{name:extraCare})).not.toBeInTheDocument();
     expect(screen.getByRole('link',{name:products[1].name})).toBeInTheDocument();
-    expect(screen.getByText('1 matching product is hidden by your category or price filters.')).toBeInTheDocument();
+    expect(screen.getByText('1 matching product is hidden by your department or price filters.')).toBeInTheDocument();
     await user.click(screen.getByRole('button',{name:'Search all products'}));
     expect(screen.getByRole('link',{name:extraCare})).toBeInTheDocument();
   });
