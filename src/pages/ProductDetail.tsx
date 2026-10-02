@@ -1,3 +1,4 @@
+import { productSale } from '../lib/productSale';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Minus, Plus, ShieldCheck, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -40,7 +41,7 @@ export default function ProductDetail() {
       <div className="product-gallery"><div className="detail-image" style={{ background: product.accent }}>{selectedImage ? <button type="button" className="gallery-main" onClick={() => setZoomed(true)} aria-label="Open full-size product image"><img src={selectedImage.url} alt={selectedImage.altText} /></button> : <ProductVisual product={product} large />}{images.length > 1 && <><button type="button" className="gallery-arrow previous" onClick={() => moveImage(-1)} aria-label="Previous product image"><ChevronLeft /></button><button type="button" className="gallery-arrow next" onClick={() => moveImage(1)} aria-label="Next product image"><ChevronRight /></button><span className="gallery-count">{imageIndex + 1} / {images.length}</span></>}<span className="product-badge">{product.badge}</span></div>{images.length > 1 && <div className="gallery-thumbnails" aria-label="Product images">{images.map((image, index) => <button type="button" className={index === imageIndex ? 'active' : ''} key={`${image.url}-${index}`} onClick={() => setImageIndex(index)} aria-label={`View product image ${index + 1}`}><img src={image.url} alt="" /></button>)}</div>}</div>
       <div className="detail-copy">
         <p className="eyebrow">{product.category} · {product.brand}</p><h1>{product.name}</h1><p className="detail-model">{product.model} · {product.packSize}</p>
-        <div className="detail-price"><strong>{money(product.price)}</strong>{product.compareAt && <del>{money(product.compareAt)}</del>}</div>
+        <div className="detail-price"><strong>{money(product.price)}</strong>{productSale(product) && <del>{money(product.compareAt!)}</del>}</div>
         <div className="availability"><CheckCircle2 /><div><strong>Available to order</strong><span>Add this product to your cart and continue to secure checkout.</span></div></div>
         <div className="delivery-estimate-card"><Clock3 /><div><strong>Estimated delivery: {estimate.summary}</strong><span>Item preparation {estimate.supplierMinDays}–{estimate.supplierMaxDays} days, order processing {estimate.processingDays} day, then courier delivery.</span></div></div>
         <p className="detail-description">{product.description}</p>
