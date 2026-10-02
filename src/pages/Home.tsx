@@ -149,6 +149,7 @@ export default function Home() {
         </div>
       </div>
       <div className="retail-featured" aria-live="polite">
+        <div className="retail-featured-brand" role="img" aria-label="Mzansi Mega Store"><span className="brand-mark" aria-hidden="true">M</span><span>zansi</span><small>Mega Store</small></div>
         {featured ? <>
           <Link className="retail-featured-visual" to={`/product/${featured.slug}`} aria-label={`View ${featured.name}`}><ProductVisual product={featured} large /></Link>
           <div className="retail-featured-copy">
