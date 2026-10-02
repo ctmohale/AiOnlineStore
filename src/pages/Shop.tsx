@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries, matchesCategory } from '../lib/categories';
+import { matchesProductSearch } from '../lib/productSearch';
 
 const departmentImages: Record<string, string> = {
   'Electronics & Computing': '/category-electronics.png',
@@ -32,17 +33,18 @@ export default function Shop() {
   const category = params.get('category') || 'All';
   const requestedPage = Math.max(1, Number(params.get('page')) || 1);
   const categoryData = categorySummaries(products);
+  const searchMatches = useMemo(() => products.filter((product) => matchesProductSearch(product, query)), [products, query]);
   const visible = useMemo(() => {
-    const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
-    const filtered = products.filter((product) => {
+    const filtered = searchMatches.filter((product) => {
       const matchesPrice = priceRange === 'under-500' ? product.price < 500
         : priceRange === '500-2000' ? product.price >= 500 && product.price < 2000
           : priceRange === 'over-2000' ? product.price >= 2000
             : true;
-      return matchesPrice && matchesCategory(product.category, category, `${product.name} ${product.brand} ${product.model}`) && words.every((word) => `${product.name} ${product.brand} ${product.model} ${product.category}`.toLowerCase().includes(word));
+      return matchesPrice && matchesCategory(product.category, category, `${product.name} ${product.brand} ${product.model}`);
     });
     return [...filtered].sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : a.id - b.id);
-  }, [category, priceRange, products, query, sort]);
+  }, [category, priceRange, searchMatches, sort]);
+  const hiddenMatches = query.trim() ? searchMatches.length - visible.length : 0;
   const pageSize = 24;
   const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
   const currentPage = Math.min(requestedPage, pageCount);
@@ -50,6 +52,7 @@ export default function Shop() {
   const paginationItems = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter((item) => item >= 1 && item <= pageCount).sort((a, b) => a - b);
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value && value !== 'All') next.set(key, value); else next.delete(key); next.delete('page'); setParams(next); };
   const clearFilters = () => { setPriceRange('all'); setParams({}); };
+  const searchAllProducts = () => { setPriceRange('all'); const next = new URLSearchParams(params); next.delete('category'); next.delete('page'); setParams(next); };
   const goToPage = (nextPage: number) => {
     const next = new URLSearchParams(params);
     if (nextPage > 1) next.set('page', String(nextPage)); else next.delete('page');
@@ -84,6 +87,7 @@ export default function Shop() {
         </div>
         <div className="shop-results-summary"><div><h2 id="shop-results-heading">{category === 'All' ? 'All products' : category}</h2><p aria-live="polite">{visible.length.toLocaleString('en-ZA')} {visible.length === 1 ? 'product' : 'products'}{pageCount > 1 ? ` · Page ${currentPage} of ${pageCount}` : ''}</p></div>{(category !== 'All' || priceRange !== 'all' || query) && <div className="shop-active-filters">{category !== 'All' && <button type="button" onClick={() => update('category', 'All')}>{category}<X /></button>}{priceRange !== 'all' && <button type="button" onClick={() => setPriceRange('all')}>{priceOptions.find((option) => option.value === priceRange)?.label}<X /></button>}{query && <button type="button" onClick={() => update('q', '')}>“{query}”<X /></button>}</div>}</div>
 
+        {!loading && !error && hiddenMatches > 0 && <div className="search-hidden-matches" role="status"><p>{hiddenMatches} matching {hiddenMatches === 1 ? 'product is' : 'products are'} hidden by your department or price filters.</p><button type="button" className="button primary" onClick={searchAllProducts}>Search all products</button></div>}
         {loading ? <p className="catalogue-state">Loading the live catalogue…</p> : error ? <div className="empty-state compact"><h2>Catalogue unavailable</h2><p>{error}</p><button type="button" className="button primary" onClick={() => void refresh()}>Try again</button></div> : visible.length ? <><div className="product-grid shop-product-grid">{pageProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>{pageCount > 1 && <nav className="catalogue-pagination" aria-label="Catalogue pages"><button type="button" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>Previous</button><div className="page-numbers">{paginationItems.map((pageNumber, index) => <span className="page-number-group" key={pageNumber}>{index > 0 && pageNumber - paginationItems[index - 1] > 1 ? <i aria-hidden="true">…</i> : null}<button type="button" className={pageNumber === currentPage ? 'active' : ''} aria-label={`Go to page ${pageNumber}`} aria-current={pageNumber === currentPage ? 'page' : undefined} onClick={() => goToPage(pageNumber)}>{pageNumber}</button></span>)}</div><button type="button" disabled={currentPage === pageCount} onClick={() => goToPage(currentPage + 1)}>Next</button></nav>}</> : <div className="empty-state compact"><h2>{products.length ? 'No exact matches yet' : 'No products published yet'}</h2><p>{products.length ? 'Try another search or clear your filters.' : 'Verified products added in Admin will appear here.'}</p>{products.length > 0 && <button type="button" className="button primary" onClick={clearFilters}>Clear filters <ArrowRight /></button>}</div>}
       </section>
     </div>

@@ -19,7 +19,7 @@ export default function Layout() {
   const selectedCategory = new URLSearchParams(location.search).get('category') || '';
   const search = (event: FormEvent) => {
     event.preventDefault();
-    navigate(`/shop?q=${encodeURIComponent(query)}`);
+    navigate(`/shop?q=${encodeURIComponent(query.trim())}`);
   };
   return <div className="site-shell">
     <div className="announcement"><MapPin /> South African online store <span>•</span> Nationwide delivery{settings && <><span>•</span> Free delivery from {money(settings.freeDeliveryThreshold)}</>}</div>
@@ -27,8 +27,9 @@ export default function Layout() {
       <Link className="brand" to="/" aria-label="Mzansi Mega Store home">
         <span className="brand-mark" aria-hidden="true">M</span><span>zansi</span><small>Mega Store</small>
       </Link>
-      <form className="header-search" onSubmit={search}>
+      <form className="header-search" role="search" onSubmit={search}>
         <Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search products" placeholder="Search products, brands and more" />
+        <button type="submit" aria-label="Submit product search">Search</button>
       </form>
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
         <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => { setMenu(false); setCategoryMenu(false); }}>Shop</Link>
