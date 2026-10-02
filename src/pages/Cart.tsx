@@ -22,7 +22,7 @@ export default function Cart() {
     <div className="cart-layout">
       <div className="cart-lines">{cart.map(({ product, quantity }) => <article className="cart-line" key={product.id}>
         <div className="cart-thumb" style={{ background: product.accent }}>{product.image ? <img src={product.image} alt="" /> : <b>{product.brand.slice(0, 1)}</b>}</div>
-        <div className="cart-name"><span>{product.category}</span><h3>{product.name}</h3><p>{product.model} · {product.packSize}</p><button type="button" onClick={() => void removeProduct(product.id, product.name)}><Trash2 size={15} /> Remove</button></div>
+        <div className="cart-name"><span>{product.category}</span><h3>{product.name}</h3>{product.packSize && <p>{product.packSize}</p>}<button type="button" onClick={() => void removeProduct(product.id, product.name)}><Trash2 size={15} /> Remove</button></div>
         <div className="qty"><button type="button" aria-label={`Decrease ${product.name} quantity`} onClick={() => update(product.id, quantity - 1)}><Minus /></button><span>{quantity}</span><button type="button" aria-label={`Increase ${product.name} quantity`} onClick={() => update(product.id, quantity + 1)}><Plus /></button></div>
         <strong className="line-total">{money(product.price * quantity)}</strong>
       </article>)}</div>
