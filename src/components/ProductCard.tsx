@@ -21,7 +21,7 @@ export default function ProductCard({ product }: { product: Product }) {
       <p className="eyebrow">{product.category} · {product.packSize}</p>
       <Link to={`/product/${product.slug}`}><h3>{product.name}</h3></Link>
       <div className="price-row"><strong>{money(product.price)}</strong>{sale && <del>{money(product.compareAt!)}</del>}</div>
-      {sale && <p className="product-sale-end">{sale.endLabel}</p>}
+      {sale?.endLabel && <p className="product-sale-end">{sale.endLabel}</p>}
       <div className="stock-line"><span></span> Available to order</div>
       <button type="button" className="quick-add" onClick={() => { add(product); notify(`${product.name} was added to your cart.`, 'success', 'Added to cart'); }}><Plus size={17} /> Add to cart</button>
     </div>
