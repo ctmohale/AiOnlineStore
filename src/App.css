@@ -437,6 +437,12 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .login-panel form>p:not(.kicker):not(.form-error) { color:var(--muted); font-size:12px; }
 .login-panel label { display:block; font-size:10px; font-weight:700; margin:20px 0; }
 .login-panel input { width:100%; padding:13px; margin-top:7px; border:1px solid var(--line); background:#fff; }
+.login-panel .password-input { position:relative; margin-top:7px; }
+.login-panel .password-input input { margin-top:0; padding-right:48px; }
+.login-panel .password-input button { position:absolute; top:50%; right:5px; display:grid; place-items:center; width:38px; height:38px; padding:0; border:0; background:transparent; color:var(--forest); cursor:pointer; transform:translateY(-50%); }
+.login-panel .password-input button:hover { background:#edf3ef; }
+.login-panel .password-input button:focus-visible { outline:2px solid var(--coral); outline-offset:1px; }
+.login-panel .password-input button svg { width:18px; height:18px; }
 .login-panel form>small { display:block; text-align:center; color:var(--muted); line-height:1.5; margin-top:16px; font-size:8px; }
 .admin-shell { min-height:100vh; background:#f3f2ed; display:grid; grid-template-columns:235px 1fr; color:#243a32; }
 .admin-sidebar { background:#15372d; color:#d8e5de; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; padding:26px 18px; z-index:30; }
