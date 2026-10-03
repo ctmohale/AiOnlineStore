@@ -15,7 +15,6 @@ export default function Checkout() {
   const { cart, subtotal, clear } = useStore();
   const { settings } = useCatalog();
   const fallbackDelivery = settings ? subtotal >= settings.freeDeliveryThreshold ? 0 : settings.standardCustomerDelivery : 0;
-  const delivery = selectedShipping ? (settings && subtotal >= settings.freeDeliveryThreshold ? 0 : selectedShipping.totalPrice) : fallbackDelivery;
   const navigate = useNavigate();
   const { confirm, notify } = useFeedback();
   const [submitting, setSubmitting] = useState(false);
@@ -25,6 +24,7 @@ export default function Checkout() {
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
   const [selectedShipping, setSelectedShipping] = useState<ShippingRate | null>(null);
   const [ratesLoading, setRatesLoading] = useState(false);
+  const delivery = selectedShipping ? (settings && subtotal >= settings.freeDeliveryThreshold ? 0 : selectedShipping.totalPrice) : fallbackDelivery;
   const signedIn = Boolean(getCustomerToken());
   const timing = cart.map(({ product }) => deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilmentType, stockStatus: product.stockStatus, province }));
   const deliveryMin = timing.length ? Math.max(...timing.map((item) => item.totalMinDays)) : 0;
