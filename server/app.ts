@@ -515,6 +515,73 @@ app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response,
   try { const input = pricingSettingsSchema.parse(request.body); if (!pool) return response.status(503).json({ error: 'Database not configured' }); await pool.execute('UPDATE pricing_settings SET minimum_profit=?,minimum_margin_percent=?,standard_markup_percent=?,free_delivery_threshold=?,standard_customer_delivery=?,supplier_stale_hours=? WHERE id=1', [input.minimumProfit,input.minimumMarginPercent,input.standardMarkupPercent,input.freeDeliveryThreshold,input.standardCustomerDelivery,input.supplierStaleHours]); response.json(input); } catch (error) { next(error); }
 });
 
+
+app.get('/api/admin/bobgo/status', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!bobGo.enabled()) return response.json({ configured: false, environment: bobGo.environment() });
+    const account = await bobGo.verifyAccount();
+    response.json({ configured: true, environment: bobGo.environment(), account });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/orders/:id/bobgo/shipment', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT * FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & Record<string, any>)[])[0];
+    if (!order) return response.status(404).json({ error: 'Order not found' });
+    if (order.is_test) return response.status(409).json({ error: 'Test orders cannot create real courier shipments' });
+    if (order.bobgo_shipment_id) return response.status(409).json({ error: 'A Bob Go shipment already exists for this order' });
+    if (!order.shipping_provider || !order.shipping_service_code) return response.status(409).json({ error: 'This order does not have a selected Bob Go courier service' });
+    const [itemRows] = await pool.execute(`SELECT oi.product_id,oi.product_title_snapshot,oi.quantity,p.shipping_weight_kg,p.shipping_length_cm,p.shipping_width_cm,p.shipping_height_cm FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_request_id=?`, [order.id]);
+    const fallback = defaultParcel();
+    const parcels = (itemRows as (RowDataPacket & Record<string, any>)[]).flatMap((item) => Array.from({ length: Number(item.quantity) }, (_, index) => ({
+      description: String(item.product_title_snapshot), reference: `order-${order.reference}-${item.product_id}-${index + 1}`,
+      weightKg: Number(item.shipping_weight_kg || fallback.weightKg), lengthCm: Number(item.shipping_length_cm || fallback.lengthCm),
+      widthCm: Number(item.shipping_width_cm || fallback.widthCm), heightCm: Number(item.shipping_height_cm || fallback.heightCm),
+    })));
+    const collection = collectionDetails();
+    const shipment = await bobGo.createShipment({
+      reference: String(order.reference), collectionAddress: collection.address, collectionContact: collection.contact,
+      deliveryAddress: { streetAddress: String(order.address_line_1), localArea: String(order.suburb), city: String(order.city), zone: String(order.province), postalCode: String(order.postal_code), country: 'ZA' },
+      deliveryContact: { name: String(order.customer_name), phone: String(order.customer_phone), email: String(order.customer_email) },
+      parcels, declaredValue: Number(order.product_revenue), providerSlug: String(order.shipping_provider), serviceLevelCode: String(order.shipping_service_code),
+    });
+    const trackingNumber = shipment.tracking_reference || order.reference;
+    await pool.execute(`UPDATE order_requests SET bobgo_shipment_id=?,bobgo_submission_status=?,bobgo_provider_shipment_id=?,courier_name=?,tracking_number=?,tracking_url=?,actual_customer_delivery_cost=?,bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL WHERE id=?`,
+      [shipment.id || null, shipment.submission_status || null, shipment.provider_shipment_id || null, shipment.provider_name || order.shipping_provider, trackingNumber, shipment.tracking_url || null, shipment.rate || order.bobgo_rate_amount, order.id]);
+    response.json({ shipmentId: shipment.id, submissionStatus: shipment.submission_status, trackingNumber, trackingUrl: shipment.tracking_url || null });
+  } catch (error) {
+    if (pool) await pool.execute('UPDATE order_requests SET bobgo_last_error=?,bobgo_last_sync_at=UTC_TIMESTAMP() WHERE id=?', [error instanceof Error ? error.message.slice(0, 2000) : 'Bob Go shipment error', request.params.id]).catch(() => undefined);
+    next(error);
+  }
+});
+
+app.post('/api/admin/orders/:id/bobgo/refresh', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT id,tracking_number FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & { id: number; tracking_number: string | null })[])[0];
+    if (!order?.tracking_number) return response.status(409).json({ error: 'This order does not have a tracking number yet' });
+    const tracking = await bobGo.tracking(order.tracking_number);
+    const status = String(tracking.status || tracking.status_friendly || '').toLowerCase();
+    const delivered = status.includes('deliver');
+    await pool.execute(`UPDATE order_requests SET bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL,delivered_at=IF(?,COALESCE(delivered_at,UTC_TIMESTAMP()),delivered_at),status=IF(?,'delivered',status) WHERE id=?`, [delivered, delivered, order.id]);
+    response.json(tracking);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/orders/:id/bobgo/waybill', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT reference,tracking_number FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & { reference: string; tracking_number: string | null })[])[0];
+    if (!order?.tracking_number) return response.status(409).json({ error: 'No Bob Go waybill is available yet' });
+    const bytes = await bobGo.waybill([order.tracking_number]);
+    response.setHeader('Content-Type', 'application/pdf'); response.setHeader('Content-Disposition', `inline; filename="${order.reference}-waybill.pdf"`); response.send(Buffer.from(bytes));
+  } catch (error) { next(error); }
+});
+
 app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
   try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.*,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
 });
