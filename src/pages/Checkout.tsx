@@ -38,7 +38,7 @@ export default function Checkout() {
     if (!customer.name || !customer.email || !customer.phone || !customer.addressLine1 || !customer.suburb || !customer.city || !customer.province || !/^\d{4}$/.test(customer.postalCode)) return notify('Complete your delivery address before calculating courier options.', 'warning');
     setRatesLoading(true); setError('');
     try {
-      const result = await getShippingRates({ customer, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })), shipping: selectedShipping ? { providerSlug: selectedShipping.providerSlug, serviceLevelCode: selectedShipping.serviceLevelCode, serviceName: selectedShipping.serviceName, quotedAmount: selectedShipping.totalPrice } : undefined });
+      const result = await getShippingRates({ customer, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
       setShippingRates(result.rates);
       setSelectedShipping(result.rates[0] || null);
       if (!result.rates.length) notify('Live courier rates are not available right now. The standard delivery charge will be used.', 'warning');
@@ -56,7 +56,7 @@ export default function Checkout() {
     setSubmitting(true); setError('');
     const text = (name: string) => String(fields.get(name) || '').trim();
     try {
-      const { reference } = await createOrder({ testMode, customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
+      const { reference } = await createOrder({ testMode, customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })), shipping: selectedShipping ? { providerSlug: selectedShipping.providerSlug, serviceLevelCode: selectedShipping.serviceLevelCode, serviceName: selectedShipping.serviceName, quotedAmount: selectedShipping.totalPrice } : undefined });
       clear(); notify(`Order request ${reference} was received.`, 'success', 'Request sent'); navigate(`/confirmation/${reference}${testMode ? '?test=1' : ''}`);
     } catch (requestError) { const message = requestError instanceof Error ? requestError.message : 'Something went wrong. Please try again.'; setError(message); notify(message, 'error'); setSubmitting(false); }
   };
