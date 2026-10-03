@@ -5,7 +5,20 @@ export type OrderPayload = {
   testMode?: boolean;
   customer: { name: string; email: string; phone: string; addressLine1: string; suburb: string; city: string; province: string; postalCode: string; notes?: string };
   items: { productId: number; quantity: number; agreedUnitPrice: number }[];
+  shipping?: { providerSlug: string; serviceLevelCode: string; serviceName: string; quotedAmount: number };
 };
+
+export type ShippingRate = { id?: string; providerSlug: string; providerName: string; serviceLevelCode: string; serviceName: string; totalPrice: number; currency: string };
+
+export async function getShippingRates(payload: Pick<OrderPayload, 'customer' | 'items'>) {
+  const finishLoading = beginLoading();
+  try {
+    const response = await fetch(`${API_URL}/shipping/rates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body?.error || 'Unable to calculate courier rates');
+    return body as { configured: boolean; rates: ShippingRate[]; fallback?: boolean };
+  } finally { finishLoading(); }
+}
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 

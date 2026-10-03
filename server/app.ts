@@ -12,6 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
+import { bobGo, collectionDetails, defaultParcel } from './bobgo.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
@@ -208,6 +209,38 @@ app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async 
   } catch (error) { next(error); }
 });
 
+
+app.post('/api/shipping/rates', publicLimiter, async (request, response, next) => {
+  try {
+    const input = orderSchema.pick({ customer: true, items: true }).parse(request.body);
+    if (!bobGo.enabled()) return response.json({ configured: false, rates: [], fallback: true });
+    if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
+    const ids = input.items.map((item) => item.productId);
+    const [rows] = await pool.execute(`SELECT id,title,selling_price,shipping_weight_kg,shipping_length_cm,shipping_width_cm,shipping_height_cm FROM products WHERE id IN (${ids.map(() => '?').join(',')}) AND status='published' AND deleted_at IS NULL`, ids);
+    const products = rows as (RowDataPacket & { id: number; title: string; selling_price: number; shipping_weight_kg: number | null; shipping_length_cm: number | null; shipping_width_cm: number | null; shipping_height_cm: number | null })[];
+    if (products.length !== ids.length) return response.status(409).json({ error: 'One or more products are unavailable' });
+    const fallback = defaultParcel();
+    const parcels = input.items.flatMap((item) => {
+      const product = products.find((row) => Number(row.id) === item.productId)!;
+      return Array.from({ length: item.quantity }, (_, index) => ({
+        description: product.title, reference: `product-${product.id}-${index + 1}`,
+        weightKg: Number(product.shipping_weight_kg || fallback.weightKg), lengthCm: Number(product.shipping_length_cm || fallback.lengthCm),
+        widthCm: Number(product.shipping_width_cm || fallback.widthCm), heightCm: Number(product.shipping_height_cm || fallback.heightCm),
+      }));
+    });
+    const collection = collectionDetails();
+    if (!collection.address.streetAddress || !collection.address.city || !collection.address.postalCode || !collection.contact.phone || !collection.contact.email) return response.status(503).json({ error: 'Bob Go collection address is not fully configured' });
+    const customer = input.customer;
+    const rates = await bobGo.rates({
+      collectionAddress: collection.address, collectionContact: collection.contact,
+      deliveryAddress: { streetAddress: customer.addressLine1, localArea: customer.suburb, city: customer.city, zone: customer.province, postalCode: customer.postalCode, country: 'ZA' },
+      deliveryContact: { name: customer.name, phone: customer.phone, email: customer.email }, parcels,
+      declaredValue: input.items.reduce((sum, item) => sum + Number(products.find((row) => Number(row.id) === item.productId)!.selling_price) * item.quantity, 0),
+    });
+    response.json({ configured: true, rates });
+  } catch (error) { next(error); }
+});
+
 app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
@@ -224,10 +257,11 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} is no longer available to request`), { status: 409 });
       const revenue = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.selling_price) * item.quantity, 0);
       const settings = productRows[0];
-      const delivery = revenue >= settings.free_threshold ? 0 : settings.delivery_charge;
+      const selectedShipping = input.shipping;
+      const delivery = revenue >= settings.free_threshold ? 0 : selectedShipping ? selectedShipping.quotedAmount : settings.delivery_charge;
       const supplierProductCost = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.current_cost) * item.quantity, 0);
       const supplierDelivery = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.supplier_delivery_cost || 0), 0);
-      const customerDeliveryCost = Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
+      const customerDeliveryCost = selectedShipping ? selectedShipping.quotedAmount : Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
       const expectedProfit = calculateProfit({ productRevenue: revenue, customerDeliveryCharged: delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, packaging: 0, paymentFees: 0, advertisingCost: 0 });
       const customer = input.customer;
       const estimates = productRows.map((product) => deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province }));
@@ -237,7 +271,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const estimateBasis = [...new Set(productRows.map((product) => `${product.retailer}: ${deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status }).fulfilmentLabel}`))].join('; ').slice(0, 500);
       const expectedShipAt = addBusinessDays(new Date(), supplierMax + 1);
       const expectedDeliveryAt = addBusinessDays(new Date(), estimateMax);
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis,shipping_provider,shipping_service_code,shipping_service_name,bobgo_rate_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis, selectedShipping?.providerSlug || null, selectedShipping?.serviceLevelCode || null, selectedShipping?.serviceName || null, selectedShipping?.quotedAmount ?? null]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
@@ -479,6 +513,107 @@ app.get('/api/admin/pricing-settings', requireAdmin, async (_request, response, 
 
 app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response, next) => {
   try { const input = pricingSettingsSchema.parse(request.body); if (!pool) return response.status(503).json({ error: 'Database not configured' }); await pool.execute('UPDATE pricing_settings SET minimum_profit=?,minimum_margin_percent=?,standard_markup_percent=?,free_delivery_threshold=?,standard_customer_delivery=?,supplier_stale_hours=? WHERE id=1', [input.minimumProfit,input.minimumMarginPercent,input.standardMarkupPercent,input.freeDeliveryThreshold,input.standardCustomerDelivery,input.supplierStaleHours]); response.json(input); } catch (error) { next(error); }
+});
+
+
+
+app.post('/api/webhooks/bobgo', async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const payload = request.body as Record<string, any>;
+    const trackingReference = String(payload.shipment_tracking_reference || payload.tracking_reference || payload.custom_tracking_reference || '');
+    const topic = String(payload.topic || request.header('x-bobgo-topic') || 'tracking');
+    const eventKey = String(payload.id || payload.event_id || crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'));
+    try { await pool.execute('INSERT INTO bobgo_webhook_events (event_key,topic,payload) VALUES (?,?,?)', [eventKey, topic, JSON.stringify(payload)]); }
+    catch (error: any) { if (error?.code === 'ER_DUP_ENTRY') return response.status(200).json({ received: true, duplicate: true }); throw error; }
+    if (trackingReference) {
+      const statusText = String(payload.status || payload.status_friendly || payload.submission_status || '').toLowerCase();
+      const delivered = statusText.includes('deliver');
+      await pool.execute(`UPDATE order_requests SET bobgo_submission_status=COALESCE(?,bobgo_submission_status),bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL,delivered_at=IF(?,COALESCE(delivered_at,UTC_TIMESTAMP()),delivered_at),status=IF(?,'delivered',status) WHERE tracking_number=? OR reference=?`,
+        [payload.submission_status || null, delivered, delivered, trackingReference, trackingReference]);
+    }
+    await pool.execute('UPDATE bobgo_webhook_events SET processed_at=UTC_TIMESTAMP() WHERE event_key=?', [eventKey]);
+    response.status(200).json({ received: true });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/bobgo/status', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!bobGo.enabled()) return response.json({ configured: false, environment: bobGo.environment() });
+    const account = await bobGo.verifyAccount();
+    response.json({ configured: true, environment: bobGo.environment(), account });
+  } catch (error) { next(error); }
+});
+
+
+app.post('/api/admin/bobgo/webhooks/setup', requireAdmin, async (_request, response, next) => {
+  try {
+    const publicApiUrl = String(process.env.PUBLIC_API_URL || '').replace(/\/$/, '');
+    if (!publicApiUrl.startsWith('https://')) return response.status(422).json({ error: 'Set PUBLIC_API_URL to your public HTTPS API URL before registering Bob Go webhooks' });
+    const deliveryUrl = `${publicApiUrl}/api/webhooks/bobgo`;
+    const topics = ['tracking', 'shipment_submission_status'];
+    const results = [];
+    for (const topic of topics) results.push(await bobGo.subscribeWebhook(topic, deliveryUrl));
+    response.json({ deliveryUrl, topics, results });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/orders/:id/bobgo/shipment', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT * FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & Record<string, any>)[])[0];
+    if (!order) return response.status(404).json({ error: 'Order not found' });
+    if (order.is_test) return response.status(409).json({ error: 'Test orders cannot create real courier shipments' });
+    if (order.bobgo_shipment_id) return response.status(409).json({ error: 'A Bob Go shipment already exists for this order' });
+    if (!order.shipping_provider || !order.shipping_service_code) return response.status(409).json({ error: 'This order does not have a selected Bob Go courier service' });
+    const [itemRows] = await pool.execute(`SELECT oi.product_id,oi.product_title_snapshot,oi.quantity,p.shipping_weight_kg,p.shipping_length_cm,p.shipping_width_cm,p.shipping_height_cm FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_request_id=?`, [order.id]);
+    const fallback = defaultParcel();
+    const parcels = (itemRows as (RowDataPacket & Record<string, any>)[]).flatMap((item) => Array.from({ length: Number(item.quantity) }, (_, index) => ({
+      description: String(item.product_title_snapshot), reference: `order-${order.reference}-${item.product_id}-${index + 1}`,
+      weightKg: Number(item.shipping_weight_kg || fallback.weightKg), lengthCm: Number(item.shipping_length_cm || fallback.lengthCm),
+      widthCm: Number(item.shipping_width_cm || fallback.widthCm), heightCm: Number(item.shipping_height_cm || fallback.heightCm),
+    })));
+    const collection = collectionDetails();
+    const shipment = await bobGo.createShipment({
+      reference: String(order.reference), collectionAddress: collection.address, collectionContact: collection.contact,
+      deliveryAddress: { streetAddress: String(order.address_line_1), localArea: String(order.suburb), city: String(order.city), zone: String(order.province), postalCode: String(order.postal_code), country: 'ZA' },
+      deliveryContact: { name: String(order.customer_name), phone: String(order.customer_phone), email: String(order.customer_email) },
+      parcels, declaredValue: Number(order.product_revenue), providerSlug: String(order.shipping_provider), serviceLevelCode: String(order.shipping_service_code),
+    });
+    const trackingNumber = shipment.tracking_reference || order.reference;
+    await pool.execute(`UPDATE order_requests SET bobgo_shipment_id=?,bobgo_submission_status=?,bobgo_provider_shipment_id=?,courier_name=?,tracking_number=?,tracking_url=?,actual_customer_delivery_cost=?,bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL WHERE id=?`,
+      [shipment.id || null, shipment.submission_status || null, shipment.provider_shipment_id || null, shipment.provider_name || order.shipping_provider, trackingNumber, shipment.tracking_url || null, shipment.rate || order.bobgo_rate_amount, order.id]);
+    response.json({ shipmentId: shipment.id, submissionStatus: shipment.submission_status, trackingNumber, trackingUrl: shipment.tracking_url || null });
+  } catch (error) {
+    if (pool) await pool.execute('UPDATE order_requests SET bobgo_last_error=?,bobgo_last_sync_at=UTC_TIMESTAMP() WHERE id=?', [error instanceof Error ? error.message.slice(0, 2000) : 'Bob Go shipment error', request.params.id]).catch(() => undefined);
+    next(error);
+  }
+});
+
+app.post('/api/admin/orders/:id/bobgo/refresh', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT id,tracking_number FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & { id: number; tracking_number: string | null })[])[0];
+    if (!order?.tracking_number) return response.status(409).json({ error: 'This order does not have a tracking number yet' });
+    const tracking = await bobGo.tracking(order.tracking_number);
+    const status = String(tracking.status || tracking.status_friendly || '').toLowerCase();
+    const delivered = status.includes('deliver');
+    await pool.execute(`UPDATE order_requests SET bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL,delivered_at=IF(?,COALESCE(delivered_at,UTC_TIMESTAMP()),delivered_at),status=IF(?,'delivered',status) WHERE id=?`, [delivered, delivered, order.id]);
+    response.json(tracking);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/orders/:id/bobgo/waybill', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute('SELECT reference,tracking_number FROM order_requests WHERE id=? LIMIT 1', [request.params.id]);
+    const order = (rows as (RowDataPacket & { reference: string; tracking_number: string | null })[])[0];
+    if (!order?.tracking_number) return response.status(409).json({ error: 'No Bob Go waybill is available yet' });
+    const bytes = await bobGo.waybill([order.tracking_number]);
+    response.setHeader('Content-Type', 'application/pdf'); response.setHeader('Content-Disposition', `inline; filename="${order.reference}-waybill.pdf"`); response.send(Buffer.from(bytes));
+  } catch (error) { next(error); }
 });
 
 app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {

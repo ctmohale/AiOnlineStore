@@ -1459,3 +1459,11 @@ footer a,footer p { font-size:13px; }
 .global-loading-backdrop .global-loading-symbol b { font-size:26px; }
 .global-loading-backdrop .global-loading strong { font-size:18px; }
 .global-loading-backdrop .global-loading small { font-size:14px; }
+
+/* Bob Go checkout delivery */
+.shipping-options{margin:22px 0;padding:18px;border:1px solid var(--border,#ddd);border-radius:16px;background:rgba(255,255,255,.7)}
+.shipping-options-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.shipping-options-head>div{display:grid;gap:4px}.shipping-options-head span{font-size:.86rem;opacity:.72}
+.shipping-rate-list{display:grid;gap:10px;margin-top:14px}.shipping-rate{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:13px 14px;border:1px solid rgba(0,0,0,.12);border-radius:12px;cursor:pointer}
+.shipping-rate.selected{border-width:2px}.shipping-rate span{display:grid;gap:2px}.shipping-rate small{opacity:.7}
+@media(max-width:640px){.shipping-options-head{align-items:stretch;flex-direction:column}.shipping-options-head .button{width:100%}}
