@@ -12,6 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
+import { bobGo, collectionDetails, defaultParcel } from './bobgo.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 
 const app = express();
@@ -208,6 +209,38 @@ app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async 
   } catch (error) { next(error); }
 });
 
+
+app.post('/api/shipping/rates', publicLimiter, async (request, response, next) => {
+  try {
+    const input = orderSchema.pick({ customer: true, items: true }).parse(request.body);
+    if (!bobGo.enabled()) return response.json({ configured: false, rates: [], fallback: true });
+    if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
+    const ids = input.items.map((item) => item.productId);
+    const [rows] = await pool.execute(`SELECT id,title,selling_price,shipping_weight_kg,shipping_length_cm,shipping_width_cm,shipping_height_cm FROM products WHERE id IN (${ids.map(() => '?').join(',')}) AND status='published' AND deleted_at IS NULL`, ids);
+    const products = rows as (RowDataPacket & { id: number; title: string; selling_price: number; shipping_weight_kg: number | null; shipping_length_cm: number | null; shipping_width_cm: number | null; shipping_height_cm: number | null })[];
+    if (products.length !== ids.length) return response.status(409).json({ error: 'One or more products are unavailable' });
+    const fallback = defaultParcel();
+    const parcels = input.items.flatMap((item) => {
+      const product = products.find((row) => Number(row.id) === item.productId)!;
+      return Array.from({ length: item.quantity }, (_, index) => ({
+        description: product.title, reference: `product-${product.id}-${index + 1}`,
+        weightKg: Number(product.shipping_weight_kg || fallback.weightKg), lengthCm: Number(product.shipping_length_cm || fallback.lengthCm),
+        widthCm: Number(product.shipping_width_cm || fallback.widthCm), heightCm: Number(product.shipping_height_cm || fallback.heightCm),
+      }));
+    });
+    const collection = collectionDetails();
+    if (!collection.address.streetAddress || !collection.address.city || !collection.address.postalCode || !collection.contact.phone || !collection.contact.email) return response.status(503).json({ error: 'Bob Go collection address is not fully configured' });
+    const customer = input.customer;
+    const rates = await bobGo.rates({
+      collectionAddress: collection.address, collectionContact: collection.contact,
+      deliveryAddress: { streetAddress: customer.addressLine1, localArea: customer.suburb, city: customer.city, zone: customer.province, postalCode: customer.postalCode, country: 'ZA' },
+      deliveryContact: { name: customer.name, phone: customer.phone, email: customer.email }, parcels,
+      declaredValue: input.items.reduce((sum, item) => sum + Number(products.find((row) => Number(row.id) === item.productId)!.selling_price) * item.quantity, 0),
+    });
+    response.json({ configured: true, rates });
+  } catch (error) { next(error); }
+});
+
 app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
@@ -224,10 +257,11 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       for (const product of productRows) if (!['in_stock','low_stock'].includes(product.stock_status) || (product.promotion_end_at && new Date(product.promotion_end_at).getTime() <= now)) throw Object.assign(new Error(`${product.title} is no longer available to request`), { status: 409 });
       const revenue = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.selling_price) * item.quantity, 0);
       const settings = productRows[0];
-      const delivery = revenue >= settings.free_threshold ? 0 : settings.delivery_charge;
+      const selectedShipping = input.shipping;
+      const delivery = revenue >= settings.free_threshold ? 0 : selectedShipping ? selectedShipping.quotedAmount : settings.delivery_charge;
       const supplierProductCost = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.current_cost) * item.quantity, 0);
       const supplierDelivery = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.supplier_delivery_cost || 0), 0);
-      const customerDeliveryCost = Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
+      const customerDeliveryCost = selectedShipping ? selectedShipping.quotedAmount : Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
       const expectedProfit = calculateProfit({ productRevenue: revenue, customerDeliveryCharged: delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, packaging: 0, paymentFees: 0, advertisingCost: 0 });
       const customer = input.customer;
       const estimates = productRows.map((product) => deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province }));
@@ -237,7 +271,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const estimateBasis = [...new Set(productRows.map((product) => `${product.retailer}: ${deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status }).fulfilmentLabel}`))].join('; ').slice(0, 500);
       const expectedShipAt = addBusinessDays(new Date(), supplierMax + 1);
       const expectedDeliveryAt = addBusinessDays(new Date(), estimateMax);
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis,shipping_provider,shipping_service_code,shipping_service_name,bobgo_rate_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis, selectedShipping?.providerSlug || null, selectedShipping?.serviceLevelCode || null, selectedShipping?.serviceName || null, selectedShipping?.quotedAmount ?? null]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
