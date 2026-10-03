@@ -545,6 +545,19 @@ app.get('/api/admin/bobgo/status', requireAdmin, async (_request, response, next
   } catch (error) { next(error); }
 });
 
+
+app.post('/api/admin/bobgo/webhooks/setup', requireAdmin, async (_request, response, next) => {
+  try {
+    const publicApiUrl = String(process.env.PUBLIC_API_URL || '').replace(/\/$/, '');
+    if (!publicApiUrl.startsWith('https://')) return response.status(422).json({ error: 'Set PUBLIC_API_URL to your public HTTPS API URL before registering Bob Go webhooks' });
+    const deliveryUrl = `${publicApiUrl}/api/webhooks/bobgo`;
+    const topics = ['tracking', 'shipment_submission_status'];
+    const results = [];
+    for (const topic of topics) results.push(await bobGo.subscribeWebhook(topic, deliveryUrl));
+    response.json({ deliveryUrl, topics, results });
+  } catch (error) { next(error); }
+});
+
 app.post('/api/admin/orders/:id/bobgo/shipment', requireAdmin, async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
