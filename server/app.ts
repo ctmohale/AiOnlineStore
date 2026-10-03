@@ -516,6 +516,27 @@ app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response,
 });
 
 
+
+app.post('/api/webhooks/bobgo', async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const payload = request.body as Record<string, any>;
+    const trackingReference = String(payload.shipment_tracking_reference || payload.tracking_reference || payload.custom_tracking_reference || '');
+    const topic = String(payload.topic || request.header('x-bobgo-topic') || 'tracking');
+    const eventKey = String(payload.id || payload.event_id || crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'));
+    try { await pool.execute('INSERT INTO bobgo_webhook_events (event_key,topic,payload) VALUES (?,?,?)', [eventKey, topic, JSON.stringify(payload)]); }
+    catch (error: any) { if (error?.code === 'ER_DUP_ENTRY') return response.status(200).json({ received: true, duplicate: true }); throw error; }
+    if (trackingReference) {
+      const statusText = String(payload.status || payload.status_friendly || payload.submission_status || '').toLowerCase();
+      const delivered = statusText.includes('deliver');
+      await pool.execute(`UPDATE order_requests SET bobgo_submission_status=COALESCE(?,bobgo_submission_status),bobgo_last_sync_at=UTC_TIMESTAMP(),bobgo_last_error=NULL,delivered_at=IF(?,COALESCE(delivered_at,UTC_TIMESTAMP()),delivered_at),status=IF(?,'delivered',status) WHERE tracking_number=? OR reference=?`,
+        [payload.submission_status || null, delivered, delivered, trackingReference, trackingReference]);
+    }
+    await pool.execute('UPDATE bobgo_webhook_events SET processed_at=UTC_TIMESTAMP() WHERE event_key=?', [eventKey]);
+    response.status(200).json({ received: true });
+  } catch (error) { next(error); }
+});
+
 app.get('/api/admin/bobgo/status', requireAdmin, async (_request, response, next) => {
   try {
     if (!bobGo.enabled()) return response.json({ configured: false, environment: bobGo.environment() });
