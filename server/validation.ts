@@ -14,6 +14,12 @@ export const orderSchema = z.object({
     notes: z.string().trim().max(2000).optional(),
   }),
   items: z.array(z.object({ productId: z.number().int().positive(), quantity: z.number().int().min(1).max(20), agreedUnitPrice: z.number().positive().optional() })).min(1).max(25),
+  shipping: z.object({
+    providerSlug: z.string().trim().min(1).max(80),
+    serviceLevelCode: z.string().trim().min(1).max(120),
+    serviceName: z.string().trim().min(1).max(160),
+    quotedAmount: z.number().nonnegative().max(100000),
+  }).optional(),
 });
 
 export const quoteSchema = z.object({
@@ -191,6 +197,10 @@ const productFields = {
   estimatedCustomerDeliveryCost: optionalMoney,
   deliveryTime: optionalText(120),
   itemWeightSize: optionalText(120),
+  shippingWeightKg: z.number().positive().max(1000).nullable().optional(),
+  shippingLengthCm: z.number().positive().max(1000).nullable().optional(),
+  shippingWidthCm: z.number().positive().max(1000).nullable().optional(),
+  shippingHeightCm: z.number().positive().max(1000).nullable().optional(),
   reviewNotes: optionalText(5000),
   specifications: z.record(z.string().max(100), z.string().max(500)).optional(),
   imageUrl: z.union([z.url().max(1000), z.literal(''), z.null()]).optional(),
