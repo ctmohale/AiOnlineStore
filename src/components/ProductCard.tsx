@@ -12,7 +12,7 @@ export default function ProductCard({ product }: { product: Product }) {
   const { notify } = useFeedback();
   return <article className="product-card">
     <Link to={`/product/${product.slug}`} className="product-image">
-      {sale && <span className="product-sale-sticker">{sale.discountLabel} OFF</span>}
+      {sale && <span className="product-sale-sticker">{sale.badgeLabel}</span>}
       {product.badge && <span className="product-badge">{product.badge}</span>}
       <ProductVisual product={product} showModel={false} />
       <span className="view-product">View product <ArrowRight size={15} /></span>

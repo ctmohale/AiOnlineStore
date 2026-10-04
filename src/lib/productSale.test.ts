@@ -11,7 +11,7 @@ describe('product sale display', () => {
   it('suppresses tiny reductions and identical displayed prices', () => {
     expect(productSale({ ...sale, price: 8998.85, compareAt: 8999 }, now)).toBeNull();
     expect(productSale({ ...sale, price: 3449, compareAt: 3499 }, now)).toBeNull();
-    expect(productSale({ ...sale, price: 980, compareAt: 1000 }, now)?.discountLabel).toBe('2%');
+    expect(productSale({ ...sale, price: 980, compareAt: 1000 }, now)?.badgeLabel).toBe('On sale');
   });
   it('shows the supplied end date in South African time and handles a missing date', () => {
     expect(productSale({ ...sale, promotionEndAt: '2026-10-03T20:00:00Z' }, now)?.endLabel).toContain('22:00 SAST');
@@ -23,4 +23,11 @@ describe('product sale display', () => {
     expect(productSale({ ...sale, promotionEndAt: '2026-10-01T18:00:00Z' }, now)).toBeNull();
     expect(productSale({ ...sale, promotionStartAt: '2026-10-03T18:00:00Z' }, now)).toBeNull();
   });
+});
+
+
+it('uses On sale below 10% and percentage labels starting at 10%', () => {
+  expect(productSale({ ...sale, price: 901, compareAt: 1000 }, now)?.badgeLabel).toBe('On sale');
+  expect(productSale({ ...sale, price: 901, compareAt: 1000 }, now)?.discountLabel).toBeNull();
+  expect(productSale({ ...sale, price: 900, compareAt: 1000 }, now)?.badgeLabel).toBe('10% OFF');
 });

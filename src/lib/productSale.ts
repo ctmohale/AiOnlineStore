@@ -8,7 +8,8 @@ export const productSale = (product: Product, now = Date.now()) => {
   const percent = Math.floor((product.compareAt - product.price) / product.compareAt * 100);
   if (percent < 2) return null;
   return {
-    discountLabel: `${percent}%`,
+    discountLabel: percent < 10 ? null : `${percent}%`,
+    badgeLabel: percent < 10 ? 'On sale' : `${percent}% OFF`,
     endLabel: end === null ? null : `Sale ends ${new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(end)} SAST`,
   };
 };
