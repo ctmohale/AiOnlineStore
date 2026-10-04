@@ -66,8 +66,7 @@ export default function Shop() {
       <div className="shop-page-hero-copy"><span>Mzansi Mega Store catalogue</span><h1>Shop all products.</h1><p>Everyday essentials, appliances, technology and more—with clear ZAR pricing and nationwide delivery.</p></div>
     </section>
 
-    <section className="shop-department-strip" aria-labelledby="shop-departments-heading">
-      <div className="shop-department-strip-heading"><div><SlidersHorizontal /><span><strong id="shop-departments-heading">Shop by department</strong><small>Find what you need faster</small></span></div><button type="button" className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}>View all</button></div>
+    <section className="shop-department-strip" aria-label="Product categories">
       <div className="shop-department-links">{categoryData.slice(0, 8).map((item) => <button type="button" className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}>
         <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
