@@ -1494,3 +1494,13 @@ footer a,footer p { font-size:13px; }
   .shop-department-links::-webkit-scrollbar-track { background:transparent; }
   .shop-department-links::-webkit-scrollbar-thumb { background:var(--forest); border-radius:999px; }
 }
+
+/* Homepage categories use the same single-row browsing pattern as Shop. */
+.retail-category-grid { display:flex; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; scroll-snap-type:x proximity; scrollbar-width:thin; }
+.retail-category-grid .retail-category-card { flex:0 0 150px; scroll-snap-align:start; }
+@supports selector(::-webkit-scrollbar) {
+  .retail-category-grid,.retail-department-bar nav { scrollbar-width:auto; scrollbar-color:auto; }
+  .retail-category-grid::-webkit-scrollbar,.retail-department-bar nav::-webkit-scrollbar { height:2px; }
+  .retail-category-grid::-webkit-scrollbar-track,.retail-department-bar nav::-webkit-scrollbar-track { background:transparent; }
+  .retail-category-grid::-webkit-scrollbar-thumb,.retail-department-bar nav::-webkit-scrollbar-thumb { background:var(--forest); border-radius:999px; }
+}
