@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CATEGORY_NAMES, categoryGroupFor, matchesCategory } from './categories';
+import { CATEGORY_NAMES, categoryGroupFor, matchesCategory, categorySummaries } from './categories';
 
 describe('catalogue category groups', () => {
   it('normalises supplier separators into customer-friendly groups', () => {
@@ -25,4 +25,29 @@ describe('catalogue category groups', () => {
   it('does not expose a vague catch-all department', () => {
     expect(CATEGORY_NAMES).not.toContain('More Categories');
   });
+});
+
+describe('focused shopping categories', () => {
+  it('finds specific products while preserving broad departments', () => {
+    expect(matchesCategory('General', 'Phones & Tablets', 'Apple iPhone 12')).toBe(true);
+    expect(matchesCategory('Kitchen Accessories', 'Kitchen & Dining', 'Non-stick frying pan')).toBe(true);
+    expect(matchesCategory('Baby Travel', 'Baby & Nursery', 'Compact stroller')).toBe(true);
+    expect(matchesCategory('Renewable Energy', 'Solar & Backup Power', 'Portable power station')).toBe(true);
+    expect(matchesCategory('Kitchen Accessories', 'Home & Furniture', 'Non-stick frying pan')).toBe(true);
+  });
+  it('avoids short-word matches inside unrelated names', () => {
+    expect(matchesCategory('Furniture', 'Baby & Nursery', 'Cotton cushion')).toBe(false);
+    expect(matchesCategory('Office', 'Solar & Backup Power', 'Cups and saucers')).toBe(false);
+    expect(matchesCategory('General', 'Phones & Tablets', 'Headphones')).toBe(false);
+  });
+});
+
+
+it('shows focused categories only when matching products exist and counts them consistently', () => {
+  const products = [{ category: 'General', name: 'Apple iPhone 12', brand: 'Apple', model: '12' }, { category: 'Baby Travel', name: 'Compact stroller', brand: '', model: '' }] as import('../data/products').Product[];
+  const summaries = categorySummaries(products);
+  expect(summaries.find(({ name }) => name === 'Phones & Tablets')?.count).toBe(1);
+  expect(summaries.find(({ name }) => name === 'Baby & Nursery')?.count).toBe(1);
+  expect(summaries.some(({ name }) => name === 'Solar & Backup Power')).toBe(false);
+  for (const summary of summaries) expect(products.filter((product) => matchesCategory(product.category, summary.name, `${product.name} ${product.brand} ${product.model}`))).toHaveLength(summary.count);
 });

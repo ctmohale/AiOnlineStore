@@ -3,10 +3,11 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../state/CatalogContext';
-import { categorySummaries, matchesCategory } from '../lib/categories';
+import { categorySummaries, matchesCategory, FOCUSED_CATEGORIES } from '../lib/categories';
 import { matchesProductSearch } from '../lib/productSearch';
 
 const departmentImages: Record<string, string> = {
+  ...Object.fromEntries(FOCUSED_CATEGORIES.map(({ name, image }) => [name, image])),
   'Electronics & Computing': '/category-electronics.png',
   'Home Appliances': '/category-appliances.png',
   'Home & Furniture': '/category-home-furniture.png',
@@ -27,12 +28,14 @@ const priceOptions = [
 export default function Shop() {
   const [params, setParams] = useSearchParams();
   const { products, loading, error, refresh } = useCatalog();
+  const [categoryQuery, setCategoryQuery] = useState('');
   const [sort, setSort] = useState('featured');
   const [priceRange, setPriceRange] = useState('all');
   const query = params.get('q') || '';
   const category = params.get('category') || 'All';
   const requestedPage = Math.max(1, Number(params.get('page')) || 1);
   const categoryData = categorySummaries(products);
+  const displayedCategories = categoryData.filter((item) => `${item.name} ${FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || ''}`.toLowerCase().includes(categoryQuery.trim().toLowerCase()));
   const searchMatches = useMemo(() => products.filter((product) => matchesProductSearch(product, query)), [products, query]);
   const visible = useMemo(() => {
     const filtered = searchMatches.filter((product) => {
@@ -67,8 +70,10 @@ export default function Shop() {
     </section>
 
     <section className="shop-department-strip" aria-label="Product categories">
-      <div className="shop-department-links">{categoryData.slice(0, 8).map((item) => <button type="button" className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}>
-        <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
+      <label className="shop-category-search"><Search aria-hidden="true" /><input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Find a category…" aria-label="Find a product category" />{categoryQuery && <button type="button" onClick={() => setCategoryQuery('')} aria-label="Clear category search"><X /></button>}</label>
+      {!displayedCategories.length && <p className="shop-category-empty" role="status">No categories match. Try another name or search products below.</p>}
+      <div className="shop-department-links">{displayedCategories.map((item) => <button type="button" className={category === item.name ? 'active' : ''} title={FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || item.name} aria-pressed={category === item.name} onClick={() => update('category', item.name)} key={item.name}>
+        <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" loading="lazy" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
     </section>
 
