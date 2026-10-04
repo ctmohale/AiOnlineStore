@@ -1477,3 +1477,12 @@ footer a,footer p { font-size:13px; }
 .shop-department-links small { font-size:10px; }
 @media(max-width:600px) { .shop-department-links { grid-template-columns:repeat(3,minmax(0,1fr)); } .shop-department-links>button>span { width:66px; height:66px; } .shop-department-links strong { font-size:10px; } }
 @media(prefers-reduced-motion:reduce) { .shop-department-links>button,.shop-department-links>button>span { transition:none; } }
+
+/* Keep Shop category cards in one row at every screen size. */
+.shop-department-links { display:flex; flex-wrap:nowrap; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:var(--forest) #edf4ef; }
+.shop-department-links>button { flex:0 0 132px; scroll-snap-align:start; border-right:1px solid #e7e9e5; border-bottom:0; }
+.shop-department-links>button:nth-child(n) { border-right:1px solid #e7e9e5; border-bottom:0; }
+.shop-department-links>button:last-child { border-right:0; }
+.shop-department-links:focus-visible { outline:2px solid var(--forest); outline-offset:-2px; }
+@media(min-width:1600px) { .shop-department-links>button { flex:1 0 132px; } }
+@media(max-width:600px) { .shop-department-links>button { flex-basis:112px; } }
