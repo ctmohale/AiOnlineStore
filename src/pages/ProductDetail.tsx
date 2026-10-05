@@ -1,6 +1,6 @@
 import { productSale } from '../lib/productSale';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Minus, Plus, ShieldCheck, Truck, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { money } from '../data/products';
 import { useStore } from '../state/StoreContext';
@@ -12,6 +12,9 @@ import { setPageSeo } from '../lib/seo';
 
 export default function ProductDetail() {
   const { slug } = useParams();
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [slug]);
   const { products, settings, loading } = useCatalog();
   const product = products.find((item) => item.slug === slug);
   const [quantity, setQuantity] = useState(1);
