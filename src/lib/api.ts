@@ -2,7 +2,6 @@ import { beginLoading } from './loading';
 import { getAdminToken, getCustomerToken } from './storage';
 
 export type OrderPayload = {
-  testMode?: boolean;
   customer: { name: string; email: string; phone: string; addressLine1: string; suburb: string; city: string; province: string; postalCode: string; notes?: string };
   items: { productId: number; quantity: number; agreedUnitPrice: number }[];
 };
@@ -26,23 +25,12 @@ export async function createOrder(payload: OrderPayload) {
     const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
     const body = await response.json();
     if (!response.ok) throw new Error(body?.error || 'Unable to submit order request');
-    return body as { reference: string };
+    return body as { reference: string; status: string; paymentLink: string | null; processingMode?: 'test' | 'live'; paymentError?: string };
   } finally { finishLoading(); }
 }
 
 export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
-export type CustomerOrder = { reference: string; status: string; is_test: number | boolean; test_paid_at?: string | null; courier_name?: string | null; tracking_number?: string | null; tracking_url?: string | null; expected_ship_at?: string | null; expected_delivery_at?: string | null; delivered_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string; payment_link?: string | null; payment_provider?: string | null };
-
-export async function testPayment(reference: string, outcome: 'success' | 'failure') {
-  const finishLoading = beginLoading();
-  try {
-    const token = getCustomerToken();
-    const response = await fetch(`${API_URL}/customer/orders/${encodeURIComponent(reference)}/test-payment`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ outcome }) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'Test payment could not be completed');
-    return body as { status: 'test_paid' | 'test_failed'; charged: false };
-  } finally { finishLoading(); }
-}
+export type CustomerOrder = { reference: string; status: string; courier_name?: string | null; tracking_number?: string | null; tracking_url?: string | null; expected_ship_at?: string | null; expected_delivery_at?: string | null; delivered_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string; payment_link?: string | null; payment_provider?: string | null };
 
 async function customerAuth(path: 'login' | 'register', payload: Record<string, string>) {
   const finishLoading = beginLoading();

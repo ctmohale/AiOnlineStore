@@ -1,6 +1,6 @@
 # Mzansi Mega Store MVP
 
-A launch-focused South African reseller storefront and operations dashboard. Customers request an order first; staff verify the exact supplier product, live checkout price, stock, and delivery before the server creates a secure Yoco-hosted checkout for the confirmed total.
+A launch-focused South African reseller storefront and operations dashboard. Customers confirm their delivery details and order total, then continue directly to a secure Yoco-hosted checkout. Payment is accepted only after the server verifies Yoco's signed notification.
 
 ## What is included
 

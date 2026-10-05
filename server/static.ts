@@ -13,7 +13,7 @@ const template = () => fs.readFile(path.join(dist, 'index.html'), 'utf8');
 
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], connectSrc: ["'self'", 'https:'], imgSrc: ["'self'", 'data:', 'https:'], styleSrc: ["'self'", "'unsafe-inline'"], scriptSrc: ["'self'", "'unsafe-inline'"] } } }));
 app.get('/health', (_request, response) => response.json({ status: 'ok', service: 'web', revision: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || 'unknown' }));
-app.get('/robots.txt', (_request, response) => response.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /account\nDisallow: /cart\nDisallow: /request\nDisallow: /confirmation\nDisallow: /test-payment\nSitemap: ${storeUrl}/sitemap.xml\n`));
+app.get('/robots.txt', (_request, response) => response.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /account\nDisallow: /cart\nDisallow: /request\nDisallow: /confirmation\nSitemap: ${storeUrl}/sitemap.xml\n`));
 app.get('/sitemap.xml', async (_request, response, next) => {
   try {
     const products = await fetch(`${apiBase}/seo/sitemap`).then((result) => result.ok ? result.json() as Promise<{ slug: string; updated_at?: string }[]> : Promise.reject(new Error(`Catalogue returned ${result.status}`)));
@@ -41,7 +41,7 @@ app.get('/catalog', async (request, response) => {
 });
 app.use(express.static(dist, { maxAge: '1h', etag: true }));
 app.use((request, response) => {
-  if (/^\/(admin|account|cart|request|confirmation|test-payment)/.test(request.path)) response.set('X-Robots-Tag', 'noindex, nofollow');
+  if (/^\/(admin|account|cart|request|confirmation)/.test(request.path)) response.set('X-Robots-Tag', 'noindex, nofollow');
   response.sendFile(path.join(dist, 'index.html'));
 });
 

@@ -53,12 +53,23 @@ async function provisionYocoCheckout(orderId: string | number) {
   const [orderRows] = await pool.execute('SELECT id,reference,status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? LIMIT 1', [orderId]);
   const order = (orderRows as PaymentOrderRow[])[0];
   if (!order || order.is_test) throw Object.assign(new Error('Real order not found'), { status: 404 });
-  if (!['quoted', 'awaiting_payment'].includes(order.status)) throw Object.assign(new Error('Only a quoted order can receive a Yoco checkout.'), { status: 409 });
+  if (!['requested', 'quoted', 'awaiting_payment'].includes(order.status)) throw Object.assign(new Error('This order cannot receive a Yoco checkout.'), { status: 409 });
 
   const [activeRows] = await pool.execute("SELECT external_reference,payment_link,expected_amount_cents,currency,processing_mode FROM payment_references WHERE order_request_id=? AND provider='yoco' AND verification_status='unverified' ORDER BY id DESC LIMIT 1", [orderId]);
   const active = (activeRows as (RowDataPacket & { external_reference: string; payment_link: string; expected_amount_cents: number; currency: string; processing_mode: string })[])[0];
   const amountCents = Math.round((Number(order.product_revenue) + Number(order.customer_delivery_charged)) * 100);
-  if (active && Number(active.expected_amount_cents) === amountCents && active.currency === 'ZAR') return { checkoutId: active.external_reference, paymentLink: active.payment_link, amountCents, processingMode: active.processing_mode, reused: true };
+  if (active && Number(active.expected_amount_cents) === amountCents && active.currency === 'ZAR') {
+    if (order.status !== 'awaiting_payment') await withTransaction(async (connection) => {
+      const [lockedRows] = await connection.execute('SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE', [orderId]);
+      const locked = (lockedRows as (RowDataPacket & { status: string; is_test: number })[])[0];
+      if (!locked || locked.is_test || !['requested', 'quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
+      if (locked.status !== 'awaiting_payment') {
+        await connection.execute("UPDATE order_requests SET status='awaiting_payment' WHERE id=?", [orderId]);
+        await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,?,'awaiting_payment','Secure Yoco checkout reused')", [orderId, locked.status]);
+      }
+    });
+    return { checkoutId: active.external_reference, paymentLink: active.payment_link, amountCents, processingMode: active.processing_mode, reused: true };
+  }
 
   const [attemptRows] = await pool.execute("SELECT COUNT(*) AS attempts FROM payment_references WHERE order_request_id=? AND provider='yoco'", [orderId]);
   const attempt = Number((attemptRows as (RowDataPacket & { attempts: number })[])[0]?.attempts || 0) + 1;
@@ -67,14 +78,14 @@ async function provisionYocoCheckout(orderId: string | number) {
   await withTransaction(async (connection) => {
     const [lockedRows] = await connection.execute('SELECT status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? FOR UPDATE', [orderId]);
     const locked = (lockedRows as (RowDataPacket & { status: string; is_test: number; product_revenue: number; customer_delivery_charged: number })[])[0];
-    if (!locked || locked.is_test || !['quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
+    if (!locked || locked.is_test || !['requested', 'quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
     const lockedAmount = Math.round((Number(locked.product_revenue) + Number(locked.customer_delivery_charged)) * 100);
     if (lockedAmount !== checkout.amount) throw Object.assign(new Error('The quoted order total changed before checkout creation.'), { status: 409 });
     await connection.execute(`INSERT INTO payment_references (order_request_id,provider,payment_link,external_reference,expected_amount_cents,currency,processing_mode)
       VALUES (?,'yoco',?,?,?,?,?) ON DUPLICATE KEY UPDATE payment_link=VALUES(payment_link),expected_amount_cents=VALUES(expected_amount_cents),currency=VALUES(currency),processing_mode=VALUES(processing_mode)`, [orderId, checkout.redirectUrl, checkout.id, checkout.amount, checkout.currency, checkout.processingMode]);
-    if (locked.status === 'quoted') {
+    if (locked.status !== 'awaiting_payment') {
       await connection.execute("UPDATE order_requests SET status='awaiting_payment' WHERE id=?", [orderId]);
-      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'quoted','awaiting_payment','Secure Yoco checkout created')", [orderId]);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,?,'awaiting_payment','Secure Yoco checkout created')", [orderId, locked.status]);
     }
   });
   return { checkoutId: checkout.id, paymentLink: checkout.redirectUrl, amountCents: checkout.amount, processingMode: checkout.processingMode, reused: false };
@@ -288,38 +299,20 @@ app.patch('/api/customer/password', loginLimiter, requireCustomer, async (reques
 });
 
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute(`SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute(`SELECT o.reference,o.status,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,
     COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary,
     (SELECT pr.payment_link FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_link,
     (SELECT pr.provider FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_provider
-    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
-});
-
-app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async (request, response, next) => {
-  try {
-    if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    if (!['success', 'failure'].includes(request.body?.outcome)) return response.status(400).json({ error: 'Choose a test payment outcome' });
-    const result = await withTransaction(async (connection) => {
-      const [rows] = await connection.execute('SELECT id,status,is_test FROM order_requests WHERE reference=? AND customer_id=? FOR UPDATE', [request.params.reference, response.locals.customer.sub]);
-      const order = (rows as (RowDataPacket & { id: number; status: string; is_test: number })[])[0];
-      if (!order || !order.is_test) throw Object.assign(new Error('Test order not found for this account'), { status: 404 });
-      if (order.status !== 'requested') throw Object.assign(new Error('This test order is not awaiting payment'), { status: 409 });
-      if (request.body.outcome === 'failure') return { status: 'test_failed', charged: false };
-      await connection.execute("UPDATE order_requests SET status='test_paid',test_paid_at=UTC_TIMESTAMP() WHERE id=?", [order.id]);
-      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'requested','test_paid','Simulated test payment completed')", [order.id]);
-      return { status: 'test_paid', charged: false };
-    });
-    response.json(result);
-  } catch (error) { next(error); }
+    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
-    if (input.testMode && (!response.locals.customer || response.locals.customer.email.toLowerCase() !== input.customer.email.toLowerCase())) return response.status(401).json({ error: 'Sign in with the same email to place a test order' });
     const orderReference = reference();
     if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
-    await withTransaction(async (connection) => {
+    if (!isYocoConfigured()) return response.status(503).json({ error: 'Secure payment is temporarily unavailable' });
+    const orderId = await withTransaction(async (connection) => {
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
       const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE FOR UPDATE`, ids);
@@ -342,7 +335,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const estimateBasis = [...new Set(productRows.map((product) => `${product.retailer}: ${deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status }).fulfilmentLabel}`))].join('; ').slice(0, 500);
       const expectedShipAt = addBusinessDays(new Date(), supplierMax + 1);
       const expectedDeliveryAt = addBusinessDays(new Date(), estimateMax);
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, input.testMode, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, false, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;
@@ -350,9 +343,16 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
         await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot,supplier_fulfilment_snapshot,estimated_supplier_days_min,estimated_supplier_days_max) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost, itemEstimate.fulfilmentType, itemEstimate.supplierMinDays, itemEstimate.supplierMaxDays]);
       }
       const needsFreshSupplierCheck = productRows.some((product) => !product.last_checked_at || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000);
-      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested',?)", [orderId, needsFreshSupplierCheck ? 'Order submitted; current supplier price and stock must be reconfirmed before quoting' : 'Order submitted']);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested',?)", [orderId, needsFreshSupplierCheck ? 'Order submitted for secure payment; supplier data should be rechecked before purchasing' : 'Order submitted for secure payment']);
+      return orderId;
     });
-    response.status(201).json({ reference: orderReference, status: 'requested', isTest: input.testMode });
+    try {
+      const checkout = await provisionYocoCheckout(orderId);
+      response.status(201).json({ reference: orderReference, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
+    } catch (paymentError) {
+      console.error('Order created but Yoco checkout creation failed', paymentError);
+      response.status(201).json({ reference: orderReference, status: 'requested', paymentLink: null, paymentError: 'Your order was saved, but secure payment could not be started. Please contact support with your order reference.' });
+    }
   } catch (error) { next(error); }
 });
 
@@ -700,7 +700,7 @@ app.patch('/api/admin/orders/:id/items/:itemId/supplier-verification', requireAd
       const order = (orderRows as (RowDataPacket & { status: string; is_test: number })[])[0];
       if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
       if (order.is_test) throw Object.assign(new Error('Test orders cannot enter supplier verification'), { status: 409 });
-      if (!['checking_supplier','quoted'].includes(order.status)) throw Object.assign(new Error('Start the supplier check before verifying order items'), { status: 409 });
+      if (!['checking_supplier','quoted','paid'].includes(order.status)) throw Object.assign(new Error('Supplier verification is not available at this order stage'), { status: 409 });
       const [itemRows] = await connection.execute('SELECT id,product_title_snapshot FROM order_items WHERE id=? AND order_request_id=? FOR UPDATE', [request.params.itemId, request.params.id]);
       const item = (itemRows as (RowDataPacket & { id: number; product_title_snapshot: string })[])[0];
       if (!item) throw Object.assign(new Error('Order item not found'), { status: 404 });
@@ -755,6 +755,11 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response
       if (status === 'refunded') {
         const [caseRows] = await connection.execute("SELECT id FROM order_support_cases WHERE order_request_id=? AND resolution='refund' AND status IN ('approved','resolved','closed') AND refund_amount IS NOT NULL LIMIT 1", [request.params.id]);
         if (!(caseRows as RowDataPacket[]).length) throw Object.assign(new Error('Approve a refund case and record its amount before marking this order refunded'), { status: 409 });
+      }
+      if (current === 'paid' && status === 'purchasing') {
+        const [verificationRows] = await connection.execute("SELECT COUNT(*) AS total_items,SUM(supplier_verification_status='verified') AS verified_items FROM order_items WHERE order_request_id=?", [request.params.id]);
+        const verification = (verificationRows as (RowDataPacket & { total_items:number; verified_items:number })[])[0];
+        if (!verification.total_items || Number(verification.verified_items) !== Number(verification.total_items)) throw Object.assign(new Error('Verify every supplier item before starting purchasing'), { status: 409 });
       }
       if (status === 'paid') throw Object.assign(new Error('Use the payment verification endpoint to mark an order paid'), { status: 409 });
       const timestampColumns: Record<string,string> = { checking_supplier:'supplier_checked_at',purchasing:'purchased_at',shipped:'shipped_at',delivered:'delivered_at',cancelled:'cancelled_at',refunded:'refunded_at' };

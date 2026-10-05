@@ -40,7 +40,7 @@ export async function createYocoCheckout(input: CreateCheckoutInput): Promise<Yo
   if (!Number.isInteger(input.amountCents) || input.amountCents < 1) throw Object.assign(new Error('The quoted total is not a valid Yoco payment amount.'), { status: 422 });
 
   const storeUrl = publicStoreUrl();
-  const accountUrl = `${storeUrl}/account`;
+  const confirmationUrl = `${storeUrl}/confirmation/${encodeURIComponent(input.orderReference)}`;
   const apiUrl = (process.env.YOCO_API_URL || DEFAULT_API_URL).replace(/\/$/, '');
   const response = await fetch(`${apiUrl}/checkouts`, {
     method: 'POST',
@@ -52,9 +52,9 @@ export async function createYocoCheckout(input: CreateCheckoutInput): Promise<Yo
     body: JSON.stringify({
       amount: input.amountCents,
       currency: 'ZAR',
-      successUrl: `${accountUrl}?payment=success&order=${encodeURIComponent(input.orderReference)}`,
-      cancelUrl: `${accountUrl}?payment=cancelled&order=${encodeURIComponent(input.orderReference)}`,
-      failureUrl: `${accountUrl}?payment=failed&order=${encodeURIComponent(input.orderReference)}`,
+      successUrl: `${confirmationUrl}?payment=success`,
+      cancelUrl: `${confirmationUrl}?payment=cancelled`,
+      failureUrl: `${confirmationUrl}?payment=failed`,
       clientReferenceId: input.orderReference,
       externalId: input.orderReference,
       metadata: { orderReference: input.orderReference },

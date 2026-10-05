@@ -25,7 +25,9 @@ describe('Yoco Checkout API', () => {
     expect(JSON.parse(String(options?.body))).toMatchObject({
       amount: 172400,
       currency: 'ZAR',
-      successUrl: 'https://www.mzansimegastore.co.za/account?payment=success&order=MMS-2026-ABC123',
+      successUrl: 'https://www.mzansimegastore.co.za/confirmation/MMS-2026-ABC123?payment=success',
+      cancelUrl: 'https://www.mzansimegastore.co.za/confirmation/MMS-2026-ABC123?payment=cancelled',
+      failureUrl: 'https://www.mzansimegastore.co.za/confirmation/MMS-2026-ABC123?payment=failed',
       clientReferenceId: 'MMS-2026-ABC123',
       externalId: 'MMS-2026-ABC123',
     });

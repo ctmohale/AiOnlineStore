@@ -414,15 +414,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .payment-return strong,.payment-return span { display:block; }
 .payment-return span { margin-top:3px; font-size:12px; line-height:1.45; }
 .account-actions { display:flex; gap:10px; flex-wrap:wrap; }
-.test-order-option { display:flex!important; align-items:center; gap:10px; padding:14px; background:#f2eee4; border:1px solid var(--line); line-height:1.5; }
-.test-order-option input { width:auto!important; margin:0!important; }
-.test-payment-card { display:flex; flex-direction:column; align-items:center; gap:14px; }
-.test-payment-card .reference { width:100%; }
-.test-payment-icon { width:42px; height:42px; color:var(--forest); }
-.test-payment-actions { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
-.test-result { display:flex; gap:9px; align-items:center; padding:13px; font-size:13px; }
-.test-result.success { background:#e4eee8; color:#1c6749; }
-.test-result.failure { background:#f9e6e2; color:#a43d34; }
+.success-icon.payment-not-complete { background:#fff1ec; color:#a24b3f; }
 .account-empty { min-height:280px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-top:1px solid var(--line); }
 .account-empty>svg { width:35px; height:35px; color:var(--coral); }
 .account-empty h3 { margin:15px 0 3px; }
@@ -1339,9 +1331,6 @@ footer a,footer p { font-size:13px; }
 .projection-card article strong { font-size:23px; margin-top:6px; }
 .projection-card>p { grid-column:1/-1; margin:0; padding-top:12px; border-top:1px solid #eceeeb; }
 .analytics-empty,.analytics-loading { color:#77837c; font-size:12px; }
-.test-orders { border-top:1px solid #e4e6e3; margin-top:16px; padding-top:13px; color:#6c7771; font-size:11px; }
-.test-orders summary { cursor:pointer; font-weight:700; }
-.test-orders p { padding-left:14px; }
 .fulfilment-items { border:1px solid #e2e6e1; }
 .fulfilment-items article { display:grid; grid-template-columns:1fr auto; gap:14px; padding:12px; border-top:1px solid #e8ebe7; }
 .fulfilment-items article:first-child { border-top:0; }

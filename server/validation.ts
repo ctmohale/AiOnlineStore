@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 export const orderSchema = z.object({
-  testMode: z.boolean().optional().default(false),
   customer: z.object({
     name: z.string().trim().min(2).max(160),
     email: z.email().max(190),
