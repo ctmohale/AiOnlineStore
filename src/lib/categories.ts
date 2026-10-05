@@ -46,8 +46,7 @@ export const categorySummaries = (products: Product[]) => {
     counts.set(group, (counts.get(group) || 0) + 1);
   }
   return [...CATEGORY_NAMES
-    .map((name) => ({ name, count: counts.get(name) || 0 }))
-    .filter(({ count }) => count > 0),
-    ...FOCUSED_CATEGORIES.map(({ name }) => ({ name, count: products.filter((product) => matchesFocusedCategory(product.category, name, `${product.name} ${product.brand} ${product.model}`)).length })).filter(({ count }) => count > 0),
+    .map((name) => ({ name, count: counts.get(name) || 0 })),
+    ...FOCUSED_CATEGORIES.map(({ name }) => ({ name, count: products.filter((product) => matchesFocusedCategory(product.category, name, `${product.name} ${product.brand} ${product.model}`)).length })),
   ];
 };

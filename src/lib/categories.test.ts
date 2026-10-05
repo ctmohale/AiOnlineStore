@@ -43,11 +43,12 @@ describe('focused shopping categories', () => {
 });
 
 
-it('shows focused categories only when matching products exist and counts them consistently', () => {
+it('keeps every category visible and counts matching products consistently', () => {
   const products = [{ category: 'General', name: 'Apple iPhone 12', brand: 'Apple', model: '12' }, { category: 'Baby Travel', name: 'Compact stroller', brand: '', model: '' }] as import('../data/products').Product[];
   const summaries = categorySummaries(products);
   expect(summaries.find(({ name }) => name === 'Phones & Tablets')?.count).toBe(1);
   expect(summaries.find(({ name }) => name === 'Baby & Nursery')?.count).toBe(1);
-  expect(summaries.some(({ name }) => name === 'Solar & Backup Power')).toBe(false);
+  expect(summaries.find(({ name }) => name === 'Solar & Backup Power')?.count).toBe(0);
+  expect(categorySummaries([])).toHaveLength(12);
   for (const summary of summaries) expect(products.filter((product) => matchesCategory(product.category, summary.name, `${product.name} ${product.brand} ${product.model}`))).toHaveLength(summary.count);
 });

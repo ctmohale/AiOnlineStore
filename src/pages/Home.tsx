@@ -19,11 +19,12 @@ import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import ProductVisual from '../components/ProductVisual';
 import { money } from '../data/products';
-import { CATEGORY_NAMES, categorySummaries } from '../lib/categories';
+import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
 import { useCatalog } from '../state/CatalogContext';
 
 const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; tone: string }> = {
+  ...Object.fromEntries(FOCUSED_CATEGORIES.map(({ name, image }) => [name, { image, tone: 'green' }])),
   'Electronics & Computing': { image: '/category-electronics.png', tone: 'blue' },
   'Home Appliances': { image: '/category-appliances.png', tone: 'orange' },
   'Home & Furniture': { image: '/category-home-furniture.png', tone: 'green' },
@@ -76,10 +77,10 @@ export default function Home() {
   const [storyAutoplay, setStoryAutoplay] = useState(true);
   const featured = heroProducts[activeSlide];
   const story = heroStories[activeStory];
-  const categories = categorySummaries(products).slice(0, 8);
+  const categories = categorySummaries(products);
   const navigationCategories = categories.length > 0
     ? categories
-    : CATEGORY_NAMES.slice(0, 8).map((name) => ({ name, count: 0 }));
+    : [...CATEGORY_NAMES, ...FOCUSED_CATEGORIES.map(({ name }) => name)].map((name) => ({ name, count: 0 }));
 
   useEffect(() => {
     let interval: number | undefined;
