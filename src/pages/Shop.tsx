@@ -1,6 +1,6 @@
 import { ArrowRight, Check, ChevronRight, Home, PackageCheck, Search, SlidersHorizontal, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries, matchesCategory, FOCUSED_CATEGORIES } from '../lib/categories';
@@ -26,6 +26,10 @@ const priceOptions = [
 ];
 
 export default function Shop() {
+  const location = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [location.key]);
   const [params, setParams] = useSearchParams();
   const { products, loading, error, refresh } = useCatalog();
   const [categoryQuery, setCategoryQuery] = useState('');
