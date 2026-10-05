@@ -1511,3 +1511,6 @@ footer a,footer p { font-size:13px; }
 .product-card:has(.product-sale-sticker) .price-row { align-items:center; flex-wrap:wrap; gap:9px; }
 .product-card:has(.product-sale-sticker) .price-row strong { color:#a33022; }
 @media(max-width:600px) { .product-sale-sticker { top:8px; padding:5px 8px 5px 15px; font-size:11px; } }
+
+/* Keep filtered product results visible below the sticky header. */
+.shop-results { scroll-margin-top:96px; }

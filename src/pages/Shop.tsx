@@ -1,5 +1,5 @@
 import { ArrowRight, Check, ChevronRight, Home, PackageCheck, Search, SlidersHorizontal, X } from 'lucide-react';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { useCatalog } from '../state/CatalogContext';
@@ -27,9 +27,16 @@ const priceOptions = [
 
 export default function Shop() {
   const location = useLocation();
+  const resultsRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-  }, [location.key]);
+    const categoryPage = new URLSearchParams(location.search).has('category');
+    if (!categoryPage) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.key, location.search]);
   const [params, setParams] = useSearchParams();
   const { products, loading, error, refresh } = useCatalog();
   const [categoryQuery, setCategoryQuery] = useState('');
@@ -88,7 +95,7 @@ export default function Shop() {
         <div className="shop-filter-group"><h2>Price</h2>{priceOptions.map((option) => <button type="button" aria-pressed={priceRange === option.value} className={priceRange === option.value ? 'active' : ''} onClick={() => { setPriceRange(option.value); update('page', ''); }} key={option.value}><span aria-hidden="true">{priceRange === option.value && <Check />}</span><b>{option.label}</b></button>)}</div>
       </aside>
 
-      <section className="shop-results" aria-labelledby="shop-results-heading">
+      <section ref={resultsRef} id="shop-results" className="shop-results" aria-labelledby="shop-results-heading">
         <div className="shop-results-toolbar">
           <label className="shop-search"><Search /><input value={query} onChange={(event) => update('q', event.target.value)} placeholder="Search products, brands and categories" aria-label="Search products" />{query && <button type="button" onClick={() => update('q', '')} aria-label="Clear search"><X /></button>}</label>
           <label className="sort-filter"><span>Sort by</span><select value={sort} onChange={(event) => { setSort(event.target.value); update('page', ''); }} aria-label="Sort products"><option value="featured">Featured</option><option value="low">Price: low to high</option><option value="high">Price: high to low</option></select></label>
