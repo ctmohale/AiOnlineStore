@@ -72,6 +72,7 @@ export default function Home() {
   const heroProducts = rotatingProducts(productPool, 1, rotationBucket);
   const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
   const popularProducts = productPool.slice(0, 5);
+  const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);
   const [storyAutoplay, setStoryAutoplay] = useState(true);
@@ -195,7 +196,7 @@ export default function Home() {
     </section>
 
     {!loading && !error && popularProducts.length > 0 && <section className="retail-section retail-products-section retail-products-alt">
-      <div className="retail-section-heading"><div><span>Popular right now</span><h2>More worth browsing.</h2></div><Link to="/shop">Browse everything <ArrowRight /></Link></div>
+      <div className="retail-section-heading"><div><span>{hasSalesHistory ? 'Popular right now' : 'Featured products'}</span><h2>More worth browsing.</h2></div><Link to="/shop">Browse everything <ArrowRight /></Link></div>
       <div className="retail-product-grid">{popularProducts.map((product) => <ProductCard key={product.id} product={product} />)}</div>
     </section>}
 
