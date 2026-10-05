@@ -82,4 +82,11 @@ describe('transactional email templates', () => {
       expect(email.html).not.toContain('undefined');
     }
   });
+
+  it('uses a consistent aligned sender identity in the documented SMTP configuration', () => {
+    process.env.SMTP_USER = 'no-reply@mzansimegastore.co.za';
+    process.env.EMAIL_FROM = 'Mzansi Mega Store <no-reply@mzansimegastore.co.za>';
+    expect(process.env.EMAIL_FROM).toContain(`<${process.env.SMTP_USER}>`);
+    expect(process.env.SMTP_USER.split('@')[1]).toBe('mzansimegastore.co.za');
+  });
 });

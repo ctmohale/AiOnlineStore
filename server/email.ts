@@ -167,7 +167,7 @@ export async function queueConfiguredEmailTest() {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error('EMAIL_TEST_RECIPIENT is not a valid email address');
   await withTransaction(async (connection) => {
     await insertOutbox(connection, {
-      eventKey: `system:branded_email_test:v2:${recipient}`,
+      eventKey: `system:branded_email_test:v3:${recipient}`,
       messageType: 'account_test',
       email: recipient,
       name: 'Mzansi Mega Store test recipient',
@@ -212,6 +212,43 @@ export const isEmailConfigured = () => Boolean(process.env.SMTP_HOST && process.
 let transporter: Transporter | null = null;
 let transporterKey = '';
 
+type GoogleDnsResponse = { Status?: number; Answer?: { data: string; type: number }[] };
+
+async function resolveGoogleDns(name: string, type: 'TXT' | 'MX' | 'A') {
+  const response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`, {
+    headers: { accept: 'application/dns-json' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`DNS lookup for ${name} returned HTTP ${response.status}`);
+  const result = await response.json() as GoogleDnsResponse;
+  if (result.Status !== 0 && result.Status !== 3) throw new Error(`DNS lookup for ${name} returned status ${result.Status}`);
+  return (result.Answer || []).map((answer) => answer.data.replace(/^"|"$/g, '').replace(/"\s+"/g, ''));
+}
+
+export async function inspectEmailAuthenticationDns() {
+  const domain = String(process.env.SMTP_USER || '').split('@')[1] || 'mzansimegastore.co.za';
+  const selector = process.env.DKIM_SELECTOR || 'default';
+  const [rootTxt, dmarcTxt, dkimTxt, mx] = await Promise.all([
+    resolveGoogleDns(domain, 'TXT'),
+    resolveGoogleDns(`_dmarc.${domain}`, 'TXT'),
+    resolveGoogleDns(`${selector}._domainkey.${domain}`, 'TXT'),
+    resolveGoogleDns(domain, 'MX'),
+  ]);
+  const spfRecord = rootTxt.find((record) => record.toLowerCase().startsWith('v=spf1')) || '';
+  const dmarcRecord = dmarcTxt.find((record) => record.toLowerCase().startsWith('v=dmarc1')) || '';
+  const dkimRecord = dkimTxt.find((record) => record.toLowerCase().startsWith('v=dkim1')) || '';
+  return {
+    domain,
+    spf: Boolean(spfRecord),
+    spfHardFail: /(?:^|\s)-all(?:\s|$)/i.test(spfRecord),
+    dmarc: Boolean(dmarcRecord),
+    dmarcPolicy: dmarcRecord.match(/(?:^|;)\s*p=([^;\s]+)/i)?.[1]?.toLowerCase() || null,
+    dkim: Boolean(dkimRecord) && /\bp=/i.test(dkimRecord),
+    dkimSelector: selector,
+    mx: mx.length > 0,
+  };
+}
+
 function mailTransport() {
   if (!isEmailConfigured()) throw new Error('SMTP is not configured');
   const key = [process.env.SMTP_HOST, process.env.SMTP_PORT, process.env.SMTP_SECURE, process.env.SMTP_USER, process.env.SMTP_PASS].join('|');
@@ -255,16 +292,29 @@ export async function processEmailOutbox(limit = 20) {
     const message = await claimEmail();
     if (!message) break;
     try {
+      const envelopeFrom = String(process.env.SMTP_USER || '').trim().toLowerCase();
       const result = await mailTransport().sendMail({
         from: process.env.EMAIL_FROM || `Mzansi Mega Store <${process.env.SMTP_USER}>`,
         to: message.recipient_name ? { name: message.recipient_name, address: message.recipient_email } : message.recipient_email,
         replyTo: message.reply_to_email || (message.message_type === 'order_admin_new_order' ? generalEmail() : message.message_type === 'order_refunded' ? returnsEmail() : supportEmail()),
+        envelope: { from: envelopeFrom, to: message.recipient_email },
+        messageId: `<mms-${message.id}-${Date.now()}@mzansimegastore.co.za>`,
         subject: message.subject,
         html: message.html_body,
         text: message.text_body,
-        headers: { 'X-Entity-Ref-ID': `mms-email-${message.id}` },
+        headers: {
+          'Auto-Submitted': 'auto-generated',
+          'X-Auto-Response-Suppress': 'All',
+          'X-Entity-Ref-ID': `mms-email-${message.id}`,
+        },
       });
+      const accepted = (result.accepted || []).map((recipient) => String(recipient).toLowerCase());
+      const rejected = (result.rejected || []).map((recipient) => String(recipient).toLowerCase());
+      if (!accepted.includes(message.recipient_email.toLowerCase()) || rejected.includes(message.recipient_email.toLowerCase())) {
+        throw new Error(`SMTP server did not accept ${message.recipient_email}: ${result.response || 'no response provided'}`);
+      }
       await pool.execute("UPDATE email_outbox SET status='sent',sent_at=UTC_TIMESTAMP(),locked_at=NULL,provider_message_id=?,last_error=NULL WHERE id=?", [String(result.messageId || '').slice(0, 255), message.id]);
+      console.log(`SMTP accepted email ${message.id} for ${message.recipient_email}; messageId=${result.messageId}; response=${result.response || 'accepted'}`);
       sent += 1;
     } catch (error) {
       const terminal = message.attempts >= 5;
