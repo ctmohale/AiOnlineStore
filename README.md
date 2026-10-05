@@ -1,6 +1,6 @@
 # Mzansi Mega Store MVP
 
-A launch-focused South African reseller storefront and operations dashboard. Customers request an order first; staff verify the exact supplier product, live checkout price, stock, and delivery before sending a manual card-payment link.
+A launch-focused South African reseller storefront and operations dashboard. Customers request an order first; staff verify the exact supplier product, live checkout price, stock, and delivery before the server creates a secure Yoco-hosted checkout for the confirmed total.
 
 ## What is included
 
@@ -55,6 +55,16 @@ Create one Railway project with a MySQL service and three services pointing to t
 
 Reference Railway's MySQL `DATABASE_URL` into both API and worker. Add `JWT_SECRET`, `FRONTEND_URL`, pricing values, admin seed credentials, and optionally a permitted `RETAILER_FEED_URL`. Set `RUN_SEED_ON_START=true` only for an intentional administrator reset, together with `ADMIN_EMAIL` and an `ADMIN_PASSWORD` of at least 12 characters. Remove the flag and password after the reset deploys.
 
+For Yoco, add these variables to the **API service only**:
+
+| Variable | Production value |
+|---|---|
+| `YOCO_SECRET_KEY` | The Yoco Checkout API live secret key (`sk_live_…`). Use `sk_test_…` until the complete flow passes in test mode. |
+| `YOCO_WEBHOOK_SECRET` | The one-time `whsec_…` secret returned when the Yoco webhook is registered. |
+| `STORE_PUBLIC_URL` | `https://www.mzansimegastore.co.za` |
+
+Register exactly one Yoco Checkout API webhook with the public API URL `https://<your-api-domain>/api/payments/yoco/webhook`, then immediately copy its returned secret into `YOCO_WEBHOOK_SECRET`. The API verifies Yoco's `webhook-id`, `webhook-timestamp`, and `webhook-signature` against the untouched request body, rejects events older than three minutes, deduplicates event IDs, and checks the checkout ID, amount, currency, and live/test mode before marking an order paid. Run `npm run db:migrate` in Railway's API pre-deploy command so migration `022_yoco_checkout.sql` is applied before the release starts.
+
 ## Launch boundaries
 
 Still required before real trading:
@@ -63,7 +73,7 @@ Still required before real trading:
 - retailer URL import is a review aid that reads public structured page metadata only; blocked or incomplete listings must be entered manually;
 - human verification and publication of initial offers, descriptions, and rights-cleared product image URLs;
 - real delivery rates and packaging costs;
-- a configured Yoco or Paystack merchant account and payment-webhook verification if payment confirmation is to be automated;
+- a verified Yoco merchant domain, a live Checkout API key, and the registered production webhook secret;
 - transactional email/WhatsApp delivery for quotes and status updates;
 - final legal/privacy/returns copy and an admin session-hardening review (for example, moving the MVP bearer token from session storage to secure HTTP-only cookies).
 

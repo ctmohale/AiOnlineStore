@@ -13,13 +13,14 @@ import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCu
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
 
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'], methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
-app.use(express.json({ limit: '200kb' }));
+app.use(express.json({ limit: '200kb', verify: (request, _response, buffer) => { (request as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
 
 const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -42,6 +43,41 @@ async function replaceProductImages(connection: PoolConnection, productId: numbe
   const unique = [...new Set(urls.filter(Boolean))].slice(0, 20);
   await connection.execute('DELETE FROM product_images WHERE product_id=?', [productId]);
   for (const [index, url] of unique.entries()) await connection.execute('INSERT INTO product_images (product_id,url,alt_text,sort_order) VALUES (?,?,?,?)', [productId, url, `${title} - image ${index + 1}`, index]);
+}
+
+type PaymentOrderRow = RowDataPacket & { id: number; reference: string; status: string; is_test: number; product_revenue: number; customer_delivery_charged: number };
+
+async function provisionYocoCheckout(orderId: string | number) {
+  if (!pool) throw Object.assign(new Error('Database not configured'), { status: 503 });
+  if (!isYocoConfigured()) throw Object.assign(new Error('Yoco is not configured. Add YOCO_SECRET_KEY to the API service.'), { status: 503 });
+  const [orderRows] = await pool.execute('SELECT id,reference,status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? LIMIT 1', [orderId]);
+  const order = (orderRows as PaymentOrderRow[])[0];
+  if (!order || order.is_test) throw Object.assign(new Error('Real order not found'), { status: 404 });
+  if (!['quoted', 'awaiting_payment'].includes(order.status)) throw Object.assign(new Error('Only a quoted order can receive a Yoco checkout.'), { status: 409 });
+
+  const [activeRows] = await pool.execute("SELECT external_reference,payment_link,expected_amount_cents,currency,processing_mode FROM payment_references WHERE order_request_id=? AND provider='yoco' AND verification_status='unverified' ORDER BY id DESC LIMIT 1", [orderId]);
+  const active = (activeRows as (RowDataPacket & { external_reference: string; payment_link: string; expected_amount_cents: number; currency: string; processing_mode: string })[])[0];
+  const amountCents = Math.round((Number(order.product_revenue) + Number(order.customer_delivery_charged)) * 100);
+  if (active && Number(active.expected_amount_cents) === amountCents && active.currency === 'ZAR') return { checkoutId: active.external_reference, paymentLink: active.payment_link, amountCents, processingMode: active.processing_mode, reused: true };
+
+  const [attemptRows] = await pool.execute("SELECT COUNT(*) AS attempts FROM payment_references WHERE order_request_id=? AND provider='yoco'", [orderId]);
+  const attempt = Number((attemptRows as (RowDataPacket & { attempts: number })[])[0]?.attempts || 0) + 1;
+  const checkout = await createYocoCheckout({ amountCents, orderReference: order.reference, attempt });
+
+  await withTransaction(async (connection) => {
+    const [lockedRows] = await connection.execute('SELECT status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? FOR UPDATE', [orderId]);
+    const locked = (lockedRows as (RowDataPacket & { status: string; is_test: number; product_revenue: number; customer_delivery_charged: number })[])[0];
+    if (!locked || locked.is_test || !['quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
+    const lockedAmount = Math.round((Number(locked.product_revenue) + Number(locked.customer_delivery_charged)) * 100);
+    if (lockedAmount !== checkout.amount) throw Object.assign(new Error('The quoted order total changed before checkout creation.'), { status: 409 });
+    await connection.execute(`INSERT INTO payment_references (order_request_id,provider,payment_link,external_reference,expected_amount_cents,currency,processing_mode)
+      VALUES (?,'yoco',?,?,?,?,?) ON DUPLICATE KEY UPDATE payment_link=VALUES(payment_link),expected_amount_cents=VALUES(expected_amount_cents),currency=VALUES(currency),processing_mode=VALUES(processing_mode)`, [orderId, checkout.redirectUrl, checkout.id, checkout.amount, checkout.currency, checkout.processingMode]);
+    if (locked.status === 'quoted') {
+      await connection.execute("UPDATE order_requests SET status='awaiting_payment' WHERE id=?", [orderId]);
+      await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'quoted','awaiting_payment','Secure Yoco checkout created')", [orderId]);
+    }
+  });
+  return { checkoutId: checkout.id, paymentLink: checkout.redirectUrl, amountCents: checkout.amount, processingMode: checkout.processingMode, reused: false };
 }
 
 async function assertProductPublishable(connection: PoolConnection, productId: number | string) {
@@ -80,6 +116,65 @@ app.get('/health', async (_request, response) => {
   if (!pool) return response.status(process.env.NODE_ENV === 'production' ? 503 : 200).json({ status: 'degraded', database: 'not_configured', mode: 'database_required', revision });
   try { await pool.query('SELECT 1'); response.json({ status: 'ok', database: 'connected', revision }); }
   catch { response.status(503).json({ status: 'unhealthy', database: 'unavailable', revision }); }
+});
+
+app.post('/api/payments/yoco/webhook', async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    if (!process.env.YOCO_WEBHOOK_SECRET) return response.status(503).json({ error: 'Yoco webhook verification is not configured' });
+    const rawBody = (request as Request & { rawBody?: Buffer }).rawBody;
+    const webhookId = request.header('webhook-id') || undefined;
+    const webhookTimestamp = request.header('webhook-timestamp') || undefined;
+    const webhookSignature = request.header('webhook-signature') || undefined;
+    if (!rawBody || !verifyYocoWebhook(rawBody, { id: webhookId, timestamp: webhookTimestamp, signature: webhookSignature })) return response.status(403).json({ error: 'Invalid Yoco webhook signature' });
+
+    const event = request.body as { id?: unknown; type?: unknown; payload?: { id?: unknown; amount?: unknown; currency?: unknown; mode?: unknown; status?: unknown; metadata?: { checkoutId?: unknown } } };
+    const eventId = typeof event.id === 'string' && event.id ? event.id : webhookId;
+    const eventType = typeof event.type === 'string' ? event.type : '';
+    const payment = event.payload;
+    const checkoutId = typeof payment?.metadata?.checkoutId === 'string' ? payment.metadata.checkoutId : '';
+    const paymentId = typeof payment?.id === 'string' ? payment.id : null;
+    const amountCents = Number(payment?.amount);
+    const currency = typeof payment?.currency === 'string' ? payment.currency : '';
+    const mode = typeof payment?.mode === 'string' ? payment.mode : '';
+    if (!eventId || !['payment.succeeded', 'payment.failed'].includes(eventType) || !checkoutId || !Number.isInteger(amountCents) || !currency || !['live', 'test'].includes(mode)) return response.status(400).json({ error: 'Invalid Yoco webhook payload' });
+
+    const result = await withTransaction(async (connection) => {
+      const [insertResult] = await connection.execute(`INSERT IGNORE INTO payment_webhook_events (provider,event_id,event_type,checkout_id,provider_payment_id,amount_cents,currency,processing_mode,processing_outcome)
+        VALUES ('yoco',?,?,?,?,?,?,?,'received')`, [eventId, eventType, checkoutId, paymentId, amountCents, currency, mode]);
+      if ((insertResult as { affectedRows: number }).affectedRows === 0) return { duplicate: true, outcome: 'already_processed' };
+
+      const [referenceRows] = await connection.execute(`SELECT pr.id AS payment_reference_id,pr.expected_amount_cents,pr.currency,pr.processing_mode,pr.verification_status,o.id AS order_id,o.status AS order_status,o.is_test
+        FROM payment_references pr JOIN order_requests o ON o.id=pr.order_request_id
+        WHERE pr.provider='yoco' AND pr.external_reference=? FOR UPDATE`, [checkoutId]);
+      const reference = (referenceRows as (RowDataPacket & { payment_reference_id: number; expected_amount_cents: number; currency: string; processing_mode: string; verification_status: string; order_id: number; order_status: string; is_test: number })[])[0];
+      if (!reference) {
+        await connection.execute("UPDATE payment_webhook_events SET processing_outcome='ignored_unknown_checkout' WHERE provider='yoco' AND event_id=?", [eventId]);
+        return { duplicate: false, outcome: 'ignored_unknown_checkout' };
+      }
+      const expectedMode = reference.processing_mode || expectedYocoMode();
+      if (Number(reference.expected_amount_cents) !== amountCents || reference.currency !== currency || (expectedMode && expectedMode !== mode) || Boolean(reference.is_test)) {
+        await connection.execute("UPDATE payment_webhook_events SET processing_outcome='rejected_payment_mismatch' WHERE provider='yoco' AND event_id=?", [eventId]);
+        return { duplicate: false, outcome: 'rejected_payment_mismatch' };
+      }
+
+      if (eventType === 'payment.failed') {
+        await connection.execute("UPDATE payment_references SET verification_status='failed',provider_payment_id=?,failure_reason='Yoco reported that the payment failed' WHERE id=? AND verification_status='unverified'", [paymentId, reference.payment_reference_id]);
+        await connection.execute("UPDATE payment_webhook_events SET processing_outcome='payment_failed' WHERE provider='yoco' AND event_id=?", [eventId]);
+        return { duplicate: false, outcome: 'payment_failed' };
+      }
+
+      await connection.execute("UPDATE payment_references SET verification_status='verified',provider_payment_id=?,failure_reason=NULL,verified_at=UTC_TIMESTAMP() WHERE id=?", [paymentId, reference.payment_reference_id]);
+      if (reference.order_status === 'awaiting_payment') {
+        await connection.execute("UPDATE order_requests SET status='paid' WHERE id=? AND status='awaiting_payment'", [reference.order_id]);
+        await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'awaiting_payment','paid','Yoco payment verified automatically')", [reference.order_id]);
+      }
+      const outcome = reference.order_status === 'awaiting_payment' || reference.order_status === 'paid' ? 'payment_verified' : 'payment_verified_order_not_payable';
+      await connection.execute('UPDATE payment_webhook_events SET processing_outcome=? WHERE provider=\'yoco\' AND event_id=?', [outcome, eventId]);
+      return { duplicate: false, outcome };
+    });
+    response.status(200).json({ received: true, ...result });
+  } catch (error) { next(error); }
 });
 
 app.get('/api/products', async (request, response, next) => {
@@ -193,7 +288,11 @@ app.patch('/api/customer/password', loginLimiter, requireCustomer, async (reques
 });
 
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100", [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute(`SELECT o.reference,o.status,o.is_test,o.test_paid_at,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,
+    COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary,
+    (SELECT pr.payment_link FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_link,
+    (SELECT pr.provider FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_provider
+    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
 
 app.post('/api/customer/orders/:reference/test-payment', requireCustomer, async (request, response, next) => {
@@ -548,7 +647,7 @@ app.get('/api/admin/orders/:id/operations', requireAdmin, async (request, respon
         LEFT JOIN supplier_offers so ON so.id=(SELECT id FROM supplier_offers WHERE product_id=oi.product_id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
         WHERE oi.order_request_id=? ORDER BY oi.id`, [request.params.id]),
       pool.execute('SELECT from_status,to_status,note,created_at FROM order_status_history WHERE order_request_id=? ORDER BY created_at,id', [request.params.id]),
-      pool.execute('SELECT provider,payment_link,external_reference,verification_status,verified_at,created_at FROM payment_references WHERE order_request_id=? ORDER BY created_at DESC', [request.params.id]),
+      pool.execute('SELECT provider,payment_link,external_reference,expected_amount_cents,currency,processing_mode,provider_payment_id,failure_reason,verification_status,verified_at,created_at FROM payment_references WHERE order_request_id=? ORDER BY created_at DESC', [request.params.id]),
       pool.execute('SELECT id,reference,case_type,status,reason_category,reason_details,evidence_urls,supplier_return_reference,supplier_return_url,return_courier_name,return_tracking_number,return_tracking_url,resolution,refund_amount,internal_notes,resolved_at,created_at,updated_at FROM order_support_cases WHERE order_request_id=? ORDER BY created_at DESC,id DESC', [request.params.id]),
     ]);
     response.json({ items: items[0], history: history[0], payments: payments[0], cases: cases[0] });
@@ -692,13 +791,28 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
       if (order.status !== 'quoted') await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,'quoted','Verified quote confirmed',?)", [request.params.id,order.status,response.locals.admin.sub]);
       return { profit: pricing.profit, margin: pricing.margin, status: 'quoted' };
     });
-    response.json(result);
+    if (!isYocoConfigured()) return response.json({ ...result, payment: { configured: false, status: 'quoted' } });
+    try {
+      const checkout = await provisionYocoCheckout(String(request.params.id));
+      response.json({ ...result, status: 'awaiting_payment', payment: { configured: true, ...checkout } });
+    } catch (paymentError) {
+      console.error('Quote saved but Yoco checkout creation failed', paymentError);
+      response.json({ ...result, payment: { configured: true, status: 'quoted', error: 'The quote was saved, but Yoco checkout creation failed. Retry from order operations.' } });
+    }
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/orders/:id/yoco-checkout', requireAdmin, async (request, response, next) => {
+  try {
+    const checkout = await provisionYocoCheckout(String(request.params.id));
+    response.status(checkout.reused ? 200 : 201).json({ status: 'awaiting_payment', ...checkout });
   } catch (error) { next(error); }
 });
 
 app.post('/api/admin/orders/:id/payment-link', requireAdmin, async (request, response, next) => {
   try {
     const input = paymentLinkSchema.parse(request.body);
+    if (input.provider === 'yoco') return response.status(400).json({ error: 'Use the secure Yoco checkout action so webhook verification remains active.' });
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     await withTransaction(async (connection) => {
       const [rows] = await connection.execute("SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE", [request.params.id]);
@@ -718,7 +832,7 @@ app.patch('/api/admin/orders/:id/confirm-payment', requireAdmin, async (request,
     const { externalReference } = paymentConfirmationSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     await withTransaction(async (connection) => {
-      const [result] = await connection.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, externalReference]);
+      const [result] = await connection.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND pr.provider<>'yoco' AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, externalReference]);
       if ((result as { affectedRows: number }).affectedRows === 0) throw Object.assign(new Error('Payment reference could not be verified for this order'), { status: 409 });
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,'awaiting_payment','paid','Payment reference verified',?)", [request.params.id,response.locals.admin.sub]);
     });

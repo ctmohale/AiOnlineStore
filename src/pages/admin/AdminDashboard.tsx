@@ -123,8 +123,11 @@ export default function AdminDashboard() {
     if (!await confirm({ title: 'Confirm this quote?', message: `Save a quote for ${selectedOrder.ref} with estimated profit of ${money(profit)} and ${margin.toFixed(1)}% margin?`, confirmLabel: 'Confirm quote' })) return;
     setSavingQuote(true);
     try {
-      await adminRequest(`/orders/${selectedOrder.id}/quote`, { method: 'PATCH', body: JSON.stringify({ customerDeliveryCharged: quote.customerDelivery, supplierProductCost: quote.supplierCost, supplierDelivery: quote.supplierDelivery, customerDeliveryCost: quote.deliveryCost, packagingCost: quote.packaging, paymentFeeEstimate: quote.paymentFee, advertisingCost: quote.advertising }) });
-      notify(`Quote for ${selectedOrder.ref} was saved.`, 'success', 'Quote confirmed'); await loadDashboard();
+      const result = await adminRequest<{ status:string; payment?:{ configured:boolean; paymentLink?:string; error?:string } }>(`/orders/${selectedOrder.id}/quote`, { method: 'PATCH', body: JSON.stringify({ customerDeliveryCharged: quote.customerDelivery, supplierProductCost: quote.supplierCost, supplierDelivery: quote.supplierDelivery, customerDeliveryCost: quote.deliveryCost, packagingCost: quote.packaging, paymentFeeEstimate: quote.paymentFee, advertisingCost: quote.advertising }) });
+      if (result.payment?.paymentLink) notify(`Quote for ${selectedOrder.ref} was saved and its secure Yoco checkout is ready.`, 'success', 'Quote and checkout ready');
+      else if (result.payment?.error) notify(result.payment.error, 'warning', 'Quote saved');
+      else notify(`Quote for ${selectedOrder.ref} was saved. Create its Yoco checkout from order operations.`, 'success', 'Quote confirmed');
+      await loadDashboard();
     } catch (error) { notify(error instanceof Error ? error.message : 'The quote could not be saved.', 'error'); }
     finally { setSavingQuote(false); }
   };

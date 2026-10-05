@@ -12,6 +12,7 @@ Base URL: `/api`. JSON is used for requests and responses. Admin routes require 
 - `POST /api/customer/login` — customer email/password login.
 - `GET /api/customer/me` — authenticated customer profile.
 - `GET /api/customer/orders` — authenticated customer's own order-request history only.
+- `POST /api/payments/yoco/webhook` — public Yoco callback. Requires a valid raw-body signature and fresh timestamp; payment amount, currency, mode, checkout ID, and event ID are verified before any order state changes.
 
 Guest checkout remains available. When a valid customer bearer token accompanies an order request, the order is linked to that customer account automatically.
 
@@ -51,8 +52,9 @@ Order body:
 - `GET|PATCH /api/admin/pricing-settings` — read or update the global profit, margin, delivery, and staleness guardrails.
 - `GET /api/admin/orders` — most recent order requests.
 - `PATCH /api/admin/orders/:id/status` — controlled status transitions; deliberately refuses to mark an order paid.
-- `PATCH /api/admin/orders/:id/quote` — records real supplier/product/delivery/packaging/payment/advertising costs, calculates expected profit, and rejects quotes below configured thresholds.
-- `POST /api/admin/orders/:id/payment-link` — stores a manually-created Yoco/Paystack link and moves a quoted order to `awaiting_payment`.
+- `PATCH /api/admin/orders/:id/quote` — records real supplier/product/delivery/packaging/payment/advertising costs, calculates expected profit, rejects quotes below configured thresholds, and automatically creates a Yoco checkout when Yoco is configured.
+- `POST /api/admin/orders/:id/yoco-checkout` — creates or safely reuses the Yoco-hosted checkout for a quoted order; also provides a retry after a failed payment.
+- `POST /api/admin/orders/:id/payment-link` — fallback for storing a manually-created non-Yoco provider link and moving a quoted order to `awaiting_payment`.
 - `PATCH /api/admin/orders/:id/confirm-payment` — explicitly verifies a matching payment reference and only then marks the order paid. Customer return URLs never change payment state.
 
 Validation errors return HTTP 400, stale/unavailable product conflicts return 409, pricing-rule failures return 422, and unauthenticated admin requests return 401.
