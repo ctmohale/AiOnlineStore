@@ -69,9 +69,9 @@ export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
   const productPool = homepageProductPool(products, 16);
-  const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
+  const heroProducts = rotatingProducts(productPool, 1, rotationBucket);
   const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
-  const popularProducts = rotatingProducts(productPool, 5, rotationBucket, 10);
+  const popularProducts = productPool.slice(0, 5);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);
   const [storyAutoplay, setStoryAutoplay] = useState(true);
@@ -84,21 +84,16 @@ export default function Home() {
 
   useEffect(() => {
     let interval: number | undefined;
-    const update = () => setRotationBucket(homeRotationBucket());
+    const update = () => { setRotationBucket(homeRotationBucket()); void refresh(); };
     const untilNextWindow = HOME_ROTATION_MS - Date.now() % HOME_ROTATION_MS;
     const timeout = window.setTimeout(() => {
       update();
       interval = window.setInterval(update, HOME_ROTATION_MS);
     }, untilNextWindow);
     return () => { window.clearTimeout(timeout); if (interval) window.clearInterval(interval); };
-  }, []);
+  }, [refresh]);
   useEffect(() => { setActiveSlide(0); }, [rotationBucket]);
   useEffect(() => { if (activeSlide >= heroProducts.length) setActiveSlide(0); }, [activeSlide, heroProducts.length]);
-  useEffect(() => {
-    if (heroProducts.length < 2) return;
-    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % heroProducts.length), 9000);
-    return () => window.clearInterval(timer);
-  }, [heroProducts.length]);
   useEffect(() => {
     if (!storyAutoplay) return;
     const timer = window.setInterval(() => setActiveStory((current) => (current + 1) % heroStories.length), 9500);
@@ -160,7 +155,7 @@ export default function Home() {
             <div><strong>{money(featured.price)}</strong>{featured.compareAt && <del>{money(featured.compareAt)}</del>}</div>
             <Link to={`/product/${featured.slug}`}>View deal <ArrowRight /></Link>
           </div>
-        </> : <div className="retail-featured-empty"><PackageCheck /><strong>{loading ? 'Loading today’s finds…' : 'Fresh deals are on the way.'}</strong><span>Browse the full catalogue while we prepare this feature.</span></div>}
+        </> : <div className="retail-featured-empty"><PackageCheck /><strong>{loading ? 'Loading today’s finds…' : 'Discover your next favourite.'}</strong><span>Browse the full catalogue for more finds.</span></div>}
         {heroProducts.length > 1 && <div className="retail-featured-controls" aria-label="Featured deals controls">
           <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous deal"><ChevronLeft /></button>
           <span>{heroProducts.map((product, index) => <button type="button" key={product.id} className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} />)}</span>
