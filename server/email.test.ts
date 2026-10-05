@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAccountEmail, buildOrderEmail } from './email.js';
+import { buildAccountEmail, buildOrderEmail, type AccountEmailKind, type OrderEmailKind } from './email.js';
 
 const originalEnv = { ...process.env };
 afterEach(() => { process.env = { ...originalEnv }; });
@@ -60,5 +60,26 @@ describe('transactional email templates', () => {
     expect(returnEmail.html).toContain('product-return@mzansimegastore.co.za');
     expect(returnEmail.text).toContain('Contact: product-return@mzansimegastore.co.za');
     expect(refundEmail.html).toContain('product-return@mzansimegastore.co.za');
+  });
+
+  it('renders every template with the shared storefront branding and hosted images', () => {
+    const orderKinds: OrderEmailKind[] = ['checkout_ready', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update', 'admin_new_order'];
+    const accountKinds: AccountEmailKind[] = ['welcome', 'password_changed', 'profile_updated', 'test'];
+    const options = { paymentLink: 'https://pay.example.test/checkout', caseType: 'return', caseReference: 'MM-RET-123', caseStatus: 'approved' };
+    const rendered = [
+      ...orderKinds.map((kind) => buildOrderEmail(kind, order, items, options)),
+      ...accountKinds.map((kind) => buildAccountEmail(kind, { name: 'Nomsa Dlamini', email: 'nomsa@example.test' })),
+    ];
+
+    expect(rendered).toHaveLength(14);
+    for (const email of rendered) {
+      expect(email.subject.length).toBeGreaterThan(5);
+      expect(email.text.length).toBeGreaterThan(20);
+      expect(email.html).toContain('Big choice. Mzansi value.');
+      expect(email.html).toContain('https://www.mzansimegastore.co.za/favicon.png');
+      expect(email.html).toContain('https://www.mzansimegastore.co.za/hero-delivery-vw-van-brand.png');
+      expect(email.html).toContain('BEESTACK (PTY) LTD');
+      expect(email.html).not.toContain('undefined');
+    }
   });
 });
