@@ -19,22 +19,24 @@ type OrderEmailOptions = {
 };
 type RenderedEmail = { subject: string; html: string; text: string };
 type OutboxRow = RowDataPacket & {
-  id: number; recipient_email: string; recipient_name: string | null; subject: string;
+  id: number; message_type: string; recipient_email: string; recipient_name: string | null; reply_to_email: string | null; subject: string;
   html_body: string; text_body: string; attempts: number;
 };
 
 const storeUrl = () => (process.env.STORE_PUBLIC_URL || 'https://www.mzansimegastore.co.za').replace(/\/$/, '');
-const supportEmail = () => process.env.EMAIL_REPLY_TO || 'info@mzansimegastore.co.za';
+const generalEmail = () => process.env.EMAIL_REPLY_TO || 'info@mzansimegastore.co.za';
+const supportEmail = () => process.env.EMAIL_SUPPORT || 'support@mzansimegastore.co.za';
+const returnsEmail = () => process.env.EMAIL_RETURNS || 'product-return@mzansimegastore.co.za';
 const adminEmail = () => process.env.EMAIL_ADMIN || 'info@mzansimegastore.co.za';
 const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character]!);
 const money = (value: number) => new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', minimumFractionDigits: 2 }).format(value);
 const date = (value: Date | string | null) => value ? new Intl.DateTimeFormat('en-ZA', { dateStyle: 'long', timeZone: 'Africa/Johannesburg' }).format(new Date(value)) : null;
 const safeLink = (value: string) => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : storeUrl(); } catch { return storeUrl(); } };
 
-function emailFrame(title: string, intro: string, body: string, action?: { label: string; url: string }, testMode = false) {
+function emailFrame(title: string, intro: string, body: string, action?: { label: string; url: string }, testMode = false, contactEmail = supportEmail()) {
   const warning = testMode ? `<div style="margin:0 0 20px;padding:12px 16px;border-radius:8px;background:#fff3cd;color:#6b5200;font-weight:700">TEST MODE — no real payment will be processed.</div>` : '';
   const button = action ? `<p style="margin:26px 0"><a href="${escapeHtml(safeLink(action.url))}" style="display:inline-block;padding:13px 22px;border-radius:7px;background:#123d2d;color:#fff;text-decoration:none;font-weight:700">${escapeHtml(action.label)}</a></p>` : '';
-  return `<!doctype html><html><body style="margin:0;background:#f4f1ea;font-family:Arial,sans-serif;color:#17251f"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ea;padding:28px 12px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #ded9cf"><tr><td style="padding:22px 28px;background:#123d2d;color:#fff"><strong style="font-size:22px">Mzansi Mega Store</strong><div style="font-size:12px;opacity:.82;margin-top:4px">South African online shopping</div></td></tr><tr><td style="padding:30px 28px">${warning}<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${escapeHtml(title)}</h1><p style="font-size:16px;line-height:1.6;margin:0 0 22px;color:#46544e">${escapeHtml(intro)}</p>${body}${button}<p style="font-size:13px;line-height:1.55;color:#66716c;margin:28px 0 0">Need help? Reply to this email or contact <a href="mailto:${escapeHtml(supportEmail())}" style="color:#123d2d">${escapeHtml(supportEmail())}</a>. Never send your card number, CVV, PIN or OTP by email.</p></td></tr><tr><td style="padding:18px 28px;background:#eef1ed;color:#637069;font-size:12px">BEESTACK (PTY) LTD trading as Mzansi Mega Store · Prices in ZAR</td></tr></table></td></tr></table></body></html>`;
+  return `<!doctype html><html><body style="margin:0;background:#f4f1ea;font-family:Arial,sans-serif;color:#17251f"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f1ea;padding:28px 12px"><tr><td align="center"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #ded9cf"><tr><td style="padding:22px 28px;background:#123d2d;color:#fff"><strong style="font-size:22px">Mzansi Mega Store</strong><div style="font-size:12px;opacity:.82;margin-top:4px">South African online shopping</div></td></tr><tr><td style="padding:30px 28px">${warning}<h1 style="font-size:26px;line-height:1.2;margin:0 0 12px">${escapeHtml(title)}</h1><p style="font-size:16px;line-height:1.6;margin:0 0 22px;color:#46544e">${escapeHtml(intro)}</p>${body}${button}<p style="font-size:13px;line-height:1.55;color:#66716c;margin:28px 0 0">Need help? Reply to this email or contact <a href="mailto:${escapeHtml(contactEmail)}" style="color:#123d2d">${escapeHtml(contactEmail)}</a>. Never send your card number, CVV, PIN or OTP by email.</p></td></tr><tr><td style="padding:18px 28px;background:#eef1ed;color:#637069;font-size:12px">BEESTACK (PTY) LTD trading as Mzansi Mega Store · Prices in ZAR</td></tr></table></td></tr></table></body></html>`;
 }
 
 const orderSummaryHtml = (order: OrderSnapshot, items: OrderItem[]) => {
@@ -95,21 +97,23 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   }
   if (kind === 'cancelled' || kind === 'refunded') {
     const refunded = kind === 'refunded';
+    const contactEmail = refunded ? returnsEmail() : supportEmail();
     const title = refunded ? 'Your refund has been recorded' : 'Your order has been cancelled';
     const intro = refunded ? `A refund has been recorded for order ${order.reference}. Your bank or payment provider may need additional processing time.` : `Order ${order.reference} has been cancelled. If a verified payment was collected, we will handle it according to the confirmed resolution.`;
-    return { subject: `${refunded ? 'Refund update' : 'Order cancelled'} — ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}` };
+    return { subject: `${refunded ? 'Refund update' : 'Order cancelled'} — ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }, false, contactEmail), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}\nContact: ${contactEmail}` };
   }
   if (kind === 'case_update') {
+    const contactEmail = options.caseType === 'return' ? returnsEmail() : supportEmail();
     const caseLabel = `${options.caseType || 'support'} case ${options.caseReference || ''}`.trim();
     const title = 'Your support case was updated';
     const intro = `${caseLabel} for order ${order.reference} is now ${String(options.caseStatus || 'updated').replaceAll('_', ' ')}.`;
-    return { subject: `Support update for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}` };
+    return { subject: `Support update for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }, false, contactEmail), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}\nContact: ${contactEmail}` };
   }
 
   const title = `New order ${order.reference}`;
   const intro = `${order.customer_name} created an order awaiting Yoco payment.`;
   const address = `<p style="margin:18px 0 0"><strong>Customer:</strong> ${escapeHtml(order.customer_name)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}<br><strong>Delivery:</strong> ${escapeHtml([order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', '))}</p>`;
-  return { subject: `${testPrefix}New store order ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${address}`, { label: 'Open operations dashboard', url: `${storeUrl()}/admin` }, isTest), text: `${title}\n\n${intro}\n\n${common.text}\n\nCustomer: ${order.customer_name}, ${order.customer_email}, ${order.customer_phone}\nDelivery: ${[order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', ')}\n\nAdmin: ${storeUrl()}/admin` };
+  return { subject: `${testPrefix}New store order ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${address}`, { label: 'Open operations dashboard', url: `${storeUrl()}/admin` }, isTest, generalEmail()), text: `${title}\n\n${intro}\n\n${common.text}\n\nCustomer: ${order.customer_name}, ${order.customer_email}, ${order.customer_phone}\nDelivery: ${[order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', ')}\n\nAdmin: ${storeUrl()}/admin` };
 }
 
 export function buildAccountEmail(kind: AccountEmailKind, customer: { name: string; email: string }): RenderedEmail {
@@ -134,9 +138,9 @@ export function buildAccountEmail(kind: AccountEmailKind, customer: { name: stri
   return { subject: 'Your Mzansi Mega Store profile was updated', html: emailFrame(title, intro, '', { label: 'Review your account', url: accountUrl }), text: `${title}\n\n${intro}\n\nReview your account: ${accountUrl}` };
 }
 
-async function insertOutbox(connection: PoolConnection, input: { eventKey: string; messageType: string; email: string; name?: string | null; rendered: RenderedEmail }) {
-  await connection.execute(`INSERT INTO email_outbox (event_key,message_type,recipient_email,recipient_name,subject,html_body,text_body)
-    VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_key=VALUES(event_key)`, [input.eventKey, input.messageType, input.email.toLowerCase(), input.name || null, input.rendered.subject, input.rendered.html, input.rendered.text]);
+async function insertOutbox(connection: PoolConnection, input: { eventKey: string; messageType: string; email: string; name?: string | null; replyToEmail: string; rendered: RenderedEmail }) {
+  await connection.execute(`INSERT INTO email_outbox (event_key,message_type,recipient_email,recipient_name,reply_to_email,subject,html_body,text_body)
+    VALUES (?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE reply_to_email=VALUES(reply_to_email)`, [input.eventKey, input.messageType, input.email.toLowerCase(), input.name || null, input.replyToEmail.toLowerCase(), input.rendered.subject, input.rendered.html, input.rendered.text]);
 }
 
 export async function enqueueOrderEmail(connection: PoolConnection, orderId: string | number, kind: OrderEmailKind, options: OrderEmailOptions = {}) {
@@ -147,11 +151,12 @@ export async function enqueueOrderEmail(connection: PoolConnection, orderId: str
   const items = itemRows as OrderItem[];
   const rendered = buildOrderEmail(kind, order, items, options);
   const recipient = kind === 'admin_new_order' ? { email: adminEmail(), name: 'Mzansi Mega Store operations' } : { email: order.customer_email, name: order.customer_name };
-  await insertOutbox(connection, { eventKey: options.eventKey || `order:${order.id}:${kind}`, messageType: `order_${kind}`, ...recipient, rendered });
+  const replyToEmail = kind === 'admin_new_order' ? generalEmail() : kind === 'refunded' || (kind === 'case_update' && options.caseType === 'return') ? returnsEmail() : supportEmail();
+  await insertOutbox(connection, { eventKey: options.eventKey || `order:${order.id}:${kind}`, messageType: `order_${kind}`, ...recipient, replyToEmail, rendered });
 }
 
 export async function enqueueAccountEmail(connection: PoolConnection, customer: { id: number | string; name: string; email: string }, kind: AccountEmailKind, eventKey?: string) {
-  await insertOutbox(connection, { eventKey: eventKey || `customer:${customer.id}:${kind}`, messageType: `account_${kind}`, email: customer.email, name: customer.name, rendered: buildAccountEmail(kind, customer) });
+  await insertOutbox(connection, { eventKey: eventKey || `customer:${customer.id}:${kind}`, messageType: `account_${kind}`, email: customer.email, name: customer.name, replyToEmail: supportEmail(), rendered: buildAccountEmail(kind, customer) });
 }
 
 export async function backfillTransactionalEmails() {
@@ -215,7 +220,7 @@ export async function verifyEmailTransport() {
 async function claimEmail(): Promise<OutboxRow | null> {
   return withTransaction(async (connection) => {
     await connection.execute("UPDATE email_outbox SET status='pending',locked_at=NULL,last_error='Recovered after interrupted delivery' WHERE status='processing' AND locked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)");
-    const [rows] = await connection.execute("SELECT id,recipient_email,recipient_name,subject,html_body,text_body,attempts FROM email_outbox WHERE status='pending' AND available_at<=UTC_TIMESTAMP() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED");
+    const [rows] = await connection.execute("SELECT id,message_type,recipient_email,recipient_name,reply_to_email,subject,html_body,text_body,attempts FROM email_outbox WHERE status='pending' AND available_at<=UTC_TIMESTAMP() ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED");
     const row = (rows as OutboxRow[])[0];
     if (!row) return null;
     await connection.execute("UPDATE email_outbox SET status='processing',attempts=attempts+1,locked_at=UTC_TIMESTAMP(),last_error=NULL WHERE id=?", [row.id]);
@@ -234,7 +239,7 @@ export async function processEmailOutbox(limit = 20) {
       const result = await mailTransport().sendMail({
         from: process.env.EMAIL_FROM || `Mzansi Mega Store <${process.env.SMTP_USER}>`,
         to: message.recipient_name ? { name: message.recipient_name, address: message.recipient_email } : message.recipient_email,
-        replyTo: supportEmail(),
+        replyTo: message.reply_to_email || (message.message_type === 'order_admin_new_order' ? generalEmail() : message.message_type === 'order_refunded' ? returnsEmail() : supportEmail()),
         subject: message.subject,
         html: message.html_body,
         text: message.text_body,

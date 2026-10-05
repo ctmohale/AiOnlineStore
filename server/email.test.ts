@@ -50,4 +50,15 @@ describe('transactional email templates', () => {
     expect(email.text).toContain('contact us immediately');
     expect(email.html).not.toMatch(/password_hash|SMTP_PASS/i);
   });
+
+  it('routes ordinary help to support and returns to the product-return mailbox', () => {
+    const paymentEmail = buildOrderEmail('payment_confirmed', order, items);
+    const returnEmail = buildOrderEmail('case_update', order, items, { caseType: 'return', caseReference: 'MM-RET-123', caseStatus: 'approved' });
+    const refundEmail = buildOrderEmail('refunded', order, items);
+
+    expect(paymentEmail.html).toContain('support@mzansimegastore.co.za');
+    expect(returnEmail.html).toContain('product-return@mzansimegastore.co.za');
+    expect(returnEmail.text).toContain('Contact: product-return@mzansimegastore.co.za');
+    expect(refundEmail.html).toContain('product-return@mzansimegastore.co.za');
+  });
 });
