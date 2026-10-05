@@ -1493,3 +1493,13 @@ footer a,footer p { font-size:13px; }
 /* Hide the scrollbar while keeping touch, trackpad and keyboard scrolling. */
 .retail-department-bar nav,.retail-category-grid,.shop-department-links { scrollbar-width:none; -ms-overflow-style:none; }
 .retail-department-bar nav::-webkit-scrollbar,.retail-category-grid::-webkit-scrollbar,.shop-department-links::-webkit-scrollbar { display:none; width:0; height:0; }
+
+/* A clear, compact sorting control that matches the catalogue toolbar. */
+.shop-results-toolbar .sort-filter { position:relative; display:block; padding:0; border:0; border-radius:7px; background:#f8f9f7; }
+.shop-results-toolbar .sort-filter>span { position:absolute; z-index:1; top:8px; left:14px; color:#6b756f; font-size:10px; font-weight:600; line-height:1.2; pointer-events:none; }
+.shop-results-toolbar .sort-filter select { appearance:none; -webkit-appearance:none; display:block; width:100%; min-width:0; min-height:56px; padding:23px 38px 8px 14px; border:1px solid #d7ddd8; border-radius:7px; outline:0; background:transparent; color:var(--forest); font:inherit; font-size:13px; font-weight:600; line-height:1.4; cursor:pointer; transition:border-color .16s ease,box-shadow .16s ease; }
+.shop-results-toolbar .sort-filter::after { content:''; position:absolute; top:23px; right:16px; width:7px; height:7px; border-right:1.5px solid var(--forest); border-bottom:1.5px solid var(--forest); transform:rotate(45deg); pointer-events:none; }
+.shop-results-toolbar .sort-filter select:hover { border-color:#8ba397; }
+.shop-results-toolbar .sort-filter select:focus-visible { border-color:var(--forest); box-shadow:0 0 0 3px #dcebe1; }
+.shop-results-toolbar .sort-filter option { background:#fff; color:var(--ink); font-weight:400; }
+@media(prefers-reduced-motion:reduce) { .shop-results-toolbar .sort-filter select { transition:none; } }
