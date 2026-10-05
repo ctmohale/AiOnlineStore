@@ -5,6 +5,7 @@ import { importProductUrl, isSupportedProductUrl } from '../server/product-impor
 import { recommendedSellingPrice } from '../shared/domain.js';
 import { PermittedRetailerFeedAdapter } from './adapters/retailerFeed.js';
 import { ingest } from './ingest.js';
+import { backfillTransactionalEmails, isEmailConfigured, processEmailOutbox, verifyEmailTransport } from '../server/email.js';
 
 async function recheckRetailerOffers() {
   if (!pool) return;
@@ -133,6 +134,15 @@ async function promotionEndRecheck() {
 
 cron.schedule(process.env.WORKER_CRON || '0 * * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
 cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
+cron.schedule('* * * * *', () => void processEmailOutbox().then((result) => {
+  if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
+}).catch(console.error), { timezone: 'Africa/Johannesburg' });
+cron.schedule('*/15 * * * *', () => void backfillTransactionalEmails().catch(console.error), { timezone: 'Africa/Johannesburg' });
 console.log('Mzansi Mega Store worker scheduled.');
-if (process.argv.includes('--once')) dailyRun().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
-else void dailyRun().catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
+if (process.argv.includes('--once')) dailyRun().then(() => processEmailOutbox()).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
+else {
+  if (isEmailConfigured()) void verifyEmailTransport().then(() => console.log('SMTP connection verified.')).catch((error) => console.error('SMTP verification failed:', error));
+  else console.warn('SMTP is not configured; transactional emails will remain queued until SMTP_PASS and related settings are added.');
+  void backfillTransactionalEmails().then(() => processEmailOutbox()).catch((error) => console.error('Initial email delivery failed:', error));
+  void dailyRun().catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
+}

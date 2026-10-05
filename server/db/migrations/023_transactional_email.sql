@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS email_outbox (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  event_key VARCHAR(190) NOT NULL UNIQUE,
+  message_type VARCHAR(80) NOT NULL,
+  recipient_email VARCHAR(190) NOT NULL,
+  recipient_name VARCHAR(160) NULL,
+  subject VARCHAR(255) NOT NULL,
+  html_body MEDIUMTEXT NOT NULL,
+  text_body MEDIUMTEXT NOT NULL,
+  status ENUM('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
+  attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  locked_at DATETIME NULL,
+  sent_at DATETIME NULL,
+  provider_message_id VARCHAR(255) NULL,
+  last_error VARCHAR(2000) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_email_outbox_delivery (status, available_at, id)
+);

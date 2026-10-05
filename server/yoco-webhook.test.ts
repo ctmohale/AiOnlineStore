@@ -2,7 +2,12 @@ import crypto from 'node:crypto';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, outcome: '' }));
+const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, outcome: '', queuedEmails: [] as string[] }));
+
+vi.mock('./email.js', () => ({
+  enqueueAccountEmail: vi.fn(),
+  enqueueOrderEmail: vi.fn(async (_connection, _orderId, kind: string) => { state.queuedEmails.push(kind); }),
+}));
 
 vi.mock('./db/pool.js', () => ({
   pool: { execute: vi.fn() },
@@ -61,12 +66,14 @@ describe('Yoco webhook endpoint', () => {
     expect(state.paymentUpdates).toBe(1);
     expect(state.orderUpdates).toBe(1);
     expect(state.historyWrites).toBe(1);
+    expect(state.queuedEmails).toEqual(['payment_confirmed']);
 
     const duplicate = await send(event);
     expect(await duplicate.json()).toMatchObject({ duplicate: true, outcome: 'already_processed' });
     expect(state.paymentUpdates).toBe(1);
     expect(state.orderUpdates).toBe(1);
     expect(state.historyWrites).toBe(1);
+    expect(state.queuedEmails).toEqual(['payment_confirmed']);
   });
 
   it('does not mark an order paid when Yoco reports a different amount', async () => {
