@@ -8,19 +8,15 @@ export const homeRotationBucket = (now = Date.now()) => Math.floor(now / HOME_RO
 export const rotatingProducts = <T>(items: T[], count: number, bucket: number, offset = 0) => {
   if (!items.length || count <= 0) return [];
   const result: T[] = [];
-  const start = ((bucket * 11 + offset) % items.length + items.length) % items.length;
+  const start = ((bucket + offset) % items.length + items.length) % items.length;
   for (let index = 0; index < Math.min(count, items.length); index += 1) result.push(items[(start + index) % items.length]);
   return result;
 };
 
-export const homepageProductPool = (products: Product[], required: number) => {
-  const affordable = products
-    .filter((product) => product.price > 0 && product.price <= HOMEPAGE_PRICE_CEILING && (product.images?.length || 0) >= 3)
-    .sort((left, right) => {
-      const leftSaving = left.compareAt && left.compareAt > left.price ? (left.compareAt - left.price) / left.compareAt : 0;
-      const rightSaving = right.compareAt && right.compareAt > right.price ? (right.compareAt - right.price) / right.compareAt : 0;
-      return rightSaving - leftSaving || left.price - right.price;
-    });
-  const promotions = affordable.filter((product) => product.compareAt && product.compareAt > product.price);
-  return promotions.length >= required ? promotions : affordable;
-};
+export const homepageProductPool = (products: Product[], required: number) => products
+  .filter((product) => product.price > 0 && product.price <= HOMEPAGE_PRICE_CEILING
+    && (product.images?.length || 0) >= 3 && (product.unitsSold || 0) > 0)
+  .sort((left, right) => (right.trendingUnits || 0) - (left.trendingUnits || 0)
+    || (right.recentUnits || 0) - (left.recentUnits || 0)
+    || (right.unitsSold || 0) - (left.unitsSold || 0) || left.id - right.id)
+  .slice(0, Math.max(required, 20));
