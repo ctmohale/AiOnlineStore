@@ -1487,10 +1487,9 @@ footer a,footer p { font-size:13px; }
 @media(min-width:1600px) { .shop-department-links>button { flex:1 0 132px; } }
 @media(max-width:600px) { .shop-department-links>button { flex-basis:112px; } }
 
-/* Minimal category scrollbar where custom scrollbar styling is supported. */
-@supports selector(::-webkit-scrollbar) {
-  .shop-department-links { scrollbar-width:auto; scrollbar-color:auto; }
-  .shop-department-links::-webkit-scrollbar { height:2px; }
-  .shop-department-links::-webkit-scrollbar-track { background:transparent; }
-  .shop-department-links::-webkit-scrollbar-thumb { background:var(--forest); border-radius:999px; }
-}
+/* Homepage categories use the same single-row browsing pattern as Shop. */
+.retail-category-grid { display:flex; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; scroll-snap-type:x proximity; scrollbar-width:thin; }
+.retail-category-grid .retail-category-card { flex:0 0 150px; scroll-snap-align:start; }
+/* Hide the scrollbar while keeping touch, trackpad and keyboard scrolling. */
+.retail-department-bar nav,.retail-category-grid,.shop-department-links { scrollbar-width:none; -ms-overflow-style:none; }
+.retail-department-bar nav::-webkit-scrollbar,.retail-category-grid::-webkit-scrollbar,.shop-department-links::-webkit-scrollbar { display:none; width:0; height:0; }
