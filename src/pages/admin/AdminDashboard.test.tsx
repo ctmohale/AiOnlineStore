@@ -38,6 +38,7 @@ beforeEach(() => {
     if (path === '/pricing-settings') return { minimum_profit: 100, minimum_margin_percent: 5, standard_markup_percent: 7, supplier_stale_hours: 24, free_delivery_threshold: 1000, standard_customer_delivery: 99 };
     if (path === '/me') return { id: 1, email: 'admin@example.com', name: 'Admin User', role: 'admin' };
     if (path === '/analytics') return { summary: {}, projection: { basis: '', basis_days: 1, projected_monthly_revenue: 0, projected_monthly_profit: 0 }, daily: [], statuses: [], generatedAt: '2026-10-01T08:00:00Z' };
+    if (path === '/emails') return { summary: { pending: 0, processing: 0, sent: 2, failed: 0 }, messages: [] };
     if (path === '/orders/4/operations') return { items: [], history: [], payments: [], cases: [] };
     throw new Error(`Unexpected request: ${path}`);
   });

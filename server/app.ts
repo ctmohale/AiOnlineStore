@@ -14,7 +14,7 @@ import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
-import { isEmailConfigured, sendOrderEmail, sendEmail } from './email.js';
+import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -173,6 +173,7 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
       if (eventType === 'payment.failed') {
         await connection.execute("UPDATE payment_references SET verification_status='failed',provider_payment_id=?,failure_reason='Yoco reported that the payment failed' WHERE id=? AND verification_status='unverified'", [paymentId, reference.payment_reference_id]);
         await connection.execute("UPDATE payment_webhook_events SET processing_outcome='payment_failed' WHERE provider='yoco' AND event_id=?", [eventId]);
+        await enqueueOrderEmail(connection, reference.order_id, 'payment_failed', { eventKey: `yoco:${eventId}:payment_failed`, paymentMode: mode });
         return { duplicate: false, outcome: 'payment_failed' };
       }
 
@@ -180,19 +181,13 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
       if (reference.order_status === 'awaiting_payment') {
         await connection.execute("UPDATE order_requests SET status='paid' WHERE id=? AND status='awaiting_payment'", [reference.order_id]);
         await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'awaiting_payment','paid','Yoco payment verified automatically')", [reference.order_id]);
+        await enqueueOrderEmail(connection, reference.order_id, 'payment_confirmed', { eventKey: `yoco:${eventId}:payment_confirmed`, paymentMode: mode });
       }
       const outcome = reference.order_status === 'awaiting_payment' || reference.order_status === 'paid' ? 'payment_verified' : 'payment_verified_order_not_payable';
       await connection.execute('UPDATE payment_webhook_events SET processing_outcome=? WHERE provider=\'yoco\' AND event_id=?', [outcome, eventId]);
-      return { duplicate: false, outcome, orderId: reference.order_id };
+      return { duplicate: false, outcome };
     });
-    if (result.outcome === 'payment_verified' && !result.duplicate && pool) {
-       try {
-         const [rows] = await pool.execute('SELECT o.reference,o.customer_name,o.customer_email,o.status,o.product_revenue,o.customer_delivery_charged,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot, \' × \',oi.quantity) ORDER BY oi.id SEPARATOR \', \'),\'No items\') AS items FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.id=? GROUP BY o.id', [((result as any).orderId)]);
-         const order = (rows as RowDataPacket[])[0] as any;
-         if (order) void sendOrderEmail({ to: order.customer_email, name: order.customer_name, reference: order.reference, status: order.status, items: order.items, total: Number(order.product_revenue)+Number(order.customer_delivery_charged), event: 'payment' }).catch((error) => console.error('Payment email failed', error));
-       } catch (error) { console.error('Payment email lookup failed', error); }
-     }
-     response.status(200).json({ received: true, ...result });
+    response.status(200).json({ received: true, ...result });
   } catch (error) { next(error); }
 });
 
@@ -255,11 +250,15 @@ app.post('/api/customer/register', loginLimiter, async (request, response, next)
     const input = customerRegisterSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const email = input.email.toLowerCase();
-    const [existing] = await pool.execute('SELECT id FROM customers WHERE email=? LIMIT 1', [email]);
-    if ((existing as RowDataPacket[]).length) return response.status(409).json({ error: 'An account already exists for this email' });
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const [result] = await pool.execute('INSERT INTO customers (email,password_hash,name,phone) VALUES (?,?,?,?)', [email, passwordHash, input.name, input.phone || null]);
-    const id = Number((result as { insertId: number }).insertId);
+    const id = await withTransaction(async (connection) => {
+      const [existing] = await connection.execute('SELECT id FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
+      if ((existing as RowDataPacket[]).length) throw Object.assign(new Error('An account already exists for this email'), { status: 409 });
+      const [result] = await connection.execute('INSERT INTO customers (email,password_hash,name,phone) VALUES (?,?,?,?)', [email, passwordHash, input.name, input.phone || null]);
+      const id = Number((result as { insertId: number }).insertId);
+      await enqueueAccountEmail(connection, { id, email, name: input.name }, 'welcome');
+      return id;
+    });
     response.status(201).json({ token: signCustomerToken({ sub: String(id), email, role: 'customer' }), customer: { id, email, name: input.name, phone: input.phone || null } });
   } catch (error) { next(error); }
 });
@@ -284,10 +283,13 @@ app.patch('/api/customer/me', requireCustomer, async (request, response, next) =
     const input = customerProfileUpdateSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const email = input.email.toLowerCase();
-    const [duplicates] = await pool.execute('SELECT id FROM customers WHERE email=? AND id<>? LIMIT 1', [email, response.locals.customer.sub]);
-    if ((duplicates as RowDataPacket[]).length) return response.status(409).json({ error: 'Another account already uses this email address' });
-    const [result] = await pool.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, response.locals.customer.sub]);
-    if ((result as { affectedRows: number }).affectedRows === 0) return response.status(404).json({ error: 'Customer not found' });
+    await withTransaction(async (connection) => {
+      const [duplicates] = await connection.execute('SELECT id FROM customers WHERE email=? AND id<>? LIMIT 1 FOR UPDATE', [email, response.locals.customer.sub]);
+      if ((duplicates as RowDataPacket[]).length) throw Object.assign(new Error('Another account already uses this email address'), { status: 409 });
+      const [result] = await connection.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, response.locals.customer.sub]);
+      if ((result as { affectedRows: number }).affectedRows === 0) throw Object.assign(new Error('Customer not found'), { status: 404 });
+      await enqueueAccountEmail(connection, { id: response.locals.customer.sub, name: input.name, email }, 'profile_updated', `customer:${response.locals.customer.sub}:profile_updated:${Date.now()}`);
+    });
     const customer = { id: Number(response.locals.customer.sub), name: input.name, email, phone: input.phone || null };
     response.json({ customer, token: signCustomerToken({ sub: response.locals.customer.sub, email, role: 'customer' }) });
   } catch (error) { next(error); }
@@ -297,11 +299,15 @@ app.patch('/api/customer/password', loginLimiter, requireCustomer, async (reques
   try {
     const input = customerPasswordUpdateSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT password_hash FROM customers WHERE id=? LIMIT 1', [response.locals.customer.sub]);
-    const customer = (rows as (RowDataPacket & { password_hash: string })[])[0];
-    if (!customer) return response.status(404).json({ error: 'Customer not found' });
-    if (!await bcrypt.compare(input.currentPassword, customer.password_hash)) return response.status(401).json({ error: 'Your current password is incorrect' });
-    await pool.execute('UPDATE customers SET password_hash=? WHERE id=?', [await bcrypt.hash(input.newPassword, 12), response.locals.customer.sub]);
+    const newHash = await bcrypt.hash(input.newPassword, 12);
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,password_hash FROM customers WHERE id=? LIMIT 1 FOR UPDATE', [response.locals.customer.sub]);
+      const customer = (rows as (RowDataPacket & { id:number; email:string; name:string; password_hash:string })[])[0];
+      if (!customer) throw Object.assign(new Error('Customer not found'), { status: 404 });
+      if (!await bcrypt.compare(input.currentPassword, customer.password_hash)) throw Object.assign(new Error('Your current password is incorrect'), { status: 401 });
+      await connection.execute('UPDATE customers SET password_hash=? WHERE id=?', [newHash, customer.id]);
+      await enqueueAccountEmail(connection, customer, 'password_changed', `customer:${customer.id}:password_changed:${Date.now()}`);
+    });
     response.status(204).end();
   } catch (error) { next(error); }
 });
@@ -356,10 +362,17 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
     });
     try {
       const checkout = await provisionYocoCheckout(orderId);
-      void sendOrderEmail({ to: customer.email, name: customer.name, reference: orderReference, status: 'awaiting_payment', items: input.items.map((item) => `${item.productId} × ${item.quantity}`).join(', '), total: Number((revenue + delivery).toFixed(2)), event: 'received', paymentLink: checkout.paymentLink }).catch((error) => console.error('Order email failed', error));
-       response.status(201).json({ reference: orderReference, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
+      try {
+        await withTransaction(async (connection) => {
+          await enqueueOrderEmail(connection, orderId, 'checkout_ready', { eventKey: `order:${orderId}:checkout:${checkout.checkoutId}`, paymentLink: checkout.paymentLink, paymentMode: checkout.processingMode });
+          await enqueueOrderEmail(connection, orderId, 'admin_new_order', { eventKey: `order:${orderId}:admin_new_order`, paymentMode: checkout.processingMode });
+        });
+      } catch (emailError) { console.error('Checkout emails could not be queued', emailError); }
+      response.status(201).json({ reference: orderReference, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
     } catch (paymentError) {
       console.error('Order created but Yoco checkout creation failed', paymentError);
+      try { await withTransaction((connection) => enqueueOrderEmail(connection, orderId, 'admin_new_order', { eventKey: `order:${orderId}:admin_new_order` })); }
+      catch (emailError) { console.error('New-order email could not be queued', emailError); }
       response.status(201).json({ reference: orderReference, status: 'requested', paymentLink: null, paymentError: 'Your order was saved, but secure payment could not be started. Please contact support with your order reference.' });
     }
   } catch (error) { next(error); }
@@ -395,11 +408,15 @@ app.patch('/api/admin/password', loginLimiter, requireAdmin, async (request, res
   try {
     const input = adminPasswordUpdateSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT password_hash FROM admins WHERE id=? LIMIT 1', [response.locals.admin.sub]);
-    const admin = (rows as (RowDataPacket & { password_hash: string })[])[0];
-    if (!admin) return response.status(404).json({ error: 'Administrator not found' });
-    if (!await bcrypt.compare(input.currentPassword, admin.password_hash)) return response.status(401).json({ error: 'Your current password is incorrect' });
-    await pool.execute('UPDATE admins SET password_hash=? WHERE id=?', [await bcrypt.hash(input.newPassword, 12), response.locals.admin.sub]);
+    const newHash = await bcrypt.hash(input.newPassword, 12);
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,password_hash FROM admins WHERE id=? LIMIT 1 FOR UPDATE', [response.locals.admin.sub]);
+      const admin = (rows as (RowDataPacket & { id:number; email:string; name:string; password_hash:string })[])[0];
+      if (!admin) throw Object.assign(new Error('Administrator not found'), { status: 404 });
+      if (!await bcrypt.compare(input.currentPassword, admin.password_hash)) throw Object.assign(new Error('Your current password is incorrect'), { status: 401 });
+      await connection.execute('UPDATE admins SET password_hash=? WHERE id=?', [newHash, admin.id]);
+      await enqueueAccountEmail(connection, admin, 'password_changed', `admin:${admin.id}:password_changed:${Date.now()}`);
+    });
     response.status(204).end();
   } catch (error) { next(error); }
 });
@@ -431,6 +448,7 @@ app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, ne
       if ((duplicates as RowDataPacket[]).length) throw Object.assign(new Error('Another account already uses this email address'), { status: 409 });
       if (input.newPassword) await connection.execute('UPDATE customers SET name=?,email=?,phone=?,password_hash=? WHERE id=?', [input.name, email, input.phone || null, await bcrypt.hash(input.newPassword, 12), customerId]);
       else await connection.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, customerId]);
+      await enqueueAccountEmail(connection, { id: customerId, name: input.name, email }, input.newPassword ? 'password_changed' : 'profile_updated', `customer:${customerId}:${input.newPassword ? 'password_changed' : 'profile_updated'}:${Date.now()}`);
       return { id: customerId, name: input.name, email, phone: input.phone || null, passwordChanged: Boolean(input.newPassword) };
     });
     response.json(updated);
@@ -678,6 +696,7 @@ app.post('/api/admin/orders/:id/cases', requireAdmin, async (request, response, 
       const reference = `MM-${input.caseType === 'return' ? 'RET' : 'CAN'}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
       const [result] = await connection.execute('INSERT INTO order_support_cases (reference,order_request_id,case_type,reason_category,reason_details,evidence_urls,opened_by_admin_id) VALUES (?,?,?,?,?,?,?)', [reference,order.id,input.caseType,input.reasonCategory,input.reasonDetails,JSON.stringify(input.evidenceUrls),response.locals.admin.sub]);
       await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [order.id,order.status,order.status,`${input.caseType} case ${reference} opened`,response.locals.admin.sub]);
+      await enqueueOrderEmail(connection, order.id, 'case_update', { eventKey: `order:${order.id}:case:${reference}:open`, caseReference: reference, caseStatus: 'open', caseType: input.caseType });
       return { id:Number((result as { insertId:number }).insertId), reference, status:'open' };
     });
     response.status(201).json(created);
@@ -694,6 +713,7 @@ app.patch('/api/admin/orders/:id/cases/:caseId', requireAdmin, async (request, r
       if (!record || record.is_test) throw Object.assign(new Error('Support case not found'), { status: 404 });
       await connection.execute(`UPDATE order_support_cases SET status=?,supplier_return_reference=?,supplier_return_url=?,return_courier_name=?,return_tracking_number=?,return_tracking_url=?,resolution=?,refund_amount=?,internal_notes=?,resolved_at=CASE WHEN ? IN ('resolved','closed') THEN COALESCE(resolved_at,UTC_TIMESTAMP()) ELSE NULL END WHERE id=? AND order_request_id=?`, [input.status,input.supplierReturnReference || null,input.supplierReturnUrl || null,input.returnCourierName || null,input.returnTrackingNumber || null,input.returnTrackingUrl || null,input.resolution,input.refundAmount ?? null,input.internalNotes || null,input.status,record.id,request.params.id]);
       await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [request.params.id,record.order_status,record.order_status,`${record.case_type} case ${record.reference} updated to ${input.status}`,response.locals.admin.sub]);
+      await enqueueOrderEmail(connection, String(request.params.id), 'case_update', { eventKey: `order:${request.params.id}:case:${record.reference}:${input.status}`, caseReference: record.reference, caseStatus: input.status, caseType: record.case_type });
       return { id:record.id, reference:record.reference, status:input.status, resolution:input.resolution };
     });
     response.json(updated);
@@ -776,6 +796,8 @@ app.patch('/api/admin/orders/:id/status', requireAdmin, async (request, response
       else if (timestampColumns[status]) await connection.execute(`UPDATE order_requests SET status=?,${timestampColumns[status]}=UTC_TIMESTAMP() WHERE id=?`, [status, request.params.id]);
       else await connection.execute('UPDATE order_requests SET status=? WHERE id=?', [status, request.params.id]);
       await connection.execute('INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,?,?,?,?)', [request.params.id,current,status,`Status changed to ${status.replaceAll('_',' ')}`,response.locals.admin.sub]);
+      const emailKinds: Partial<Record<string, 'purchasing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded'>> = { purchasing:'purchasing', shipped:'shipped', delivered:'delivered', cancelled:'cancelled', refunded:'refunded' };
+      if (emailKinds[status]) await enqueueOrderEmail(connection, String(request.params.id), emailKinds[status], { eventKey: `order:${request.params.id}:status:${status}` });
     });
     response.json({ status });
   } catch (error) { next(error); }
@@ -808,6 +830,8 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
     if (!isYocoConfigured()) return response.json({ ...result, payment: { configured: false, status: 'quoted' } });
     try {
       const checkout = await provisionYocoCheckout(String(request.params.id));
+      try { await withTransaction((connection) => enqueueOrderEmail(connection, String(request.params.id), 'checkout_ready', { eventKey: `order:${request.params.id}:checkout:${checkout.checkoutId}`, paymentLink: checkout.paymentLink, paymentMode: checkout.processingMode })); }
+      catch (emailError) { console.error('Quote payment email could not be queued', emailError); }
       response.json({ ...result, status: 'awaiting_payment', payment: { configured: true, ...checkout } });
     } catch (paymentError) {
       console.error('Quote saved but Yoco checkout creation failed', paymentError);
@@ -819,6 +843,8 @@ app.patch('/api/admin/orders/:id/quote', requireAdmin, async (request, response,
 app.post('/api/admin/orders/:id/yoco-checkout', requireAdmin, async (request, response, next) => {
   try {
     const checkout = await provisionYocoCheckout(String(request.params.id));
+    try { await withTransaction((connection) => enqueueOrderEmail(connection, String(request.params.id), 'checkout_ready', { eventKey: `order:${request.params.id}:checkout:${checkout.checkoutId}`, paymentLink: checkout.paymentLink, paymentMode: checkout.processingMode })); }
+    catch (emailError) { console.error('Yoco checkout email could not be queued', emailError); }
     response.status(checkout.reused ? 200 : 201).json({ status: 'awaiting_payment', ...checkout });
   } catch (error) { next(error); }
 });
@@ -849,8 +875,45 @@ app.patch('/api/admin/orders/:id/confirm-payment', requireAdmin, async (request,
       const [result] = await connection.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND pr.provider<>'yoco' AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, externalReference]);
       if ((result as { affectedRows: number }).affectedRows === 0) throw Object.assign(new Error('Payment reference could not be verified for this order'), { status: 409 });
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,'awaiting_payment','paid','Payment reference verified',?)", [request.params.id,response.locals.admin.sub]);
+      await enqueueOrderEmail(connection, String(request.params.id), 'payment_confirmed', { eventKey: `order:${request.params.id}:manual_payment:${externalReference}` });
     });
     response.json({ status: 'paid' });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/emails', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [messages, summaryRows] = await Promise.all([
+      pool.execute("SELECT id,message_type,recipient_email,recipient_name,subject,status,attempts,available_at,sent_at,last_error,created_at,updated_at FROM email_outbox ORDER BY id DESC LIMIT 100"),
+      pool.execute("SELECT status,COUNT(*) AS count FROM email_outbox GROUP BY status"),
+    ]);
+    const summary = Object.fromEntries((summaryRows[0] as (RowDataPacket & { status:string; count:number })[]).map((row) => [row.status, Number(row.count)]));
+    response.json({ summary: { pending:0, processing:0, sent:0, failed:0, ...summary }, messages: messages[0] });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/emails/:id/retry', requireAdmin, async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const id = Number(request.params.id);
+    if (!Number.isInteger(id) || id < 1) return response.status(400).json({ error: 'Invalid email identifier' });
+    const [result] = await pool.execute("UPDATE email_outbox SET status='pending',attempts=0,available_at=UTC_TIMESTAMP(),locked_at=NULL,last_error=NULL WHERE id=? AND status='failed'", [id]);
+    if ((result as { affectedRows:number }).affectedRows === 0) return response.status(409).json({ error: 'Only failed email deliveries can be retried' });
+    response.json({ queued: true });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/emails/test', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name FROM admins WHERE id=? LIMIT 1', [response.locals.admin.sub]);
+      const admin = (rows as (RowDataPacket & { id:number; email:string; name:string })[])[0];
+      if (!admin) throw Object.assign(new Error('Administrator not found'), { status: 404 });
+      await enqueueAccountEmail(connection, { ...admin, email: process.env.EMAIL_ADMIN || 'info@mzansimegastore.co.za' }, 'test', `admin:${admin.id}:email_test:${Date.now()}`);
+    });
+    response.status(201).json({ queued: true, recipient: process.env.EMAIL_ADMIN || 'info@mzansimegastore.co.za' });
   } catch (error) { next(error); }
 });
 

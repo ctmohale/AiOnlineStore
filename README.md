@@ -8,6 +8,7 @@ A launch-focused South African reseller storefront and operations dashboard. Cus
 - Operations dashboard with full product CRUD (create, list, edit, and safe archive), optional image URLs, product states, review alerts, order statuses, quote costs, profit/margin visibility, and configurable guardrails.
 - Express API with Zod validation, parameterized MySQL queries, bcrypt passwords, JWT admin authorization, Helmet, CORS, and public rate limits.
 - MySQL migrations covering admins, customers, products, images, supplier offers, price history, ingestion runs, orders/items, payment references, and pricing settings.
+- Durable transactional-email outbox with SSL SMTP delivery, automatic retry, branded HTML/plain-text templates, customer order/payment/delivery notices, account security notices, and new-order alerts for operations.
 - CSV and permitted JSON-feed adapters, exact-product deduplication, review-only ingestion, daily retailer URL and stale checks, and hourly promotion-end checks.
 - Domain tests for profit, free delivery, expiry, staleness, exact matching, and locked order prices.
 
@@ -63,7 +64,9 @@ For Yoco, add these variables to the **API service only**:
 | `YOCO_WEBHOOK_SECRET` | The one-time `whsec_…` secret returned when the Yoco webhook is registered. |
 | `STORE_PUBLIC_URL` | `https://www.mzansimegastore.co.za` |
 
-Register exactly one Yoco Checkout API webhook with the public API URL `https://<your-api-domain>/api/payments/yoco/webhook`, then immediately copy its returned secret into `YOCO_WEBHOOK_SECRET`. The API verifies Yoco's `webhook-id`, `webhook-timestamp`, and `webhook-signature` against the untouched request body, rejects events older than three minutes, deduplicates event IDs, and checks the checkout ID, amount, currency, and live/test mode before marking an order paid. Run `npm run db:migrate` in Railway's API pre-deploy command so migration `022_yoco_checkout.sql` is applied before the release starts.
+Register exactly one Yoco Checkout API webhook with the public API URL `https://<your-api-domain>/api/payments/yoco/webhook`, then immediately copy its returned secret into `YOCO_WEBHOOK_SECRET`. The API verifies Yoco's `webhook-id`, `webhook-timestamp`, and `webhook-signature` against the untouched request body, rejects events older than three minutes, deduplicates event IDs, and checks the checkout ID, amount, currency, and live/test mode before marking an order paid. Run `npm run db:migrate` in Railway's API pre-deploy command so migrations, including `022_yoco_checkout.sql` and `023_transactional_email.sql`, are applied before the release starts.
+
+Configure transactional email on the **worker service only**. For the provided Domains.co.za mailbox use `SMTP_HOST=cp75.domains.co.za`, `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=no-reply@mzansimegastore.co.za`, `EMAIL_FROM=Mzansi Mega Store <no-reply@mzansimegastore.co.za>`, `EMAIL_REPLY_TO=info@mzansimegastore.co.za`, and `EMAIL_ADMIN=info@mzansimegastore.co.za`. Store the no-reply mailbox password only in Railway as `SMTP_PASS`; never commit it or expose it through a `VITE_` variable. The worker verifies SMTP at startup and processes the durable outbox every minute, retrying transient failures up to five times.
 
 ## Launch boundaries
 
@@ -74,7 +77,7 @@ Still required before real trading:
 - human verification and publication of initial offers, descriptions, and rights-cleared product image URLs;
 - real delivery rates and packaging costs;
 - a verified Yoco merchant domain, a live Checkout API key, and the registered production webhook secret;
-- transactional email/WhatsApp delivery for quotes and status updates;
+- optional WhatsApp delivery for status updates;
 - final legal/privacy/returns copy and an admin session-hardening review (for example, moving the MVP bearer token from session storage to secure HTTP-only cookies).
 
 See [API documentation](docs/API.md) for request details.

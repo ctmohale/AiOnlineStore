@@ -56,5 +56,8 @@ Order body:
 - `POST /api/admin/orders/:id/yoco-checkout` — creates or safely reuses the Yoco-hosted checkout for a saved order; also provides a retry after a failed payment.
 - `POST /api/admin/orders/:id/payment-link` — fallback for storing a manually-created non-Yoco provider link and moving a quoted order to `awaiting_payment`.
 - `PATCH /api/admin/orders/:id/confirm-payment` — explicitly verifies a matching payment reference and only then marks the order paid. Customer return URLs never change payment state.
+- `GET /api/admin/emails` — recent transactional-email delivery status and pending/sent/failed totals; message bodies and SMTP credentials are never returned.
+- `POST /api/admin/emails/:id/retry` — safely requeue a failed transactional email for the worker.
+- `POST /api/admin/emails/test` — queue a test message to the configured operations email address.
 
 Validation errors return HTTP 400, stale/unavailable product conflicts return 409, pricing-rule failures return 422, and unauthenticated admin requests return 401.

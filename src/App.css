@@ -660,6 +660,16 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .settings-grid .admin-password-input button:focus-visible { outline:2px solid var(--coral); outline-offset:1px; }
 .settings-grid .admin-password-input button svg { width:18px; height:18px; }
 .settings-grid small { font-size:8px; color:#88918d; }
+.email-delivery-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:18px; }
+.email-delivery-summary span { padding:12px; border:1px solid #dfe3df; background:#f8faf8; color:#6f7b74; font-size:11px; }
+.email-delivery-summary b { display:block; color:var(--forest); font-size:20px; margin-bottom:3px; }
+.email-delivery-summary .has-failures { border-color:#e7b9ae; background:#fff1ec; color:#9b4338; }
+.email-delivery-list { display:flex; flex-direction:column; border-top:1px solid #e5e7e4; }
+.email-delivery-list article { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid #eceeeb; }
+.email-delivery-list strong,.email-delivery-list span,.email-delivery-list small { display:block; overflow-wrap:anywhere; }
+.email-delivery-list strong { font-size:12px; }
+.email-delivery-list span { color:#76827b; font-size:10px; margin-top:4px; }
+.email-delivery-list small { color:#a04438; font-size:10px; margin-top:5px; }
 .admin-empty { min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#7d8982; text-align:center; border-top:1px solid #ebebe8; }
 .admin-empty svg { width:25px; }
 .admin-empty p { margin:0; font-size:12px; }
