@@ -1,11 +1,16 @@
 import { ArrowLeft, ArrowRight, Minus, Plus, ShoppingBag, Trash2, Truck } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useLayoutEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { money } from '../data/products';
 import { useStore } from '../state/StoreContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useCatalog } from '../state/CatalogContext';
 
 export default function Cart() {
+  const location = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [location.key]);
   const { cart, subtotal, update, remove } = useStore();
   const { settings } = useCatalog();
   const { confirm, notify } = useFeedback();
