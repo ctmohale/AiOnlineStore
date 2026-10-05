@@ -1,4 +1,4 @@
-import type { Product } from '../data/products';
+import { money, type Product } from '../data/products';
 
 export const productSale = (product: Product, now = Date.now()) => {
   if (!Number.isFinite(product.price) || product.price <= 0 || !product.compareAt || !Number.isFinite(product.compareAt) || product.compareAt <= product.price) return null;
@@ -7,9 +7,10 @@ export const productSale = (product: Product, now = Date.now()) => {
   if ((start !== null && (!Number.isFinite(start) || start > now)) || (end !== null && (!Number.isFinite(end) || end <= now))) return null;
   const percent = Math.floor((product.compareAt - product.price) / product.compareAt * 100);
   if (percent < 2) return null;
+  const savings = Math.floor(product.compareAt - product.price);
   return {
-    discountLabel: percent < 10 ? null : `${percent}%`,
-    badgeLabel: percent < 10 ? 'On sale' : `${percent}% OFF`,
+    discountLabel: money(savings),
+    badgeLabel: `Save ${money(savings)}`,
     endLabel: end === null ? null : `Sale ends ${new Intl.DateTimeFormat('en-ZA', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Johannesburg' }).format(end)} SAST`,
   };
 };
