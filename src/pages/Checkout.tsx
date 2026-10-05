@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { money } from '../data/products';
 import { createOrder, customerRequest, type Customer } from '../lib/api';
-import { CUSTOMER_TOKEN_KEY, getCustomerToken } from '../lib/storage';
+import { clearCustomerToken, getCustomerToken } from '../lib/storage';
 import { useStore } from '../state/StoreContext';
 import { useFeedback } from '../components/FeedbackProvider';
 import { useCatalog } from '../state/CatalogContext';
@@ -29,7 +29,7 @@ export default function Checkout() {
     if (!getCustomerToken()) { setCheckingAccount(false); return; }
     customerRequest<Customer>('/me')
       .then(setCustomer)
-      .catch(() => { localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); })
+      .catch(() => { clearCustomerToken(); setCustomer(null); })
       .finally(() => setCheckingAccount(false));
   }, []);
 
@@ -58,7 +58,7 @@ export default function Checkout() {
       clear(); notify(result.paymentError || `Order ${result.reference} was received.`, 'warning', 'Payment unavailable'); navigate(`/confirmation/${result.reference}?payment=unavailable`);
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Something went wrong. Please try again.';
-      if (requestError instanceof Error && 'status' in requestError && requestError.status === 401) { localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); }
+      if (requestError instanceof Error && 'status' in requestError && requestError.status === 401) { clearCustomerToken(); setCustomer(null); }
       setError(message); notify(message, 'error'); setSubmitting(false);
     }
   };

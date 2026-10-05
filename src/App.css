@@ -33,6 +33,11 @@ main { min-height:60vh; }
 .category-navigation-menu a small { color:var(--muted); font-size:10px; white-space:nowrap; }
 .account-link,.cart-link { display:flex; align-items:center; gap:7px; font-size:13px; font-weight:700; position:relative; white-space:nowrap; }
 .account-link:hover { color:var(--coral); }
+.account-link-copy { display:flex; flex-direction:column; line-height:1.05; }
+.account-link-copy small { color:var(--muted); font-size:8px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+.account-link-copy strong { max-width:90px; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+.account-user-avatar { width:29px; height:29px; display:grid; place-items:center; border-radius:50%; color:#fff; background:var(--forest); font-size:12px; font-weight:800; box-shadow:0 0 0 3px #dcebe1; }
+.account-link.signed-in:after { content:''; position:absolute; left:21px; bottom:1px; width:7px; height:7px; border:2px solid var(--cream); border-radius:50%; background:#3c9b68; }
 .cart-link b { position:absolute; top:-12px; left:14px; background:var(--coral); color:#fff; width:19px; height:19px; font-size:10px; display:grid; place-items:center; border-radius:50%; }
 .menu-button { display:none; border:0; background:transparent; cursor:pointer; }
 .hero { min-height:680px; display:grid; grid-template-columns:1.02fr .98fr; background:var(--deep); overflow:hidden; }
@@ -1074,7 +1079,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .main-nav .category-navigation-menu a { padding:10px; }
   .menu-button { display:block; }
   .cart-link span { display:none; }
-  .account-link span { display:none; }
+  .account-link>.account-link-copy { display:none; }
   .hero { grid-template-columns:1fr; }
   .hero-content { padding:70px 24px 50px; }
   .hero-art { min-height:440px; }

@@ -1,11 +1,13 @@
 import { BadgeCheck, ChevronDown, LockKeyhole, MapPin, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useStore } from '../state/StoreContext';
 import { useCatalog } from '../state/CatalogContext';
 import { money } from '../data/products';
 import { isStoreNavigationActive } from '../lib/navigation';
 import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
+import { customerRequest, type Customer } from '../lib/api';
+import { clearCustomerToken, CUSTOMER_AUTH_EVENT, CUSTOMER_TOKEN_KEY, getCustomerToken } from '../lib/storage';
 
 export default function Layout() {
   const { count } = useStore();
@@ -14,9 +16,29 @@ export default function Layout() {
   const [menu, setMenu] = useState(false);
   const [categoryMenu, setCategoryMenu] = useState(false);
   const [query, setQuery] = useState('');
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const selectedCategory = new URLSearchParams(location.search).get('category') || '';
+  useEffect(() => {
+    let active = true;
+    const refreshCustomer = async () => {
+      if (!getCustomerToken()) { if (active) setCustomer(null); return; }
+      try {
+        const profile = await customerRequest<Customer>('/me');
+        if (active) setCustomer(profile);
+      } catch (error) {
+        if (error instanceof Error && 'status' in error && error.status === 401) clearCustomerToken();
+        if (active) setCustomer(null);
+      }
+    };
+    const authChanged = () => { void refreshCustomer(); };
+    const storageChanged = (event: StorageEvent) => { if (event.key === CUSTOMER_TOKEN_KEY) void refreshCustomer(); };
+    void refreshCustomer();
+    window.addEventListener(CUSTOMER_AUTH_EVENT, authChanged);
+    window.addEventListener('storage', storageChanged);
+    return () => { active = false; window.removeEventListener(CUSTOMER_AUTH_EVENT, authChanged); window.removeEventListener('storage', storageChanged); };
+  }, []);
   const search = (event: FormEvent) => {
     event.preventDefault();
     navigate(`/shop?q=${encodeURIComponent(query.trim())}`);
@@ -38,7 +60,7 @@ export default function Layout() {
           {categoryMenu && <div className="category-navigation-menu" id="category-navigation-menu">{categories.map((category) => { const active = isStoreNavigationActive(location.pathname, selectedCategory, category.name); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`} onClick={() => { setCategoryMenu(false); setMenu(false); }}><span>{category.name}</span><small>{category.count} products</small></Link>; })}</div>}
         </div>
       </nav>
-      <Link className="account-link" to="/account" aria-label="Customer account"><UserRound size={20} /><span>Sign in</span></Link>
+      <Link className={`account-link${customer ? ' signed-in' : ''}`} to="/account" aria-label={customer ? `Signed in as ${customer.name}` : 'Customer account sign in'}>{customer ? <span className="account-user-avatar" aria-hidden="true">{customer.name.trim().charAt(0).toUpperCase()}</span> : <UserRound size={20} />}<span className="account-link-copy">{customer ? <><small>Signed in</small><strong>{customer.name.trim().split(/\s+/)[0]}</strong></> : 'Sign in'}</span></Link>
       <Link className="cart-link" to="/cart" aria-label={`Cart with ${count} items`}><ShoppingBag size={21} /><span>Cart</span>{count > 0 && <b>{count}</b>}</Link>
       <button className="menu-button" onClick={() => { setMenu(!menu); if (menu) setCategoryMenu(false); }} aria-label="Toggle navigation">{menu ? <X /> : <Menu />}</button>
     </header>

@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import StatusPill from '../components/StatusPill';
 import { money } from '../data/products';
 import { customerLogin, customerRegister, customerRequest, type Customer, type CustomerOrder } from '../lib/api';
-import { CUSTOMER_TOKEN_KEY, getCustomerToken } from '../lib/storage';
+import { clearCustomerToken, getCustomerToken, setCustomerToken } from '../lib/storage';
 import { publicOrderStatus } from '../lib/orderStatus';
 import { useFeedback } from '../components/FeedbackProvider';
 
@@ -31,7 +31,7 @@ export default function Account() {
       setCustomer(profile); setOrders(orderRows);
     } catch (accountError) {
       if (accountError instanceof Error && 'status' in accountError && accountError.status === 401) {
-        localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); setOrders([]);
+        clearCustomerToken(); setCustomer(null); setOrders([]);
       } else {
         setError('Order status could not be refreshed. Please try again.');
       }
@@ -47,7 +47,7 @@ export default function Account() {
       const result = mode === 'login'
         ? await customerLogin(String(data.get('email')), String(data.get('password')))
         : await customerRegister(String(data.get('name')), String(data.get('email')), String(data.get('phone')), String(data.get('password')));
-      localStorage.setItem(CUSTOMER_TOKEN_KEY, result.token);
+      setCustomerToken(result.token);
       setCustomer(result.customer);
       await loadAccount();
       notify(mode === 'login' ? 'You are signed in.' : 'Your account was created.', 'success');
@@ -55,7 +55,7 @@ export default function Account() {
     } catch (authError) { const message = authError instanceof Error ? authError.message : 'Unable to continue'; setError(message); notify(message, 'error'); }
     finally { setSubmitting(false); }
   };
-  const logout = async () => { if (!await confirm({ title: 'Sign out?', message: 'You can sign in again at any time to view your order requests.', confirmLabel: 'Sign out' })) return; localStorage.removeItem(CUSTOMER_TOKEN_KEY); setCustomer(null); setOrders([]); notify('You have been signed out.', 'success'); };
+  const logout = async () => { if (!await confirm({ title: 'Sign out?', message: 'You can sign in again at any time to view your order requests.', confirmLabel: 'Sign out' })) return; clearCustomerToken(); setCustomer(null); setOrders([]); notify('You have been signed out.', 'success'); };
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -63,7 +63,7 @@ export default function Account() {
     setSavingProfile(true); setError('');
     try {
       const result = await customerRequest<{ customer: Customer; token: string }>('/me', { method: 'PATCH', body: JSON.stringify({ name: data.get('name'), email: data.get('email'), phone: data.get('phone') }) });
-      localStorage.setItem(CUSTOMER_TOKEN_KEY, result.token); setCustomer(result.customer); notify('Your profile details were updated.', 'success', 'Profile updated');
+      setCustomerToken(result.token); setCustomer(result.customer); notify('Your profile details were updated.', 'success', 'Profile updated');
     } catch (profileError) { const message = profileError instanceof Error ? profileError.message : 'Your profile could not be updated'; setError(message); notify(message, 'error'); }
     finally { setSavingProfile(false); }
   };

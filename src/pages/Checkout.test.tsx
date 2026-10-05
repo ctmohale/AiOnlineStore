@@ -17,7 +17,7 @@ vi.mock('../state/CatalogContext', () => ({
 }));
 
 vi.mock('../lib/storage', () => ({
-  CUSTOMER_TOKEN_KEY: 'mzansi-mega-store-customer-token',
+  clearCustomerToken: vi.fn(),
   getCustomerToken: () => null,
 }));
 

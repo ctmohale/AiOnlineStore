@@ -1,5 +1,6 @@
 export const CUSTOMER_TOKEN_KEY = 'mzansi-mega-store-customer-token';
 export const ADMIN_TOKEN_KEY = 'mzansi-mega-store-admin-token';
+export const CUSTOMER_AUTH_EVENT = 'mzansi-customer-auth-changed';
 
 const migrate = (storage: Storage, currentKey: string, legacyKey: string) => {
   const current = storage.getItem(currentKey);
@@ -12,6 +13,14 @@ const migrate = (storage: Storage, currentKey: string, legacyKey: string) => {
 };
 
 export const getCustomerToken = () => migrate(localStorage, CUSTOMER_TOKEN_KEY, 'moya-customer-token');
+export const setCustomerToken = (token: string) => {
+  localStorage.setItem(CUSTOMER_TOKEN_KEY, token);
+  window.dispatchEvent(new Event(CUSTOMER_AUTH_EVENT));
+};
+export const clearCustomerToken = () => {
+  localStorage.removeItem(CUSTOMER_TOKEN_KEY);
+  window.dispatchEvent(new Event(CUSTOMER_AUTH_EVENT));
+};
 export const getAdminToken = () => {
   const current = migrate(localStorage, ADMIN_TOKEN_KEY, 'moya-admin-token');
   if (current) return current;
