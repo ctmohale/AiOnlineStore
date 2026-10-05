@@ -14,6 +14,7 @@ import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
+import { isEmailConfigured, sendOrderEmail, sendEmail } from './email.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -182,9 +183,16 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
       }
       const outcome = reference.order_status === 'awaiting_payment' || reference.order_status === 'paid' ? 'payment_verified' : 'payment_verified_order_not_payable';
       await connection.execute('UPDATE payment_webhook_events SET processing_outcome=? WHERE provider=\'yoco\' AND event_id=?', [outcome, eventId]);
-      return { duplicate: false, outcome };
+      return { duplicate: false, outcome, orderId: reference.order_id };
     });
-    response.status(200).json({ received: true, ...result });
+    if (result.outcome === 'payment_verified' && !result.duplicate && pool) {
+       try {
+         const [rows] = await pool.execute('SELECT o.reference,o.customer_name,o.customer_email,o.status,o.product_revenue,o.customer_delivery_charged,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot, \' × \',oi.quantity) ORDER BY oi.id SEPARATOR \', \'),\'No items\') AS items FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.id=? GROUP BY o.id', [((result as any).orderId)]);
+         const order = (rows as RowDataPacket[])[0] as any;
+         if (order) void sendOrderEmail({ to: order.customer_email, name: order.customer_name, reference: order.reference, status: order.status, items: order.items, total: Number(order.product_revenue)+Number(order.customer_delivery_charged), event: 'payment' }).catch((error) => console.error('Payment email failed', error));
+       } catch (error) { console.error('Payment email lookup failed', error); }
+     }
+     response.status(200).json({ received: true, ...result });
   } catch (error) { next(error); }
 });
 
@@ -348,7 +356,8 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
     });
     try {
       const checkout = await provisionYocoCheckout(orderId);
-      response.status(201).json({ reference: orderReference, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
+      void sendOrderEmail({ to: customer.email, name: customer.name, reference: orderReference, status: 'awaiting_payment', items: input.items.map((item) => `${item.productId} × ${item.quantity}`).join(', '), total: Number((revenue + delivery).toFixed(2)), event: 'received', paymentLink: checkout.paymentLink }).catch((error) => console.error('Order email failed', error));
+       response.status(201).json({ reference: orderReference, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
     } catch (paymentError) {
       console.error('Order created but Yoco checkout creation failed', paymentError);
       response.status(201).json({ reference: orderReference, status: 'requested', paymentLink: null, paymentError: 'Your order was saved, but secure payment could not be started. Please contact support with your order reference.' });
