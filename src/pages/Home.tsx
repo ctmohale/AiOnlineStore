@@ -69,7 +69,7 @@ export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
   const productPool = homepageProductPool(products, 16);
-  const heroProducts = rotatingProducts(productPool, 1, rotationBucket);
+  const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
   const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
   const popularProducts = productPool.slice(0, 5);
   const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
@@ -159,7 +159,7 @@ export default function Home() {
         </> : <div className="retail-featured-empty"><PackageCheck /><strong>{loading ? 'Loading today’s finds…' : 'Discover your next favourite.'}</strong><span>Browse the full catalogue for more finds.</span></div>}
         {heroProducts.length > 1 && <div className="retail-featured-controls" aria-label="Featured deals controls">
           <button type="button" onClick={() => moveSlide(-1)} aria-label="Previous deal"><ChevronLeft /></button>
-          <span>{heroProducts.map((product, index) => <button type="button" key={product.id} className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} />)}</span>
+          <span>{heroProducts.map((product, index) => <button type="button" key={product.id} className={index === activeSlide ? 'active' : ''} onClick={() => setActiveSlide(index)} aria-label={`Show ${product.name}`} aria-current={index === activeSlide ? 'true' : undefined} />)}</span>
           <button type="button" onClick={() => moveSlide(1)} aria-label="Next deal"><ChevronRight /></button>
         </div>}
       </div>
