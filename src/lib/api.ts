@@ -22,9 +22,10 @@ export async function createOrder(payload: OrderPayload) {
   const finishLoading = beginLoading();
   try {
     const token = getCustomerToken();
-    const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(payload) });
+    if (!token) throw Object.assign(new Error('Sign in or create an account before continuing to payment.'), { status: 401 });
+    const response = await fetch(`${API_URL}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
     const body = await response.json();
-    if (!response.ok) throw new Error(body?.error || 'Unable to submit order request');
+    if (!response.ok) throw Object.assign(new Error(body?.error || 'Unable to submit order request'), { status: response.status });
     return body as { reference: string; status: string; paymentLink: string | null; processingMode?: 'test' | 'live'; paymentError?: string };
   } finally { finishLoading(); }
 }
@@ -72,7 +73,10 @@ export async function adminRequest<T>(path: string, options: RequestInit = {}) {
     const token = getAdminToken();
     const response = await fetch(`${API_URL}/admin${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
     const body = response.status === 204 ? null : await response.json();
-    if (!response.ok) throw new Error(body?.error || 'Admin request failed');
+    if (!response.ok) {
+      if (response.status === 401) { localStorage.removeItem('mzansi-mega-store-admin-token'); sessionStorage.removeItem('mzansi-mega-store-admin-token'); }
+      throw Object.assign(new Error(body?.error || 'Admin request failed'), { status: response.status });
+    }
     return body as T;
   } finally { finishLoading(); }
 }

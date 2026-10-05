@@ -17,7 +17,7 @@ function secret() {
 }
 
 export function signAdminToken(claims: AdminClaims) {
-  return jwt.sign(claims, secret(), { expiresIn: '8h', issuer: ISSUER, audience: ADMIN_AUDIENCE });
+  return jwt.sign(claims, secret(), { expiresIn: '24h', issuer: ISSUER, audience: ADMIN_AUDIENCE });
 }
 
 export function signCustomerToken(claims: CustomerClaims) {
@@ -43,11 +43,4 @@ export function requireCustomer(request: Request, response: Response, next: Next
     response.locals.customer = verifyToken<CustomerClaims>(token, CUSTOMER_AUDIENCE, LEGACY_CUSTOMER_AUDIENCE);
     next();
   } catch { response.status(401).json({ error: 'Customer authentication required' }); }
-}
-
-export function optionalCustomer(request: Request, response: Response, next: NextFunction) {
-  const token = request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7) : '';
-  if (!token) return next();
-  try { response.locals.customer = verifyToken<CustomerClaims>(token, CUSTOMER_AUDIENCE, LEGACY_CUSTOMER_AUDIENCE); } catch { /* Guest checkout remains available for invalid or expired sessions. */ }
-  next();
 }

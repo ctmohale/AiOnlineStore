@@ -9,7 +9,7 @@ import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
 import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '../shared/domain.js';
 import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
-import { optionalCustomer, requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
+import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
@@ -320,13 +320,16 @@ app.get('/api/customer/orders', requireCustomer, async (_request, response, next
     FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
 });
 
-app.post('/api/orders', publicLimiter, optionalCustomer, async (request, response, next) => {
+app.post('/api/orders', publicLimiter, requireCustomer, async (request, response, next) => {
   try {
     const input = orderSchema.parse(request.body);
     const orderReference = reference();
     if (!pool) return response.status(503).json({ error: 'Order service unavailable' });
     if (!isYocoConfigured()) return response.status(503).json({ error: 'Secure payment is temporarily unavailable' });
     const orderId = await withTransaction(async (connection) => {
+      const [customerRows] = await connection.execute('SELECT id,name,email,phone FROM customers WHERE id=? LIMIT 1 FOR UPDATE', [response.locals.customer.sub]);
+      const account = (customerRows as (RowDataPacket & { id: number; name: string; email: string; phone: string | null })[])[0];
+      if (!account) throw Object.assign(new Error('Your customer account could not be found. Please sign in again.'), { status: 401 });
       const ids = input.items.map((item) => item.productId);
       const placeholders = ids.map(() => '?').join(',');
       const [rows] = await connection.execute(`SELECT p.id,p.title,p.model,p.pack_size,p.selling_price,p.estimated_customer_delivery_cost,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.supplier_delivery_cost,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.promotion_end_at,COALESCE(s.supplier_stale_hours,24) AS stale_hours,COALESCE(s.free_delivery_threshold,999) AS free_threshold,COALESCE(s.standard_customer_delivery,89) AS delivery_charge FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) LEFT JOIN pricing_settings s ON s.id=1 WHERE p.id IN (${placeholders}) AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE FOR UPDATE`, ids);
@@ -341,7 +344,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const supplierDelivery = input.items.reduce((sum, item) => sum + Number(productRows.find((row) => row.id === item.productId)!.supplier_delivery_cost || 0), 0);
       const customerDeliveryCost = Math.max(0, ...input.items.map((item) => Number(productRows.find((row) => row.id === item.productId)!.estimated_customer_delivery_cost || 0)));
       const expectedProfit = calculateProfit({ productRevenue: revenue, customerDeliveryCharged: delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, packaging: 0, paymentFees: 0, advertisingCost: 0 });
-      const customer = input.customer;
+      const customer = { ...input.customer, name: account.name, email: account.email, phone: account.phone || input.customer.phone };
       const estimates = productRows.map((product) => deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province }));
       const estimateMin = Math.max(...estimates.map((item) => item.totalMinDays));
       const estimateMax = Math.max(...estimates.map((item) => item.totalMaxDays));
@@ -349,7 +352,7 @@ app.post('/api/orders', publicLimiter, optionalCustomer, async (request, respons
       const estimateBasis = [...new Set(productRows.map((product) => `${product.retailer}: ${deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status }).fulfilmentLabel}`))].join('; ').slice(0, 500);
       const expectedShipAt = addBusinessDays(new Date(), supplierMax + 1);
       const expectedDeliveryAt = addBusinessDays(new Date(), estimateMax);
-      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [response.locals.customer?.sub || null, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, false, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
+      const [result] = await connection.execute('INSERT INTO order_requests (customer_id,reference,customer_name,customer_email,customer_phone,address_line_1,suburb,city,province,postal_code,notes,is_test,product_revenue,customer_delivery_charged,supplier_product_cost,supplier_delivery,customer_delivery_cost,expected_profit,expected_ship_at,expected_delivery_at,delivery_estimate_min_days,delivery_estimate_max_days,delivery_estimate_basis) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [account.id, orderReference, customer.name, customer.email, customer.phone, customer.addressLine1, customer.suburb, customer.city, customer.province, customer.postalCode, customer.notes || null, false, revenue, delivery, supplierProductCost, supplierDelivery, customerDeliveryCost, expectedProfit, expectedShipAt, expectedDeliveryAt, estimateMin, estimateMax, estimateBasis]);
       const orderId = Number((result as { insertId: number }).insertId);
       for (const item of input.items) {
         const product = productRows.find((row) => row.id === item.productId)!;

@@ -30,7 +30,7 @@ const order = {
 };
 
 beforeEach(() => {
-  sessionStorage.setItem(ADMIN_TOKEN_KEY, 'test-token');
+  localStorage.setItem(ADMIN_TOKEN_KEY, 'test-token');
   vi.mocked(adminRequest).mockReset();
   vi.mocked(adminRequest).mockImplementation(async (path) => {
     if (path === '/orders') return [order];

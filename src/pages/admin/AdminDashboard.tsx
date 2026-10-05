@@ -110,7 +110,7 @@ export default function AdminDashboard() {
 
   const logout = async () => {
     if (!await confirm({ title: 'Sign out of admin?', message: 'Any unsaved form changes will be lost.', confirmLabel: 'Sign out' })) return;
-    sessionStorage.removeItem(ADMIN_TOKEN_KEY); notify('You have been signed out.', 'success'); navigate('/admin/login');
+    localStorage.removeItem(ADMIN_TOKEN_KEY); sessionStorage.removeItem(ADMIN_TOKEN_KEY); notify('You have been signed out.', 'success'); navigate('/admin/login');
   };
   const openOrder = (order: AdminOrder) => {
     if (order.isTest) return notify('This is a test order. It cannot be quoted or fulfilled.', 'info');

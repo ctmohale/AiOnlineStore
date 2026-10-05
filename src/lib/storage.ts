@@ -12,4 +12,13 @@ const migrate = (storage: Storage, currentKey: string, legacyKey: string) => {
 };
 
 export const getCustomerToken = () => migrate(localStorage, CUSTOMER_TOKEN_KEY, 'moya-customer-token');
-export const getAdminToken = () => migrate(sessionStorage, ADMIN_TOKEN_KEY, 'moya-admin-token');
+export const getAdminToken = () => {
+  const current = migrate(localStorage, ADMIN_TOKEN_KEY, 'moya-admin-token');
+  if (current) return current;
+  const sessionToken = sessionStorage.getItem(ADMIN_TOKEN_KEY) || sessionStorage.getItem('moya-admin-token');
+  if (!sessionToken) return null;
+  localStorage.setItem(ADMIN_TOKEN_KEY, sessionToken);
+  sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  sessionStorage.removeItem('moya-admin-token');
+  return sessionToken;
+};
