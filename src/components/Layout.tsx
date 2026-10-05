@@ -15,6 +15,7 @@ export default function Layout() {
   const categories = categorySummaries(products);
   const [menu, setMenu] = useState(false);
   const [categoryMenu, setCategoryMenu] = useState(false);
+  const [accountMenu, setAccountMenu] = useState(false);
   const [query, setQuery] = useState('');
   const [customer, setCustomer] = useState<Customer | null>(null);
   const navigate = useNavigate();
@@ -39,6 +40,14 @@ export default function Layout() {
     window.addEventListener('storage', storageChanged);
     return () => { active = false; window.removeEventListener(CUSTOMER_AUTH_EVENT, authChanged); window.removeEventListener('storage', storageChanged); };
   }, []);
+  useEffect(() => {
+    if (!accountMenu) return;
+    const close = (event: MouseEvent) => { if (!(event.target as Element).closest('.account-navigation')) setAccountMenu(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAccountMenu(false); };
+    document.addEventListener('click', close);
+    window.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('click', close); window.removeEventListener('keydown', escape); };
+  }, [accountMenu]);
   const search = (event: FormEvent) => {
     event.preventDefault();
     navigate(`/shop?q=${encodeURIComponent(query.trim())}`);
@@ -54,15 +63,15 @@ export default function Layout() {
         <button type="submit" aria-label="Submit product search">Search</button>
       </form>
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
-        <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => { setMenu(false); setCategoryMenu(false); }}>Shop</Link>
+        <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => { setMenu(false); setCategoryMenu(false); setAccountMenu(false); }}>Shop</Link>
         <div className="category-navigation">
-          <button type="button" className={selectedCategory ? 'active' : ''} aria-expanded={categoryMenu} aria-controls="category-navigation-menu" onClick={() => setCategoryMenu((open) => !open)}>Categories <ChevronDown /></button>
+          <button type="button" className={selectedCategory ? 'active' : ''} aria-expanded={categoryMenu} aria-controls="category-navigation-menu" onClick={() => { setCategoryMenu((open) => !open); setAccountMenu(false); }}>Categories <ChevronDown /></button>
           {categoryMenu && <div className="category-navigation-menu" id="category-navigation-menu">{categories.map((category) => { const active = isStoreNavigationActive(location.pathname, selectedCategory, category.name); return <Link className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} key={category.name} to={`/shop?category=${encodeURIComponent(category.name)}`} onClick={() => { setCategoryMenu(false); setMenu(false); }}><span>{category.name}</span><small>{category.count} products</small></Link>; })}</div>}
         </div>
       </nav>
-      <Link className={`account-link${customer ? ' signed-in' : ''}`} to="/account" aria-label={customer ? `Signed in as ${customer.name}` : 'Customer account sign in'}>{customer ? <span className="account-user-avatar" aria-hidden="true">{customer.name.trim().charAt(0).toUpperCase()}</span> : <UserRound size={20} />}<span className="account-link-copy">{customer ? <><small>Signed in</small><strong>{customer.name.trim().split(/\s+/)[0]}</strong></> : 'Sign in'}</span></Link>
+      {customer ? <div className="account-navigation"><button type="button" className="account-link signed-in" aria-label={`Customer menu for ${customer.name}`} aria-expanded={accountMenu} aria-controls="customer-account-menu" onClick={(event) => { event.stopPropagation(); setAccountMenu((open) => !open); setCategoryMenu(false); }}><span className="account-user-avatar" aria-hidden="true">{customer.name.trim().charAt(0).toUpperCase()}</span><span className="account-link-copy"><small>Signed in</small><strong>{customer.name.trim().split(/\s+/)[0]}</strong></span><ChevronDown className="account-link-chevron" /></button>{accountMenu && <div className="account-navigation-menu" id="customer-account-menu"><div><strong>{customer.name}</strong><span>{customer.email}</span></div><Link to="/account#profile" onClick={() => setAccountMenu(false)}><UserRound /> <span><strong>My profile</strong><small>View and update your details</small></span></Link><Link to="/account#orders" onClick={() => setAccountMenu(false)}><ShoppingBag /> <span><strong>Track orders</strong><small>Payment, delivery and tracking</small></span></Link></div>}</div> : <Link className="account-link" to="/account" aria-label="Customer account sign in"><UserRound size={20} /><span className="account-link-copy">Sign in</span></Link>}
       <Link className="cart-link" to="/cart" aria-label={`Cart with ${count} items`}><ShoppingBag size={21} /><span>Cart</span>{count > 0 && <b>{count}</b>}</Link>
-      <button className="menu-button" onClick={() => { setMenu(!menu); if (menu) setCategoryMenu(false); }} aria-label="Toggle navigation">{menu ? <X /> : <Menu />}</button>
+      <button className="menu-button" onClick={() => { setMenu(!menu); setAccountMenu(false); if (menu) setCategoryMenu(false); }} aria-label="Toggle navigation">{menu ? <X /> : <Menu />}</button>
     </header>
     <main><Outlet /></main>
     <section className="site-trust-strip"><div><BadgeCheck /><strong>Simple online ordering</strong><span>Clear product, price and delivery information</span></div><div><MapPin /><strong>Made for South Africa</strong><span>ZAR pricing and nationwide delivery</span></div><div><LockKeyhole /><strong>Protected checkout</strong><span>HTTPS and no card details stored here</span></div></section>

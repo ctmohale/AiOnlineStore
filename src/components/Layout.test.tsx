@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { customerRequest } from '../lib/api';
@@ -19,9 +20,12 @@ beforeEach(() => {
 });
 
 test('shows the signed-in customer in the main navigation', async () => {
+  const user = userEvent.setup();
   render(<MemoryRouter><Routes><Route element={<Layout />}><Route index element={<div>Home</div>} /></Route></Routes></MemoryRouter>);
-  const account = await screen.findByRole('link', { name: 'Signed in as Nomsa Dlamini' });
+  const account = await screen.findByRole('button', { name: 'Customer menu for Nomsa Dlamini' });
   expect(account).toHaveTextContent('Signed in');
   expect(account).toHaveTextContent('Nomsa');
-  expect(account).toHaveAttribute('href', '/account');
+  await user.click(account);
+  expect(screen.getByRole('link', { name: /My profile/ })).toHaveAttribute('href', '/account#profile');
+  expect(screen.getByRole('link', { name: /Track orders/ })).toHaveAttribute('href', '/account#orders');
 });
