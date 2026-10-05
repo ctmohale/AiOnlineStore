@@ -1506,8 +1506,8 @@ footer a,footer p { font-size:13px; }
 
 
 /* Bold, flat sale ribbon in the product-image corner. */
-.product-sale-sticker { top:14px; left:0; right:auto; display:block; max-width:calc(100% - 20px); padding:12px 26px 12px 14px; border:0; border-radius:0; background:#c44730; color:#fff; font-size:18px; font-weight:800; line-height:1.2; letter-spacing:-.02em; clip-path:polygon(0 0,100% 0,calc(100% - 12px) 50%,100% 100%,0 100%); box-shadow:none; white-space:nowrap; }
+.product-sale-sticker { top:14px; left:auto; right:0; display:block; max-width:calc(100% - 20px); padding:12px 14px 12px 26px; border:0; border-radius:0; background:#c44730; color:#fff; font-size:18px; font-weight:800; line-height:1.2; letter-spacing:-.02em; clip-path:polygon(0 0,100% 0,100% 100%,0 100%,12px 50%); box-shadow:none; white-space:nowrap; }
 .product-sale-sticker::before { content:none; }
 .product-card:has(.product-sale-sticker) .price-row { align-items:center; flex-wrap:wrap; gap:9px; }
 .product-card:has(.product-sale-sticker) .price-row strong { color:#a33022; }
-@media(max-width:600px) { .product-sale-sticker { top:12px; padding:10px 22px 10px 12px; font-size:16px; } }
+@media(max-width:600px) { .product-sale-sticker { top:12px; padding:10px 12px 10px 22px; font-size:16px; } }
