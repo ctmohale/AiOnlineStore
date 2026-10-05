@@ -7,7 +7,7 @@ Base URL: `/api`. JSON is used for requests and responses. Admin routes require 
 - `GET /health` — application and database status.
 - `GET /api/products?q=&category=` — fresh, in-stock, published products only. Supplier costs are never selected.
 - `GET /api/store-settings` — public cart delivery threshold and standard delivery charge from the live pricing-settings row.
-- `POST /api/orders` — create a guest order request. Limited to 30 requests per IP per 15 minutes. The server ignores client prices and locks the current server-side selling price into each order-item snapshot.
+- `POST /api/orders` — create a guest order, lock current server-side prices, create a Yoco checkout for the exact total and return its hosted payment URL. Limited to 30 requests per IP per 15 minutes. Client-supplied prices are ignored.
 - `POST /api/customer/register` — create a customer account and return a 30-day customer token.
 - `POST /api/customer/login` — customer email/password login.
 - `GET /api/customer/me` — authenticated customer profile.
@@ -53,7 +53,7 @@ Order body:
 - `GET /api/admin/orders` — most recent order requests.
 - `PATCH /api/admin/orders/:id/status` — controlled status transitions; deliberately refuses to mark an order paid.
 - `PATCH /api/admin/orders/:id/quote` — records real supplier/product/delivery/packaging/payment/advertising costs, calculates expected profit, rejects quotes below configured thresholds, and automatically creates a Yoco checkout when Yoco is configured.
-- `POST /api/admin/orders/:id/yoco-checkout` — creates or safely reuses the Yoco-hosted checkout for a quoted order; also provides a retry after a failed payment.
+- `POST /api/admin/orders/:id/yoco-checkout` — creates or safely reuses the Yoco-hosted checkout for a saved order; also provides a retry after a failed payment.
 - `POST /api/admin/orders/:id/payment-link` — fallback for storing a manually-created non-Yoco provider link and moving a quoted order to `awaiting_payment`.
 - `PATCH /api/admin/orders/:id/confirm-payment` — explicitly verifies a matching payment reference and only then marks the order paid. Customer return URLs never change payment state.
 

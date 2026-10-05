@@ -1,10 +1,24 @@
-import { ArrowRight, Check, Clock3, Mail, SearchCheck } from 'lucide-react';
+import { ArrowRight, Check, CreditCard, ShieldCheck, XCircle } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useStore } from '../state/StoreContext';
 
 export default function Confirmation() {
   const { reference } = useParams();
   const [searchParams] = useSearchParams();
-  const isTest = searchParams.get('test') === '1';
-  if (isTest) return <section className="confirmation-page"><div className="confirmation-card"><span className="success-icon"><Check /></span><p className="kicker">Test order received</p><h1>Ready to <em>simulate payment.</em></h1><p>This is a test order. No money will be charged and no item will be purchased or delivered.</p><div className="reference"><span>Test reference</span><strong>{reference}</strong></div><Link className="button primary" to={`/test-payment/${reference}`}>Continue to test payment <ArrowRight size={18} /></Link><p><Link to="/account">View your order status</Link></p></div></section>;
-  return <section className="confirmation-page"><div className="confirmation-card"><span className="success-icon"><Check /></span><p className="kicker">Request received</p><h1>Thanks—<em>we're on it.</em></h1><p>Your order request has been received. You have not been charged.</p><div className="reference"><span>Your reference</span><strong>{reference}</strong></div><div className="next-steps"><h2>What happens next?</h2><div><SearchCheck /><p><strong>We review your order</strong><span>We'll review the exact products, total and delivery details.</span></p></div><div><Mail /><p><strong>We send your final quote</strong><span>You'll receive an email or WhatsApp with the confirmed total and secure payment link.</span></p></div><div><Clock3 /><p><strong>Usually within one business day</strong><span>We'll be in touch as soon as your order details are ready.</span></p></div></div><Link className="button primary" to="/shop">Continue shopping <ArrowRight size={18} /></Link></div></section>;
+  const { clear } = useStore();
+  const payment = searchParams.get('payment');
+  const cartCleared = useRef(false);
+  useEffect(() => {
+    if (payment === 'success' && !cartCleared.current) {
+      cartCleared.current = true;
+      clear();
+    }
+  }, [clear, payment]);
+  const successful = payment === 'success';
+  const cancelled = payment === 'cancelled';
+  const failed = payment === 'failed';
+  const unavailable = payment === 'unavailable';
+  const Icon = successful ? Check : cancelled || failed ? XCircle : CreditCard;
+  return <section className="confirmation-page"><div className="confirmation-card"><span className={`success-icon ${cancelled || failed || unavailable ? 'payment-not-complete' : ''}`}><Icon /></span><p className="kicker">{successful ? 'Payment submitted' : cancelled ? 'Payment cancelled' : failed ? 'Payment unsuccessful' : unavailable ? 'Payment unavailable' : 'Order created'}</p><h1>{successful ? <>Thanks—<em>payment is being verified.</em></> : cancelled ? <>Your payment was <em>cancelled.</em></> : failed ? <>Payment did not <em>complete.</em></> : <>Your order is <em>saved.</em></>}</h1><p>{successful ? 'Yoco will confirm the result securely. We will only process the order after that verification is received.' : cancelled || failed ? 'No successful payment was recorded. Your cart is still available so you can return to checkout and try again.' : 'Secure payment could not be opened. Please contact support with the reference below.'}</p><div className="reference"><span>Order reference</span><strong>{reference}</strong></div>{successful && <div className="check-message"><ShieldCheck /><p><strong>Webhook verification protected</strong><span>A browser return or screenshot cannot mark an order paid.</span></p></div>}<Link className="button primary" to={successful ? '/account' : cancelled || failed ? '/request' : '/contact'}>{successful ? 'View order status' : cancelled || failed ? 'Return to checkout' : 'Contact support'} <ArrowRight size={18} /></Link><p><Link to="/shop">Continue shopping</Link></p></div></section>;
 }

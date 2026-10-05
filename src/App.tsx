@@ -8,7 +8,6 @@ import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import Confirmation from './pages/Confirmation';
 import Account from './pages/Account';
-import TestPayment from './pages/TestPayment';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CatalogShare from './pages/CatalogShare';
@@ -35,7 +34,6 @@ export default function App() {
             <Route path="/request" element={<Checkout />} />
             <Route path="/confirmation/:reference" element={<Confirmation />} />
             <Route path="/account" element={<Account />} />
-            <Route path="/test-payment/:reference" element={<TestPayment />} />
             <Route path="/:page" element={<PolicyPage />} />
           </Route>
           <Route path="/admin/login" element={<AdminLogin />} />
