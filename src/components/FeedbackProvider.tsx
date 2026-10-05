@@ -35,7 +35,7 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
 
   const notify = useCallback((message: string, tone: ToastTone = 'info', title?: string) => {
     const id = ++nextToastId.current;
-    setToasts((current) => [...current.slice(-3), { id, message, tone, title }]);
+    setToasts((current) => [...current.slice(-1), { id, message, tone, title }]);
     timers.current.set(id, setTimeout(() => dismissToast(id), 4500));
   }, [dismissToast]);
 

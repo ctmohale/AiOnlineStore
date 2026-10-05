@@ -713,7 +713,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .admin-empty p { margin:0; font-size:12px; }
 
 /* Shared action feedback */
-.toast-region { position:fixed; z-index:320; right:22px; top:22px; width:min(390px,calc(100vw - 32px)); display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+.toast-region { position:fixed; z-index:250; right:22px; bottom:22px; width:min(360px,calc(100vw - 32px)); display:flex; flex-direction:column; gap:10px; pointer-events:none; }
 .app-toast { pointer-events:auto; display:grid; grid-template-columns:auto 1fr auto; align-items:start; gap:11px; padding:15px; border:1px solid #d7ded9; border-left:4px solid #527c68; background:#fff; color:#21382e; box-shadow:0 16px 45px rgba(22,47,37,.2); animation:toast-in .2s ease-out; }
 .app-toast>svg { width:20px; height:20px; color:#527c68; }
 .app-toast strong,.app-toast p { display:block; margin:0; }
@@ -727,7 +727,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .app-toast.error>svg { color:#b44936; }
 .app-toast.warning { border-left-color:#c38724; }
 .app-toast.warning>svg { color:#c38724; }
-@keyframes toast-in { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+@keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
 .confirm-backdrop { position:fixed; inset:0; z-index:300; display:grid; place-items:center; padding:20px; background:rgba(16,35,27,.68); backdrop-filter:blur(4px); }
 .confirm-dialog { width:min(470px,100%); display:grid; grid-template-columns:auto 1fr; gap:15px; padding:25px; background:#fff; color:#20362d; border-top:4px solid var(--forest); box-shadow:0 25px 80px rgba(0,0,0,.32); }
@@ -1332,7 +1332,7 @@ footer a,footer p { font-size:13px; }
   .url-importer { grid-template-columns:1fr; }
   .url-importer>button { width:100%; }
   .url-importer>p { grid-column:auto; }
-  .toast-region { top:12px; right:12px; width:calc(100vw - 24px); }
+  .toast-region { right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); width:calc(100vw - 24px); }
   .confirm-dialog { padding:20px; }
 }
 .order-workflow { border-bottom: 1px solid #e4e9e3; padding: 0 0 1.25rem; margin-bottom: 1.25rem; }
