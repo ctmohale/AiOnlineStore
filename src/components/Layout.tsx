@@ -5,7 +5,7 @@ import { useStore } from '../state/StoreContext';
 import { useCatalog } from '../state/CatalogContext';
 import { money } from '../data/products';
 import { isStoreNavigationActive } from '../lib/navigation';
-import { CATEGORY_NAMES, categorySummaries } from '../lib/categories';
+import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
 
 export default function Layout() {
   const { count } = useStore();
@@ -46,7 +46,7 @@ export default function Layout() {
     <section className="site-trust-strip"><div><BadgeCheck /><strong>Simple online ordering</strong><span>Clear product, price and delivery information</span></div><div><MapPin /><strong>Made for South Africa</strong><span>ZAR pricing and nationwide delivery</span></div><div><LockKeyhole /><strong>Protected checkout</strong><span>HTTPS and no card details stored here</span></div></section>
     <footer>
       <div className="footer-brand"><div className="brand light" role="img" aria-label="Mzansi Mega Store"><span className="brand-mark" aria-hidden="true">M</span><span>zansi</span><small>Mega Store</small></div><p>A South African online store and trading name operated by BEESTACK (PTY) LTD · Reg. 2025/361006/07.</p><Link to="/about">About Mzansi Mega Store</Link><Link to="/contact">Contact details</Link><a href="https://www.beestack.co.za/" target="_blank" rel="noreferrer">BeeStack company website</a></div>
-      <div><h4>Shop</h4><Link to="/shop">All products</Link>{CATEGORY_NAMES.map((category) => <Link key={category} to={`/shop?category=${encodeURIComponent(category)}`}>{category}</Link>)}</div>
+      <div><h4>Shop</h4><Link to="/shop">All products</Link>{[...CATEGORY_NAMES, ...FOCUSED_CATEGORIES.map(({ name }) => name)].map((category) => <Link key={category} to={`/shop?category=${encodeURIComponent(category)}`}>{category}</Link>)}</div>
       <div><h4>Help &amp; policies</h4><Link to="/delivery-policy">Delivery policy</Link><Link to="/returns-refunds">Returns &amp; refunds</Link><Link to="/complaints">Complaints</Link><Link to="/account">Customer login</Link><Link to="/admin/login">Admin login</Link></div>
       <div><h4>Trust &amp; legal</h4><Link to="/payment-security">Payment security</Link><Link to="/privacy">Privacy notice</Link><Link to="/terms">Terms of sale</Link><p>Secure online shopping with nationwide delivery and local customer support.</p></div>
       <div className="footer-bottom">
