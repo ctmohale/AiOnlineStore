@@ -9,18 +9,18 @@ const product = mapPublicProduct({ id: 51, slug: 'huggies', title: 'Huggies Napp
 describe('sale product cards', () => {
   it('renders a discount sticker without a date message when the end date is missing', () => {
     render(<MemoryRouter><ProductCard product={product} /></MemoryRouter>);
-    expect(screen.getByText('50% OFF')).toHaveClass('product-sale-sticker');
+    expect(screen.getByText(/Save R\s400/)).toHaveClass('product-sale-sticker');
     expect(screen.queryByText(/Sale end/)).not.toBeInTheDocument();
   });
   it('hides tiny-sale labels, dates and crossed-out prices on cards', () => {
     const { container } = render(<MemoryRouter><ProductCard product={{ ...product, price: 3449, compareAt: 3499, promotionEndAt: '2099-10-05T21:59:00Z' }} /></MemoryRouter>);
-    expect(screen.queryByText(/% OFF/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Save R/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Sale end/)).not.toBeInTheDocument();
     expect(container.querySelector('del')).toBeNull();
   });
   it('shows neither sale sticker nor end-date message for a regular price', () => {
     render(<MemoryRouter><ProductCard product={{ ...product, compareAt: undefined }} /></MemoryRouter>);
-    expect(screen.queryByText(/% OFF/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Save R/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Sale end/)).not.toBeInTheDocument();
   });
 });
