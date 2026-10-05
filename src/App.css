@@ -406,6 +406,13 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .customer-orders article { display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:24px; padding:18px 5px; border-top:1px solid var(--line); }
 .customer-orders article>div strong,.customer-orders article>div span { display:block; font-size:12px; }
 .customer-orders article>div span { color:var(--muted); font-size:9px; margin-top:4px; }
+.customer-pay-button { display:inline-flex; align-items:center; gap:7px; width:max-content; margin-top:12px; padding:9px 12px; background:var(--forest); color:#fff; font-size:11px; font-weight:800; text-decoration:none; }
+.customer-pay-button svg { width:13px; height:13px; }
+.payment-return { display:flex; align-items:center; gap:12px; margin-bottom:20px; padding:15px 17px; border:1px solid #d5e3da; background:#edf6f0; color:#245b43; }
+.payment-return.cancelled,.payment-return.failed { border-color:#edd7cf; background:#fff3ef; color:#8c4338; }
+.payment-return>svg { flex:0 0 auto; width:22px; }
+.payment-return strong,.payment-return span { display:block; }
+.payment-return span { margin-top:3px; font-size:12px; line-height:1.45; }
 .account-actions { display:flex; gap:10px; flex-wrap:wrap; }
 .test-order-option { display:flex!important; align-items:center; gap:10px; padding:14px; background:#f2eee4; border:1px solid var(--line); line-height:1.5; }
 .test-order-option input { width:auto!important; margin:0!important; }
@@ -1344,6 +1351,10 @@ footer a,footer p { font-size:13px; }
 .fulfilment-grid label,.payment-operations label { display:grid; gap:5px; color:#526159; font-size:11px; }
 .fulfilment-grid input,.fulfilment-grid textarea,.payment-operations input,.payment-operations select { width:100%; border:1px solid #d6dcd6; background:#fff; padding:9px; font:inherit; }
 .full-field,.payment-operations h3,.payment-operations p,.payment-operations button { grid-column:1/-1; }
+.manual-payment-fallback { grid-column:1/-1; border-top:1px solid #dfe5e0; padding-top:12px; }
+.manual-payment-fallback summary { cursor:pointer; color:#526159; font-size:12px; font-weight:700; }
+.manual-payment-fallback[open] { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.manual-payment-fallback[open] summary,.manual-payment-fallback[open] button { grid-column:1/-1; }
 .money-input { display:flex; align-items:center; gap:5px; border:1px solid #d6dcd6; background:#fff; padding-left:9px; }
 .money-input input { border:0; }
 .actual-profit { display:inline-flex; gap:10px; margin-left:12px!important; padding:8px 11px; background:#e4f0e9; color:#286348; }

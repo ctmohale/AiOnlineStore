@@ -34,7 +34,7 @@ export default function Shop() {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       return;
     }
-    const frame = window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const frame = window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' }));
     return () => window.cancelAnimationFrame(frame);
   }, [location.key, location.search]);
   const [params, setParams] = useSearchParams();
