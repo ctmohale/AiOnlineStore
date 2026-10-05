@@ -5,7 +5,7 @@ import { importProductUrl, isSupportedProductUrl } from '../server/product-impor
 import { recommendedSellingPrice } from '../shared/domain.js';
 import { PermittedRetailerFeedAdapter } from './adapters/retailerFeed.js';
 import { ingest } from './ingest.js';
-import { backfillTransactionalEmails, isEmailConfigured, processEmailOutbox, verifyEmailTransport } from '../server/email.js';
+import { backfillTransactionalEmails, isEmailConfigured, processEmailOutbox, queueConfiguredEmailTest, verifyEmailTransport } from '../server/email.js';
 
 async function recheckRetailerOffers() {
   if (!pool) return;
@@ -141,8 +141,18 @@ cron.schedule('*/15 * * * *', () => void backfillTransactionalEmails().catch(con
 console.log('Mzansi Mega Store worker scheduled.');
 if (process.argv.includes('--once')) dailyRun().then(() => processEmailOutbox()).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
 else {
-  if (isEmailConfigured()) void verifyEmailTransport().then(() => console.log('SMTP connection verified.')).catch((error) => console.error('SMTP verification failed:', error));
-  else console.warn('SMTP is not configured; transactional emails will remain queued until SMTP_PASS and related settings are added.');
-  void backfillTransactionalEmails().then(() => processEmailOutbox()).catch((error) => console.error('Initial email delivery failed:', error));
+  void (async () => {
+    const test = await queueConfiguredEmailTest();
+    if (test.queued) console.log(`Branded email test is queued for ${test.recipient}.`);
+    await backfillTransactionalEmails();
+    if (!isEmailConfigured()) {
+      console.warn('SMTP is not configured; transactional emails will remain queued until SMTP_PASS and related settings are added.');
+      return;
+    }
+    await verifyEmailTransport();
+    console.log('SMTP connection verified.');
+    const result = await processEmailOutbox();
+    console.log(`Initial email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
+  })().catch((error) => console.error('Initial email delivery failed:', error));
   void dailyRun().catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
 }
