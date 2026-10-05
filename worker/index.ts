@@ -5,7 +5,7 @@ import { importProductUrl, isSupportedProductUrl } from '../server/product-impor
 import { recommendedSellingPrice } from '../shared/domain.js';
 import { PermittedRetailerFeedAdapter } from './adapters/retailerFeed.js';
 import { ingest } from './ingest.js';
-import { backfillTransactionalEmails, isEmailConfigured, processEmailOutbox, queueConfiguredEmailTest, verifyEmailTransport } from '../server/email.js';
+import { backfillTransactionalEmails, inspectEmailAuthenticationDns, isEmailConfigured, processEmailOutbox, queueConfiguredEmailTest, verifyEmailTransport } from '../server/email.js';
 
 async function recheckRetailerOffers() {
   if (!pool) return;
@@ -151,6 +151,8 @@ else {
     }
     await verifyEmailTransport();
     console.log('SMTP connection verified.');
+    const authentication = await inspectEmailAuthenticationDns();
+    console.log(`Email DNS authentication: ${JSON.stringify(authentication)}`);
     const result = await processEmailOutbox();
     console.log(`Initial email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
   })().catch((error) => console.error('Initial email delivery failed:', error));
