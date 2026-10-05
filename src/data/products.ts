@@ -1,4 +1,7 @@
 export type Product = {
+  unitsSold?: number;
+  recentUnits?: number;
+  trendingUnits?: number;
   id: number;
   slug: string;
   name: string;
@@ -28,6 +31,7 @@ export type Product = {
 };
 
 export type PublicProductRow = {
+  units_sold?: number; recent_units?: number; trending_units?: number;
   id: number; slug: string; title: string; brand: string; model: string; pack_size: string; category: string;
   description: string; specifications: Record<string, string> | string | null; selling_price: number;
   promotion_start_at?: string | null; promotion_end_at?: string | null;
@@ -49,6 +53,7 @@ export const mapPublicProduct = (row: PublicProductRow): Product => {
   const images = (row.images || []).filter((item) => item.url).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).map((item) => ({ url: item.url, altText: item.alt_text || row.title }));
   if (!images.length && row.image_url) images.push({ url: row.image_url, altText: row.title });
   return ({
+  unitsSold: Number(row.units_sold || 0), recentUnits: Number(row.recent_units || 0), trendingUnits: Number(row.trending_units || 0),
   id: Number(row.id), slug: row.slug, name: row.title, brand: row.brand || '', model: row.model || '', packSize: row.pack_size || '',
   category: row.category, price: Number(row.selling_price), compareAt: row.original_displayed_price && Number(row.original_displayed_price) > Number(row.selling_price) ? Number(row.original_displayed_price) : undefined,
   promotionStartAt: row.promotion_start_at || undefined, promotionEndAt: row.promotion_end_at || undefined,
