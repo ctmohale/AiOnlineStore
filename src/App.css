@@ -1503,3 +1503,13 @@ footer a,footer p { font-size:13px; }
 .shop-results-toolbar .sort-filter select:focus-visible { border-color:var(--forest); box-shadow:0 0 0 3px #dcebe1; }
 .shop-results-toolbar .sort-filter option { background:#fff; color:var(--ink); font-weight:400; }
 @media(prefers-reduced-motion:reduce) { .shop-results-toolbar .sort-filter select { transition:none; } }
+
+
+/* Promotional savings treatment, shared by Home and Shop cards. */
+.product-sale-sticker { top:12px; right:12px; display:flex; flex-direction:column; align-items:flex-start; gap:4px; max-width:calc(100% - 24px); padding:10px 14px; border:1px solid #a93223; border-radius:5px 12px 5px 12px; background:linear-gradient(135deg,#b53626,#92291e); color:#fff; font-size:16px; font-weight:800; line-height:1.15; letter-spacing:-.02em; box-shadow:0 5px 12px rgba(146,41,30,.18); }
+.product-sale-sticker::before { content:"SPECIAL OFFER"; color:#ffe6cb; font-size:8px; font-weight:700; line-height:1.2; letter-spacing:.12em; }
+.product-card:has(.product-sale-sticker) { border-color:#ead3c5; }
+.product-card:has(.product-sale-sticker) .price-row { align-items:center; flex-wrap:wrap; gap:9px; }
+.product-card:has(.product-sale-sticker) .price-row strong { color:#a33022; }
+.product-card:has(.product-sale-sticker) .price-row del { color:#7c817d; }
+@media(max-width:600px) { .product-sale-sticker { top:8px; right:8px; padding:8px 10px; font-size:14px; max-width:calc(100% - 16px); } .product-sale-sticker::before { font-size:7px; } }
