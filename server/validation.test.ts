@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adminCustomerUpdateSchema, customerEmailVerificationSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema } from './validation';
+import { adminCustomerUpdateSchema, customerCartItemSchema, customerCartSchema, customerEmailVerificationSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema } from './validation';
 
 describe('shipment tracking', () => {
   it('requires a courier and number, and rejects unsafe tracking links', () => {
@@ -26,6 +26,14 @@ describe('customer account validation', () => {
     expect(customerEmailVerificationSchema.safeParse({ email: 'customer@example.com', code: '12A456' }).success).toBe(false);
     expect(customerPasswordResetSchema.safeParse({ email: 'customer@example.com', code: '123456', newPassword: 'short' }).success).toBe(false);
     expect(customerPasswordResetSchema.safeParse({ email: 'customer@example.com', code: '123456', newPassword: 'new-secure-password' }).success).toBe(true);
+  });
+});
+
+describe('customer cart validation', () => {
+  it('accepts unique products and blocks duplicate or excessive quantities', () => {
+    expect(customerCartSchema.safeParse({ items: [{ productId: 1, quantity: 2 }, { productId: 2, quantity: 1 }] }).success).toBe(true);
+    expect(customerCartSchema.safeParse({ items: [{ productId: 1, quantity: 2 }, { productId: 1, quantity: 3 }] }).success).toBe(false);
+    expect(customerCartItemSchema.safeParse({ quantity: 21 }).success).toBe(false);
   });
 });
 

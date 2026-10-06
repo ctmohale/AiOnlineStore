@@ -29,6 +29,15 @@ describe('homepage product rotation', () => {
     expect(pool.map((item) => item.id)).toEqual([1, 3]);
   });
 
+  it('can fill product sections without adding unsold products to the hero pool', () => {
+    const make = (id: number, unitsSold: number) => ({
+      id, price: 999, unitsSold, images: [{ url: `${id}.jpg`, altText: 'Product' }],
+    } as Product);
+    const products = [make(1, 4), make(2, 2), ...Array.from({ length: 8 }, (_, index) => make(index + 3, 0))];
+    expect(homepageProductPool(products, 8).map((product) => product.id)).toEqual([1, 2]);
+    expect(homepageProductPool(products, 8, true)).toHaveLength(10);
+  });
+
   it('supports separate non-overlapping hero and grid windows', () => {
     const products = Array.from({ length: 30 }, (_, index) => index + 1);
     const hero = rotatingProducts(products, 5, 20);

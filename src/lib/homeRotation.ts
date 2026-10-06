@@ -20,7 +20,7 @@ export const homepageProductSections = <T extends { id: number }>(items: T[], bu
   return { deals, popular };
 };
 
-export const homepageProductPool = (products: Product[], required: number) => {
+export const homepageProductPool = (products: Product[], required: number, fillWithAvailable = false) => {
   const available = products.filter((product) => product.price > 0
     && product.price <= HOMEPAGE_PRICE_CEILING && Boolean(product.image || product.images?.some((image) => image.url))
     && !['out_of_stock', 'unavailable'].includes(product.stockStatus || ''));
@@ -28,9 +28,11 @@ export const homepageProductPool = (products: Product[], required: number) => {
     .sort((left, right) => (right.trendingUnits || 0) - (left.trendingUnits || 0)
       || (right.recentUnits || 0) - (left.recentUnits || 0)
       || (right.unitsSold || 0) - (left.unitsSold || 0) || left.id - right.id);
-  if (sellers.length) return sellers.slice(0, Math.max(required, 20));
-  // Keep the storefront populated while genuine sales history is still building.
-  return [...available].sort((left, right) => Number((right.images?.length || 0) >= 3)
+  const rankedAvailable = [...available].sort((left, right) => Number((right.images?.length || 0) >= 3)
     - Number((left.images?.length || 0) >= 3) || left.id - right.id)
+  if (!sellers.length) return rankedAvailable.slice(0, Math.max(required, 20));
+  if (!fillWithAvailable) return sellers.slice(0, Math.max(required, 20));
+  const sellerIds = new Set(sellers.map((product) => product.id));
+  return [...sellers, ...rankedAvailable.filter((product) => !sellerIds.has(product.id))]
     .slice(0, Math.max(required, 20));
 };

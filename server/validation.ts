@@ -101,6 +101,15 @@ export const customerPasswordUpdateSchema = z.object({
   newPassword: z.string().min(10).max(128),
 }).refine((value) => value.currentPassword !== value.newPassword, { message: 'Choose a password different from your current password', path: ['newPassword'] });
 
+export const customerCartSchema = z.object({
+  items: z.array(z.object({
+    productId: z.number().int().positive(),
+    quantity: z.number().int().min(1).max(20),
+  })).max(50).refine((items) => new Set(items.map((item) => item.productId)).size === items.length, 'Each product can only appear once in the cart'),
+});
+
+export const customerCartItemSchema = z.object({ quantity: z.number().int().min(1).max(20) });
+
 export const adminPasswordUpdateSchema = z.object({
   currentPassword: z.string().min(1).max(128),
   newPassword: z.string().min(12).max(128),

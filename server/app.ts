@@ -12,7 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerCartItemSchema, customerCartSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
 import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
 
@@ -441,6 +441,66 @@ app.patch('/api/customer/password', loginLimiter, requireCustomer, async (reques
   } catch (error) { next(error); }
 });
 
+app.get('/api/customer/cart', requireCustomer, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.execute(`SELECT ci.product_id AS productId,ci.quantity
+      FROM customer_cart_items ci JOIN products p ON p.id=ci.product_id
+      WHERE ci.customer_id=? AND p.status='published' AND p.deleted_at IS NULL
+      ORDER BY ci.updated_at,ci.product_id`, [response.locals.customer.sub]);
+    response.json({ customerId: Number(response.locals.customer.sub), items: rows });
+  } catch (error) { next(error); }
+});
+
+app.put('/api/customer/cart', requireCustomer, async (request, response, next) => {
+  try {
+    const input = customerCartSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await withTransaction(async (connection) => {
+      if (input.items.length) {
+        const ids = input.items.map((item) => item.productId);
+        const [rows] = await connection.execute(`SELECT id FROM products WHERE id IN (${ids.map(() => '?').join(',')}) AND status='published' AND deleted_at IS NULL FOR UPDATE`, ids);
+        if ((rows as RowDataPacket[]).length !== ids.length) throw Object.assign(new Error('One or more cart products are no longer available'), { status: 409 });
+      }
+      await connection.execute('DELETE FROM customer_cart_items WHERE customer_id=?', [response.locals.customer.sub]);
+      for (const item of input.items) await connection.execute('INSERT INTO customer_cart_items (customer_id,product_id,quantity) VALUES (?,?,?)', [response.locals.customer.sub, item.productId, item.quantity]);
+    });
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
+app.put('/api/customer/cart/items/:productId', requireCustomer, async (request, response, next) => {
+  try {
+    const productId = Number(request.params.productId);
+    if (!Number.isSafeInteger(productId) || productId < 1) return response.status(400).json({ error: 'Invalid product' });
+    const input = customerCartItemSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [products] = await pool.execute("SELECT id FROM products WHERE id=? AND status='published' AND deleted_at IS NULL LIMIT 1", [productId]);
+    if (!(products as RowDataPacket[]).length) return response.status(409).json({ error: 'This product is no longer available' });
+    await pool.execute(`INSERT INTO customer_cart_items (customer_id,product_id,quantity) VALUES (?,?,?)
+      ON DUPLICATE KEY UPDATE quantity=VALUES(quantity),updated_at=UTC_TIMESTAMP()`, [response.locals.customer.sub, productId, input.quantity]);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/customer/cart/items/:productId', requireCustomer, async (request, response, next) => {
+  try {
+    const productId = Number(request.params.productId);
+    if (!Number.isSafeInteger(productId) || productId < 1) return response.status(400).json({ error: 'Invalid product' });
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await pool.execute('DELETE FROM customer_cart_items WHERE customer_id=? AND product_id=?', [response.locals.customer.sub, productId]);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
+app.delete('/api/customer/cart', requireCustomer, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await pool.execute('DELETE FROM customer_cart_items WHERE customer_id=?', [response.locals.customer.sub]);
+    response.status(204).end();
+  } catch (error) { next(error); }
+});
+
 app.get('/api/customer/orders', requireCustomer, async (_request, response, next) => {
   try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute(`SELECT o.reference,o.status,o.courier_name,o.tracking_number,o.tracking_url,o.shipped_at,o.expected_ship_at,o.expected_delivery_at,o.delivered_at,o.product_revenue,o.customer_delivery_charged,o.created_at,o.updated_at,
     COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary,
@@ -488,6 +548,7 @@ app.post('/api/orders', publicLimiter, requireCustomer, async (request, response
         const itemEstimate = deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province });
         await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot,supplier_fulfilment_snapshot,estimated_supplier_days_min,estimated_supplier_days_max) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost, itemEstimate.fulfilmentType, itemEstimate.supplierMinDays, itemEstimate.supplierMaxDays]);
       }
+      await connection.execute('DELETE FROM customer_cart_items WHERE customer_id=?', [account.id]);
       const needsFreshSupplierCheck = productRows.some((product) => !product.last_checked_at || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000);
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested',?)", [orderId, needsFreshSupplierCheck ? 'Order submitted for secure payment; supplier data should be rechecked before purchasing' : 'Order submitted for secure payment']);
       return orderId;

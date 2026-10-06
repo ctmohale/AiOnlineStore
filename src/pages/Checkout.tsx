@@ -51,6 +51,7 @@ export default function Checkout() {
     try {
       const result = await createOrder({ customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
       if (result.paymentLink) {
+        clear();
         notify(`Order ${result.reference} is ready for secure payment.`, 'success', 'Opening Yoco');
         window.location.assign(result.paymentLink);
         return;

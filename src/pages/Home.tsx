@@ -70,8 +70,9 @@ export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
   const productPool = homepageProductPool(products, 16);
+  const sectionPool = homepageProductPool(products, 16, true);
   const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
-  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(productPool, rotationBucket);
+  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(sectionPool, rotationBucket);
   const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);
