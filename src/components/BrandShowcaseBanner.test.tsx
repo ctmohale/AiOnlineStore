@@ -16,5 +16,7 @@ describe('brand showcase banner', () => {
     expect(screen.getByRole('link', { name: 'Shop HISENSE products' })).toHaveAttribute('href', '/shop?q=HISENSE');
     expect(screen.getByRole('link', { name: 'Shop Defy products' })).toHaveAttribute('href', '/shop?q=Defy');
     expect(screen.getByRole('img')).toHaveAttribute('src', '/brand-showcase-banner-v1.webp');
+    expect(screen.getByRole('link', { name: /Shop brands/ })).toHaveAttribute('href', '/shop');
+    expect(screen.queryByText(/Explore well-known names/)).not.toBeInTheDocument();
   });
 });

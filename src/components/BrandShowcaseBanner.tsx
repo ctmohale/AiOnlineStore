@@ -1,4 +1,4 @@
-import { ArrowRight, BadgeCheck, Truck } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Product } from '../data/products';
 
@@ -37,14 +37,9 @@ export default function BrandShowcaseBanner({ products, compact = false }: Props
   return <section className={`brand-showcase${compact ? ' compact' : ''}`} aria-labelledby={titleId}>
     <img className="brand-showcase-art" src="/brand-showcase-banner-v1.webp" alt="Television, appliances, laptop, phone, blender and outdoor gazebo" loading={compact ? 'lazy' : 'eager'} decoding="async" />
     <div className="brand-showcase-content">
-      <span className="brand-showcase-kicker">Leading names · One Mzansi store</span>
+      <span className="brand-showcase-kicker">Leading brands</span>
       <h2 id={titleId}>Big brands.<br /><em>Mzansi choice.</em></h2>
-      <p>Explore well-known names across technology, appliances, home and everyday essentials—all in one growing catalogue.</p>
-      <div className="brand-showcase-promises">
-        <span><BadgeCheck /> Clear ZAR pricing</span>
-        <span><Truck /> Nationwide delivery</span>
-      </div>
-      <Link className="brand-showcase-action" to="/shop">Shop leading brands <ArrowRight /></Link>
+      <Link className="brand-showcase-action" to="/shop">Shop brands <ArrowRight /></Link>
     </div>
     <div className="brand-showcase-rail">
       <span>Featured brands</span>
