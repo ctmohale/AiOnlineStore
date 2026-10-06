@@ -65,6 +65,11 @@ describe('mobile storefront layout', () => {
   it('keeps product and cart actions usable on a narrow screen', () => {
     cy.visit('/product/mobile-product-1');
     cy.contains('Hisense Smart QLED Television').should('be.visible');
+    cy.get('.product-gallery').then(($gallery) => cy.get('.detail-copy').then(($copy) => {
+      expect($copy[0].getBoundingClientRect().top).to.be.greaterThan($gallery[0].getBoundingClientRect().bottom - 1);
+    }));
+    cy.get('.product-share .share-actions').should('be.visible');
+    expectNoHorizontalOverflow();
     cy.contains('Add to cart').should('be.visible').click();
     cy.url().should('include', '/cart');
     cy.get('.cart-line').should('be.visible');
