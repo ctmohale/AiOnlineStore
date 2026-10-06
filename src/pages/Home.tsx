@@ -22,6 +22,7 @@ import BrandShowcaseBanner from '../components/BrandShowcaseBanner';
 import { money } from '../data/products';
 import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, homepageProductSections, rotatingProducts } from '../lib/homeRotation';
+import { productSale } from '../lib/productSale';
 import { useCatalog } from '../state/CatalogContext';
 
 const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; tone: string }> = {
@@ -70,9 +71,10 @@ export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
   const productPool = homepageProductPool(products, 16);
-  const sectionPool = homepageProductPool(products, 16, true);
+  const sectionPool = homepageProductPool(products, 120, true);
+  const savingsPool = sectionPool.filter((product) => Boolean(productSale(product)));
   const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
-  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(sectionPool, rotationBucket);
+  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(productPool, savingsPool, sectionPool, rotationBucket);
   const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);

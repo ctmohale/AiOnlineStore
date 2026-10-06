@@ -46,11 +46,21 @@ describe('homepage product rotation', () => {
   });
 
   it('builds two different four-product homepage sections', () => {
-    const products = Array.from({ length: 12 }, (_, index) => ({ id: index + 1 }));
-    const { deals, popular } = homepageProductSections(products, 7);
+    const products = Array.from({ length: 16 }, (_, index) => ({ id: index + 1 }));
+    const popularPool = products.slice(0, 6);
+    const dealPool = products.slice(6);
+    const { deals, popular } = homepageProductSections(popularPool, dealPool, products, 7);
     expect(deals).toHaveLength(4);
     expect(popular).toHaveLength(4);
     expect(popular.some((product) => deals.some((deal) => deal.id === product.id))).toBe(false);
+  });
+
+  it('rotates both homepage rows in each new ten-minute window', () => {
+    const products = Array.from({ length: 20 }, (_, index) => ({ id: index + 1 }));
+    const first = homepageProductSections(products.slice(0, 7), products.slice(7), products, 20);
+    const next = homepageProductSections(products.slice(0, 7), products.slice(7), products, 21);
+    expect(next.deals.map((product) => product.id)).not.toEqual(first.deals.map((product) => product.id));
+    expect(next.popular.map((product) => product.id)).not.toEqual(first.popular.map((product) => product.id));
   });
 });
 

@@ -13,10 +13,21 @@ export const rotatingProducts = <T>(items: T[], count: number, bucket: number, o
   return result;
 };
 
-export const homepageProductSections = <T extends { id: number }>(items: T[], bucket: number, count = 4) => {
-  const deals = rotatingProducts(items, count, bucket, 5);
+export const homepageProductSections = <T extends { id: number }>(popularItems: T[], dealItems: T[], fallbackItems: T[], bucket: number, count = 4) => {
+  const deals = rotatingProducts(dealItems, count, bucket, 5);
   const dealIds = new Set(deals.map((product) => product.id));
-  const popular = items.filter((product) => !dealIds.has(product.id)).slice(0, count);
+  const popular: T[] = [];
+  const popularIds = new Set<number>();
+  const candidates = [
+    ...rotatingProducts(popularItems, popularItems.length, bucket),
+    ...rotatingProducts(fallbackItems, fallbackItems.length, bucket, 9),
+  ];
+  for (const product of candidates) {
+    if (dealIds.has(product.id) || popularIds.has(product.id)) continue;
+    popular.push(product);
+    popularIds.add(product.id);
+    if (popular.length === count) break;
+  }
   return { deals, popular };
 };
 
@@ -29,7 +40,7 @@ export const homepageProductPool = (products: Product[], required: number, fillW
       || (right.recentUnits || 0) - (left.recentUnits || 0)
       || (right.unitsSold || 0) - (left.unitsSold || 0) || left.id - right.id);
   const rankedAvailable = [...available].sort((left, right) => Number((right.images?.length || 0) >= 3)
-    - Number((left.images?.length || 0) >= 3) || left.id - right.id)
+    - Number((left.images?.length || 0) >= 3) || left.id - right.id);
   if (!sellers.length) return rankedAvailable.slice(0, Math.max(required, 20));
   if (!fillWithAvailable) return sellers.slice(0, Math.max(required, 20));
   const sellerIds = new Set(sellers.map((product) => product.id));
