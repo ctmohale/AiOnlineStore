@@ -62,3 +62,17 @@ test('requires authentication for database-backed carts', async () => {
   const response = await fetch(`${base}/api/customer/cart`);
   expect(response.status).toBe(401);
 });
+
+test('allows browser PUT preflights for cart synchronization', async () => {
+  const response = await fetch(`${base}/api/customer/cart`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:5173',
+      'Access-Control-Request-Method': 'PUT',
+      'Access-Control-Request-Headers': 'authorization,content-type',
+    },
+  });
+  expect(response.status).toBe(204);
+  expect(response.headers.get('access-control-allow-methods')).toContain('PUT');
+  expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+});

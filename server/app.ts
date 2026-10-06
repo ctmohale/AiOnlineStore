@@ -19,8 +19,9 @@ import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
 const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+app.disable('etag');
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'], methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'] }));
+app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'], methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 app.use(express.json({ limit: '200kb', verify: (request, _response, buffer) => { (request as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
 
 const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
