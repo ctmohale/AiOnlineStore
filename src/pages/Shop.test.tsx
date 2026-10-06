@@ -67,4 +67,11 @@ describe('shop product search', () => {
     expect(screen.getByRole('button',{name:'Filter products'})).toHaveAttribute('aria-expanded','false');
     expect(panel).not.toHaveClass('open');
   });
+  it('filters departments from the sticky filter search', async () => {
+    const user=userEvent.setup();
+    mount('/shop');
+    await user.type(screen.getByRole('textbox',{name:'Search departments'}),'Baby');
+    expect(screen.getAllByRole('button',{name:/Health, Beauty & Baby/}).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button',{name:/Electronics & Computing/})).not.toBeInTheDocument();
+  });
 });

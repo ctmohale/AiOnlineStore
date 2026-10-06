@@ -51,6 +51,17 @@ describe('mobile storefront layout', () => {
     expectNoHorizontalOverflow();
   });
 
+  it('keeps catalogue search visible while products are scrolling', () => {
+    cy.visit('/shop');
+    cy.get('.shop-product-grid').scrollIntoView();
+    cy.scrollTo('bottom', { duration: 0 });
+    cy.get('.shop-results-toolbar').should('be.visible').then(($toolbar) => {
+      expect($toolbar[0].getBoundingClientRect().top).to.be.closeTo(104, 3);
+    });
+    cy.get('.shop-results-toolbar input[aria-label="Search products"]').should('be.visible').type('Hisense');
+    cy.contains('Hisense Smart QLED Television').should('be.visible');
+  });
+
   it('keeps product and cart actions usable on a narrow screen', () => {
     cy.visit('/product/mobile-product-1');
     cy.contains('Hisense Smart QLED Television').should('be.visible');
