@@ -53,4 +53,18 @@ describe('shop product search', () => {
     await waitFor(() => expect(screen.getByRole('link',{name:extraCare})).toBeInTheDocument());
     expect(screen.getByTestId('location')).toHaveTextContent('?q=Huggies%20Extra%20Care');
   });
+  it('opens and closes the compact mobile filter panel', async () => {
+    const user=userEvent.setup();
+    mount('/shop');
+    const toggle=screen.getByRole('button',{name:'Filter products'});
+    const panel=screen.getByRole('complementary',{name:'Product filters'});
+    expect(toggle).toHaveAttribute('aria-expanded','false');
+    expect(panel).not.toHaveClass('open');
+    await user.click(toggle);
+    expect(screen.getByRole('button',{name:'Close filters'})).toHaveAttribute('aria-expanded','true');
+    expect(panel).toHaveClass('open');
+    await user.click(screen.getByRole('button',{name:'Close filters'}));
+    expect(screen.getByRole('button',{name:'Filter products'})).toHaveAttribute('aria-expanded','false');
+    expect(panel).not.toHaveClass('open');
+  });
 });

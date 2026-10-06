@@ -41,6 +41,7 @@ export default function Shop() {
   const [params, setParams] = useSearchParams();
   const { products, loading, error, refresh } = useCatalog();
   const [categoryQuery, setCategoryQuery] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState('featured');
   const [priceRange, setPriceRange] = useState('all');
   const query = params.get('q') || '';
@@ -92,7 +93,8 @@ export default function Shop() {
     <BrandShowcaseBanner products={products} compact />
 
     <div className="shop-catalogue-layout">
-      <aside className="shop-filter-panel" aria-label="Product filters">
+      <button type="button" className="mobile-filter-toggle" aria-expanded={filtersOpen} aria-controls="shop-filter-panel" onClick={() => setFiltersOpen((open) => !open)}>{filtersOpen ? <X /> : <SlidersHorizontal />}<span>{filtersOpen ? 'Close filters' : 'Filter products'}</span>{(category !== 'All' || priceRange !== 'all') && <b>Active</b>}</button>
+      <aside id="shop-filter-panel" className={`shop-filter-panel${filtersOpen ? ' open' : ''}`} aria-label="Product filters">
         <div className="shop-filter-title"><div><SlidersHorizontal /><strong>Filters</strong></div>{(category !== 'All' || priceRange !== 'all' || query) && <button type="button" onClick={clearFilters}>Clear all</button>}</div>
         <div className="shop-filter-group"><h2>Department</h2><button type="button" aria-pressed={category === 'All'} className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}><span aria-hidden="true">{category === 'All' && <Check />}</span><b>All products</b><small>{products.length.toLocaleString('en-ZA')}</small></button>{categoryData.map((item) => <button type="button" aria-pressed={category === item.name} className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}><span aria-hidden="true">{category === item.name && <Check />}</span><b>{item.name}</b><small>{item.count.toLocaleString('en-ZA')}</small></button>)}</div>
         <div className="shop-filter-group"><h2>Price</h2>{priceOptions.map((option) => <button type="button" aria-pressed={priceRange === option.value} className={priceRange === option.value ? 'active' : ''} onClick={() => { setPriceRange(option.value); update('page', ''); }} key={option.value}><span aria-hidden="true">{priceRange === option.value && <Check />}</span><b>{option.label}</b></button>)}</div>

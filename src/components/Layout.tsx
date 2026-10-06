@@ -48,9 +48,15 @@ export default function Layout() {
     window.addEventListener('keydown', escape);
     return () => { document.removeEventListener('click', close); window.removeEventListener('keydown', escape); };
   }, [accountMenu]);
+  useEffect(() => {
+    setMenu(false);
+    setCategoryMenu(false);
+    setAccountMenu(false);
+  }, [location.pathname, location.search]);
   const search = (event: FormEvent) => {
     event.preventDefault();
     navigate(`/shop?q=${encodeURIComponent(query.trim())}`);
+    setMenu(false);
   };
   return <div className="site-shell">
     <div className="announcement"><MapPin /> South African online store <span>•</span> Nationwide delivery{settings && <><span>•</span> Free delivery from {money(settings.freeDeliveryThreshold)}</>}</div>
