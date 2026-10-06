@@ -33,18 +33,25 @@ export async function createOrder(payload: OrderPayload) {
 export type Customer = { id: number; email: string; name: string; phone: string | null; created_at?: string };
 export type CustomerOrder = { reference: string; status: string; courier_name?: string | null; tracking_number?: string | null; tracking_url?: string | null; expected_ship_at?: string | null; expected_delivery_at?: string | null; delivered_at?: string | null; item_summary: string; product_revenue: number; customer_delivery_charged: number; created_at: string; payment_link?: string | null; payment_provider?: string | null };
 
-async function customerAuth(path: 'login' | 'register', payload: Record<string, string>) {
+type CustomerAuthResult = { token: string; customer: Customer };
+type CustomerVerificationPending = { verificationRequired: true; email: string; expiresInSeconds: number; resendAfterSeconds: number };
+
+async function customerPublicRequest<T>(path: string, payload: Record<string, string>) {
   const finishLoading = beginLoading();
   try {
     const response = await fetch(`${API_URL}/customer/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.error || 'Unable to continue');
-    return body as { token: string; customer: Customer };
+    const body = response.status === 204 ? null : await response.json();
+    if (!response.ok) throw Object.assign(new Error(body?.error || 'Unable to continue'), { status: response.status, body });
+    return body as T;
   } finally { finishLoading(); }
 }
 
-export const customerLogin = (email: string, password: string) => customerAuth('login', { email, password });
-export const customerRegister = (name: string, email: string, phone: string, password: string) => customerAuth('register', { name, email, phone, password });
+export const customerLogin = (email: string, password: string) => customerPublicRequest<CustomerAuthResult>('login', { email, password });
+export const customerRegister = (name: string, email: string, phone: string, password: string) => customerPublicRequest<CustomerVerificationPending>('register', { name, email, phone, password });
+export const customerVerifyEmail = (email: string, code: string) => customerPublicRequest<CustomerAuthResult>('verify-email', { email, code });
+export const customerResendVerification = (email: string) => customerPublicRequest<{ message: string; expiresInSeconds: number; resendAfterSeconds: number }>('resend-verification', { email });
+export const customerForgotPassword = (email: string) => customerPublicRequest<{ message: string; expiresInSeconds: number; resendAfterSeconds: number }>('forgot-password', { email });
+export const customerResetPassword = (email: string, code: string, newPassword: string) => customerPublicRequest<null>('reset-password', { email, code, newPassword });
 
 export async function customerRequest<T>(path: string, options: RequestInit = {}) {
   const finishLoading = beginLoading();

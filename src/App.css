@@ -432,9 +432,22 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .account-form label { display:block; font-size:10px; font-weight:700; margin:18px 0; }
 .account-form input { width:100%; border:1px solid #d5d8d2; background:#fff; padding:12px 13px; outline:0; margin-top:6px; }
 .account-form input:focus { border-color:#5a8574; box-shadow:0 0 0 3px #e4eee8; }
+.account-form input[readonly] { color:#58655f; background:#f1f2ed; cursor:not-allowed; }
 .account-form>small { display:block; margin:-10px 0 16px; color:var(--muted); font-size:8px; }
 .account-form .guest-note { text-align:center; margin:16px 0 0; font-size:9px; }
 .account-form .guest-note a { color:var(--coral); font-weight:700; }
+.account-security-form { text-align:left; }
+.account-security-icon { width:52px; height:52px; display:grid; place-items:center; margin:0 0 22px; border-radius:50%; color:#fff; background:var(--forest); box-shadow:0 8px 24px rgba(23,62,50,.18); }
+.account-security-icon svg { width:23px; }
+.account-form .account-code-input { font-size:24px; font-weight:800; letter-spacing:.34em; text-align:center; color:var(--forest); }
+.account-text-action,.account-secondary-action { appearance:none; border:0; background:transparent; color:var(--forest); cursor:pointer; font:inherit; font-size:11px; font-weight:750; }
+.account-text-action { display:block; padding:0; margin:-8px 0 18px auto; text-decoration:underline; text-underline-offset:3px; }
+.account-secondary-action { width:100%; display:flex; align-items:center; justify-content:center; gap:7px; margin-top:12px; padding:11px; border:1px solid #cad5ce; background:#fff; text-decoration:none; }
+.account-secondary-action svg,.account-back-action svg { width:15px; }
+.account-text-action:disabled,.account-secondary-action:disabled { opacity:.55; cursor:wait; }
+.account-back-action { display:flex; align-items:center; justify-content:center; gap:6px; margin:14px auto 0; text-decoration:none; }
+.verified-email-note { display:flex; align-items:center; gap:6px; margin:-7px 0 14px; color:#48705f; font-size:11px; font-weight:650; }
+.verified-email-note svg { width:14px; }
 .account-loading { min-height:65vh; display:grid; place-items:center; color:var(--muted); }
 .account-heading { display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:42px; }
 .account-heading>div>p:last-child { color:var(--muted); }

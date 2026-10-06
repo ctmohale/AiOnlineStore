@@ -68,6 +68,23 @@ export const customerRegisterSchema = z.object({
 
 export const customerLoginSchema = z.object({ email: z.email().max(190), password: z.string().min(1).max(128) });
 
+const emailCodeSchema = z.string().trim().regex(/^\d{6}$/, 'Enter the six-digit code from your email');
+
+export const customerEmailVerificationSchema = z.object({
+  email: z.email().max(190),
+  code: emailCodeSchema,
+});
+
+export const customerVerificationResendSchema = z.object({ email: z.email().max(190) });
+
+export const customerForgotPasswordSchema = z.object({ email: z.email().max(190) });
+
+export const customerPasswordResetSchema = z.object({
+  email: z.email().max(190),
+  code: emailCodeSchema,
+  newPassword: z.string().min(10).max(128),
+});
+
 const customerPhoneSchema = z.preprocess(
   (value) => value === '' ? null : value,
   z.string().trim().regex(/^[0-9+ ]{9,15}$/).nullable().optional(),

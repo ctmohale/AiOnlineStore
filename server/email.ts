@@ -4,7 +4,7 @@ import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, pool } from './db/pool.js';
 
 export type OrderEmailKind = 'checkout_ready' | 'payment_confirmed' | 'payment_failed' | 'purchasing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'case_update' | 'admin_new_order';
-export type AccountEmailKind = 'welcome' | 'password_changed' | 'profile_updated' | 'test';
+export type AccountEmailKind = 'welcome' | 'password_changed' | 'profile_updated' | 'verify_email' | 'password_reset' | 'test';
 
 type OrderItem = { product_title_snapshot: string; quantity: number; agreed_unit_price: number };
 type OrderSnapshot = {
@@ -17,6 +17,7 @@ type OrderEmailOptions = {
   eventKey?: string; paymentLink?: string | null; paymentMode?: string | null;
   caseReference?: string; caseStatus?: string; caseType?: string;
 };
+type AccountEmailOptions = { code?: string; expiresMinutes?: number };
 type RenderedEmail = { subject: string; html: string; text: string };
 type OutboxRow = RowDataPacket & {
   id: number; message_type: string; recipient_email: string; recipient_name: string | null; reply_to_email: string | null; subject: string;
@@ -118,7 +119,7 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   return { subject: `${testPrefix}New store order ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${address}`, { label: 'Open operations dashboard', url: `${storeUrl()}/admin` }, isTest, generalEmail()), text: `${title}\n\n${intro}\n\n${common.text}\n\nCustomer: ${order.customer_name}, ${order.customer_email}, ${order.customer_phone}\nDelivery: ${[order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', ')}\n\nAdmin: ${storeUrl()}/admin` };
 }
 
-export function buildAccountEmail(kind: AccountEmailKind, customer: { name: string; email: string }): RenderedEmail {
+export function buildAccountEmail(kind: AccountEmailKind, customer: { name: string; email: string }, options: AccountEmailOptions = {}): RenderedEmail {
   const accountUrl = `${storeUrl()}/account`;
   if (kind === 'test') {
     const title = 'Transactional email is working';
@@ -129,6 +130,19 @@ export function buildAccountEmail(kind: AccountEmailKind, customer: { name: stri
     const title = 'Welcome to Mzansi Mega Store';
     const intro = `Hi ${customer.name}, your customer account is ready. You can now follow signed-in orders and delivery progress in one place.`;
     return { subject: 'Welcome to Mzansi Mega Store', html: emailFrame(title, intro, '', { label: 'Open your account', url: accountUrl }), text: `${title}\n\n${intro}\n\nOpen your account: ${accountUrl}` };
+  }
+  if (kind === 'verify_email' || kind === 'password_reset') {
+    if (!options.code || !/^\d{6}$/.test(options.code)) throw new Error(`A six-digit code is required for ${kind}`);
+    const expiresMinutes = options.expiresMinutes || 10;
+    const isVerification = kind === 'verify_email';
+    const title = isVerification ? 'Confirm your email address' : 'Reset your password';
+    const intro = isVerification
+      ? `Hi ${customer.name}, enter this code to finish creating your Mzansi Mega Store account.`
+      : `Hi ${customer.name}, enter this code to choose a new password for your Mzansi Mega Store account.`;
+    const code = escapeHtml(options.code);
+    const body = `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:6px 0 22px"><tr><td align="center" style="padding:22px;border:1px solid #ded8cd;border-radius:12px;background:#faf7f0"><div style="color:#6a7771;font-size:11px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase">Your secure code</div><div style="margin-top:8px;color:#173e32;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:800;letter-spacing:8px;line-height:42px">${code}</div><div style="margin-top:8px;color:#75807b;font-size:12px;line-height:18px">Expires in ${expiresMinutes} minutes · Can only be used once</div></td></tr></table><p style="margin:0 0 18px;color:#5f6d67;font-size:13px;line-height:20px">If you did not request this code, you can safely ignore this email. Do not share the code with anyone.</p>`;
+    const subject = isVerification ? 'Confirm your Mzansi Mega Store email' : 'Reset your Mzansi Mega Store password';
+    return { subject, html: emailFrame(title, intro, body), text: `${title}\n\n${intro}\n\nYour secure code: ${options.code}\nThis code expires in ${expiresMinutes} minutes and can only be used once.\n\nIf you did not request this code, ignore this email. Do not share it with anyone.` };
   }
   if (kind === 'password_changed') {
     const title = 'Your password was changed';
@@ -157,8 +171,8 @@ export async function enqueueOrderEmail(connection: PoolConnection, orderId: str
   await insertOutbox(connection, { eventKey: options.eventKey || `order:${order.id}:${kind}`, messageType: `order_${kind}`, ...recipient, replyToEmail, rendered });
 }
 
-export async function enqueueAccountEmail(connection: PoolConnection, customer: { id: number | string; name: string; email: string }, kind: AccountEmailKind, eventKey?: string) {
-  await insertOutbox(connection, { eventKey: eventKey || `customer:${customer.id}:${kind}`, messageType: `account_${kind}`, email: customer.email, name: customer.name, replyToEmail: supportEmail(), rendered: buildAccountEmail(kind, customer) });
+export async function enqueueAccountEmail(connection: PoolConnection, customer: { id: number | string; name: string; email: string }, kind: AccountEmailKind, eventKey?: string, options: AccountEmailOptions = {}) {
+  await insertOutbox(connection, { eventKey: eventKey || `customer:${customer.id}:${kind}`, messageType: `account_${kind}`, email: customer.email, name: customer.name, replyToEmail: supportEmail(), rendered: buildAccountEmail(kind, customer, options) });
 }
 
 export async function queueConfiguredEmailTest() {

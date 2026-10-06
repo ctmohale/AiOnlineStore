@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adminCustomerUpdateSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema } from './validation';
+import { adminCustomerUpdateSchema, customerEmailVerificationSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, orderStatusSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema } from './validation';
 
 describe('shipment tracking', () => {
   it('requires a courier and number, and rejects unsafe tracking links', () => {
@@ -18,6 +18,14 @@ describe('customer account validation', () => {
 
   it('accepts an admin profile update without forcing a password reset', () => {
     expect(adminCustomerUpdateSchema.parse({ name: 'Example Customer', email: 'customer@example.com', phone: '', newPassword: '' }).phone).toBeNull();
+  });
+
+  it('requires exactly six digits for email verification and password reset', () => {
+    expect(customerEmailVerificationSchema.safeParse({ email: 'customer@example.com', code: '123456' }).success).toBe(true);
+    expect(customerEmailVerificationSchema.safeParse({ email: 'customer@example.com', code: '12345' }).success).toBe(false);
+    expect(customerEmailVerificationSchema.safeParse({ email: 'customer@example.com', code: '12A456' }).success).toBe(false);
+    expect(customerPasswordResetSchema.safeParse({ email: 'customer@example.com', code: '123456', newPassword: 'short' }).success).toBe(false);
+    expect(customerPasswordResetSchema.safeParse({ email: 'customer@example.com', code: '123456', newPassword: 'new-secure-password' }).success).toBe(true);
   });
 });
 

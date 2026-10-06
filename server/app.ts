@@ -12,7 +12,7 @@ import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerLoginSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
 import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
 
@@ -27,6 +27,52 @@ const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHead
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
 const reference = () => `MMS-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 const productSlug = (title: string, model: string) => `${title}-${model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 170) + `-${crypto.randomBytes(3).toString('hex')}`;
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_SECONDS = 60;
+type EmailChallengePurpose = 'registration' | 'password_reset';
+type EmailChallengeCustomer = { id: number; email: string; name: string };
+
+function emailOtpSecret() {
+  const secret = process.env.EMAIL_OTP_SECRET || process.env.JWT_SECRET;
+  if (!secret || secret.length < 32) throw Object.assign(new Error('Email verification is not configured'), { status: 503 });
+  return secret;
+}
+
+const generateEmailCode = () => String(crypto.randomInt(100000, 1_000_000));
+const hashEmailCode = (customerId: number, purpose: EmailChallengePurpose, code: string) => crypto.createHmac('sha256', emailOtpSecret()).update(`${customerId}:${purpose}:${code}`).digest('hex');
+function emailCodeMatches(customerId: number, purpose: EmailChallengePurpose, code: string, expectedHash: string) {
+  const actual = Buffer.from(hashEmailCode(customerId, purpose, code), 'hex');
+  const expected = Buffer.from(expectedHash, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+async function issueEmailChallenge(connection: PoolConnection, customer: EmailChallengeCustomer, purpose: EmailChallengePurpose, enforceCooldown = false) {
+  if (enforceCooldown) {
+    const [recentRows] = await connection.execute('SELECT TIMESTAMPDIFF(SECOND,created_at,UTC_TIMESTAMP()) AS age_seconds FROM customer_email_challenges WHERE customer_id=? AND purpose=? ORDER BY id DESC LIMIT 1', [customer.id, purpose]);
+    const recent = (recentRows as (RowDataPacket & { age_seconds: number })[])[0];
+    if (recent && Number(recent.age_seconds) < OTP_RESEND_SECONDS) return { sent: false, retryAfterSeconds: OTP_RESEND_SECONDS - Number(recent.age_seconds) };
+  }
+  const code = generateEmailCode();
+  await connection.execute('UPDATE customer_email_challenges SET consumed_at=COALESCE(consumed_at,UTC_TIMESTAMP()) WHERE customer_id=? AND purpose=? AND consumed_at IS NULL', [customer.id, purpose]);
+  const [result] = await connection.execute('INSERT INTO customer_email_challenges (customer_id,purpose,code_hash,expires_at) VALUES (?,?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? MINUTE))', [customer.id, purpose, hashEmailCode(customer.id, purpose, code), OTP_EXPIRY_MINUTES]);
+  const challengeId = Number((result as { insertId: number }).insertId);
+  const kind = purpose === 'registration' ? 'verify_email' : 'password_reset';
+  await enqueueAccountEmail(connection, customer, kind, `customer:${customer.id}:${purpose}:${challengeId}`, { code, expiresMinutes: OTP_EXPIRY_MINUTES });
+  return { sent: true, retryAfterSeconds: OTP_RESEND_SECONDS };
+}
+
+async function consumeEmailChallenge(connection: PoolConnection, customerId: number, purpose: EmailChallengePurpose, code: string) {
+  const [rows] = await connection.execute('SELECT id,code_hash,attempts,(expires_at>UTC_TIMESTAMP()) AS is_active FROM customer_email_challenges WHERE customer_id=? AND purpose=? AND consumed_at IS NULL ORDER BY id DESC LIMIT 1 FOR UPDATE', [customerId, purpose]);
+  const challenge = (rows as (RowDataPacket & { id: number; code_hash: string; attempts: number; is_active: number })[])[0];
+  if (!challenge || !challenge.is_active || Number(challenge.attempts) >= OTP_MAX_ATTEMPTS) return 'invalid' as const;
+  if (!emailCodeMatches(customerId, purpose, code, challenge.code_hash)) {
+    await connection.execute(`UPDATE customer_email_challenges SET attempts=attempts+1,consumed_at=IF(attempts+1>=?,UTC_TIMESTAMP(),consumed_at) WHERE id=?`, [OTP_MAX_ATTEMPTS, challenge.id]);
+    return 'invalid' as const;
+  }
+  await connection.execute('UPDATE customer_email_challenges SET consumed_at=UTC_TIMESTAMP() WHERE customer_id=? AND purpose=? AND consumed_at IS NULL', [customerId, purpose]);
+  return 'accepted' as const;
+}
 
 type ProductImageRow = RowDataPacket & { product_id: number; url: string; alt_text: string; sort_order: number };
 async function withProductImages(rows: RowDataPacket[]) {
@@ -251,15 +297,60 @@ app.post('/api/customer/register', loginLimiter, async (request, response, next)
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const email = input.email.toLowerCase();
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const id = await withTransaction(async (connection) => {
-      const [existing] = await connection.execute('SELECT id FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
-      if ((existing as RowDataPacket[]).length) throw Object.assign(new Error('An account already exists for this email'), { status: 409 });
+    await withTransaction(async (connection) => {
+      const [existingRows] = await connection.execute('SELECT id,email,name,email_verified_at FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
+      const existing = (existingRows as (RowDataPacket & EmailChallengeCustomer & { email_verified_at: Date | null })[])[0];
+      if (existing?.email_verified_at) throw Object.assign(new Error('An account already exists for this email'), { status: 409 });
+      if (existing) {
+        await issueEmailChallenge(connection, existing, 'registration', true);
+        return;
+      }
       const [result] = await connection.execute('INSERT INTO customers (email,password_hash,name,phone) VALUES (?,?,?,?)', [email, passwordHash, input.name, input.phone || null]);
       const id = Number((result as { insertId: number }).insertId);
-      await enqueueAccountEmail(connection, { id, email, name: input.name }, 'welcome');
-      return id;
+      await issueEmailChallenge(connection, { id, email, name: input.name }, 'registration');
     });
-    response.status(201).json({ token: signCustomerToken({ sub: String(id), email, role: 'customer' }), customer: { id, email, name: input.name, phone: input.phone || null } });
+    response.status(202).json({ verificationRequired: true, email, expiresInSeconds: OTP_EXPIRY_MINUTES * 60, resendAfterSeconds: OTP_RESEND_SECONDS });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer/verify-email', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerEmailVerificationSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,phone,email_verified_at FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
+      const customer = (rows as (RowDataPacket & EmailChallengeCustomer & { phone: string | null; email_verified_at: Date | null })[])[0];
+      if (!customer) return { status: 'invalid' as const };
+      if (customer.email_verified_at) return { status: 'verified' as const };
+      if (await consumeEmailChallenge(connection, customer.id, 'registration', input.code) !== 'accepted') return { status: 'invalid' as const };
+      await connection.execute('UPDATE customers SET email_verified_at=UTC_TIMESTAMP() WHERE id=?', [customer.id]);
+      await enqueueAccountEmail(connection, customer, 'welcome', `customer:${customer.id}:welcome:verified`);
+      return { status: 'accepted' as const, customer };
+    });
+    if (result.status === 'verified') return response.status(409).json({ error: 'This email is already verified. Sign in to continue.' });
+    if (result.status !== 'accepted') return response.status(400).json({ error: 'That code is invalid or has expired. Request a new code and try again.' });
+    const customer = result.customer;
+    response.json({ token: signCustomerToken({ sub: String(customer.id), email: customer.email, role: 'customer' }), customer: { id: customer.id, email: customer.email, name: customer.name, phone: customer.phone } });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer/resend-verification', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerVerificationResendSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,email_verified_at FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
+      const customer = (rows as (RowDataPacket & EmailChallengeCustomer & { email_verified_at: Date | null })[])[0];
+      if (!customer) return { status: 'missing' as const };
+      if (customer.email_verified_at) return { status: 'verified' as const };
+      return { status: 'pending' as const, ...(await issueEmailChallenge(connection, customer, 'registration', true)) };
+    });
+    if (result.status === 'verified') return response.status(409).json({ error: 'This email is already verified. Sign in to continue.' });
+    if (result.status === 'missing') return response.status(404).json({ error: 'No pending registration was found for this email.' });
+    if (!result.sent) return response.status(429).json({ error: `Please wait ${result.retryAfterSeconds} seconds before requesting another code.`, retryAfterSeconds: result.retryAfterSeconds });
+    response.status(202).json({ message: 'A new verification code has been sent.', expiresInSeconds: OTP_EXPIRY_MINUTES * 60, resendAfterSeconds: OTP_RESEND_SECONDS });
   } catch (error) { next(error); }
 });
 
@@ -267,10 +358,44 @@ app.post('/api/customer/login', loginLimiter, async (request, response, next) =>
   try {
     const input = customerLoginSchema.parse(request.body);
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute('SELECT id,email,password_hash,name,phone FROM customers WHERE email=? LIMIT 1', [input.email.toLowerCase()]);
-    const customer = (rows as (RowDataPacket & { id: number; email: string; password_hash: string; name: string; phone: string | null })[])[0];
+    const [rows] = await pool.execute('SELECT id,email,password_hash,name,phone,email_verified_at FROM customers WHERE email=? LIMIT 1', [input.email.toLowerCase()]);
+    const customer = (rows as (RowDataPacket & { id: number; email: string; password_hash: string; name: string; phone: string | null; email_verified_at: Date | null })[])[0];
     if (!customer || !await bcrypt.compare(input.password, customer.password_hash)) return response.status(401).json({ error: 'Invalid email or password' });
+    if (!customer.email_verified_at) return response.status(403).json({ error: 'Verify your email before signing in.', verificationRequired: true, email: customer.email });
     response.json({ token: signCustomerToken({ sub: String(customer.id), email: customer.email, role: 'customer' }), customer: { id: customer.id, email: customer.email, name: customer.name, phone: customer.phone } });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer/forgot-password', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerForgotPasswordSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,email_verified_at FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [input.email.toLowerCase()]);
+      const customer = (rows as (RowDataPacket & EmailChallengeCustomer & { email_verified_at: Date | null })[])[0];
+      if (customer?.email_verified_at) await issueEmailChallenge(connection, customer, 'password_reset', true);
+    });
+    response.status(202).json({ message: 'If a verified account exists for that email, a password reset code has been sent.', expiresInSeconds: OTP_EXPIRY_MINUTES * 60, resendAfterSeconds: OTP_RESEND_SECONDS });
+  } catch (error) { next(error); }
+});
+
+app.post('/api/customer/reset-password', loginLimiter, async (request, response, next) => {
+  try {
+    const input = customerPasswordResetSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const email = input.email.toLowerCase();
+    const passwordHash = await bcrypt.hash(input.newPassword, 12);
+    const result = await withTransaction(async (connection) => {
+      const [rows] = await connection.execute('SELECT id,email,name,email_verified_at FROM customers WHERE email=? LIMIT 1 FOR UPDATE', [email]);
+      const customer = (rows as (RowDataPacket & EmailChallengeCustomer & { email_verified_at: Date | null })[])[0];
+      if (!customer?.email_verified_at) return 'invalid' as const;
+      if (await consumeEmailChallenge(connection, customer.id, 'password_reset', input.code) !== 'accepted') return 'invalid' as const;
+      await connection.execute('UPDATE customers SET password_hash=? WHERE id=?', [passwordHash, customer.id]);
+      await enqueueAccountEmail(connection, customer, 'password_changed', `customer:${customer.id}:password_reset:${Date.now()}`);
+      return 'accepted' as const;
+    });
+    if (result !== 'accepted') return response.status(400).json({ error: 'That code is invalid or has expired. Request a new code and try again.' });
+    response.status(204).end();
   } catch (error) { next(error); }
 });
 
@@ -284,6 +409,10 @@ app.patch('/api/customer/me', requireCustomer, async (request, response, next) =
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const email = input.email.toLowerCase();
     await withTransaction(async (connection) => {
+      const [currentRows] = await connection.execute('SELECT email FROM customers WHERE id=? LIMIT 1 FOR UPDATE', [response.locals.customer.sub]);
+      const current = (currentRows as (RowDataPacket & { email: string })[])[0];
+      if (!current) throw Object.assign(new Error('Customer not found'), { status: 404 });
+      if (current.email.toLowerCase() !== email) throw Object.assign(new Error('Your verified email cannot be changed here. Contact support for help.'), { status: 409 });
       const [duplicates] = await connection.execute('SELECT id FROM customers WHERE email=? AND id<>? LIMIT 1 FOR UPDATE', [email, response.locals.customer.sub]);
       if ((duplicates as RowDataPacket[]).length) throw Object.assign(new Error('Another account already uses this email address'), { status: 409 });
       const [result] = await connection.execute('UPDATE customers SET name=?,email=?,phone=? WHERE id=?', [input.name, email, input.phone || null, response.locals.customer.sub]);

@@ -51,6 +51,17 @@ describe('transactional email templates', () => {
     expect(email.html).not.toMatch(/password_hash|SMTP_PASS/i);
   });
 
+  it('renders one-time security codes only inside the email body', () => {
+    const verification = buildAccountEmail('verify_email', { name: 'Nomsa Dlamini', email: 'nomsa@example.test' }, { code: '482193', expiresMinutes: 10 });
+    const reset = buildAccountEmail('password_reset', { name: 'Nomsa Dlamini', email: 'nomsa@example.test' }, { code: '731640', expiresMinutes: 10 });
+    expect(verification.subject).not.toContain('482193');
+    expect(verification.html).toContain('482193');
+    expect(verification.text).toContain('expires in 10 minutes');
+    expect(reset.subject).not.toContain('731640');
+    expect(reset.html).toContain('731640');
+    expect(reset.text).toContain('Do not share it');
+  });
+
   it('routes ordinary help to support and returns to the product-return mailbox', () => {
     const paymentEmail = buildOrderEmail('payment_confirmed', order, items);
     const returnEmail = buildOrderEmail('case_update', order, items, { caseType: 'return', caseReference: 'MM-RET-123', caseStatus: 'approved' });
@@ -64,14 +75,14 @@ describe('transactional email templates', () => {
 
   it('renders every template with the shared storefront branding and hosted images', () => {
     const orderKinds: OrderEmailKind[] = ['checkout_ready', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update', 'admin_new_order'];
-    const accountKinds: AccountEmailKind[] = ['welcome', 'password_changed', 'profile_updated', 'test'];
+    const accountKinds: AccountEmailKind[] = ['welcome', 'password_changed', 'profile_updated', 'verify_email', 'password_reset', 'test'];
     const options = { paymentLink: 'https://pay.example.test/checkout', caseType: 'return', caseReference: 'MM-RET-123', caseStatus: 'approved' };
     const rendered = [
       ...orderKinds.map((kind) => buildOrderEmail(kind, order, items, options)),
-      ...accountKinds.map((kind) => buildAccountEmail(kind, { name: 'Nomsa Dlamini', email: 'nomsa@example.test' })),
+      ...accountKinds.map((kind) => buildAccountEmail(kind, { name: 'Nomsa Dlamini', email: 'nomsa@example.test' }, kind === 'verify_email' || kind === 'password_reset' ? { code: '482193', expiresMinutes: 10 } : {})),
     ];
 
-    expect(rendered).toHaveLength(14);
+    expect(rendered).toHaveLength(16);
     for (const email of rendered) {
       expect(email.subject.length).toBeGreaterThan(5);
       expect(email.text.length).toBeGreaterThan(20);
