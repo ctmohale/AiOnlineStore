@@ -181,7 +181,7 @@ export async function queueConfiguredEmailTest() {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) throw new Error('EMAIL_TEST_RECIPIENT is not a valid email address');
   await withTransaction(async (connection) => {
     await insertOutbox(connection, {
-      eventKey: `system:branded_email_test:v3:${recipient}`,
+      eventKey: `system:branded_email_test:v4:${recipient}`,
       messageType: 'account_test',
       email: recipient,
       name: 'Mzansi Mega Store test recipient',
@@ -306,7 +306,7 @@ export async function processEmailOutbox(limit = 20) {
     const message = await claimEmail();
     if (!message) break;
     try {
-      const envelopeFrom = String(process.env.SMTP_USER || '').trim().toLowerCase();
+      const envelopeFrom = String(process.env.EMAIL_ENVELOPE_FROM || process.env.SMTP_USER || '').trim().toLowerCase();
       const result = await mailTransport().sendMail({
         from: process.env.EMAIL_FROM || `Mzansi Mega Store <${process.env.SMTP_USER}>`,
         to: message.recipient_name ? { name: message.recipient_name, address: message.recipient_email } : message.recipient_email,
@@ -328,7 +328,7 @@ export async function processEmailOutbox(limit = 20) {
         throw new Error(`SMTP server did not accept ${message.recipient_email}: ${result.response || 'no response provided'}`);
       }
       await pool.execute("UPDATE email_outbox SET status='sent',sent_at=UTC_TIMESTAMP(),locked_at=NULL,provider_message_id=?,last_error=NULL WHERE id=?", [String(result.messageId || '').slice(0, 255), message.id]);
-      console.log(`SMTP accepted email ${message.id} for ${message.recipient_email}; messageId=${result.messageId}; response=${result.response || 'accepted'}`);
+      console.log(`SMTP accepted ${message.message_type} email ${message.id} for ${message.recipient_email}; envelopeFrom=${envelopeFrom}; messageId=${result.messageId}; response=${result.response || 'accepted'}`);
       sent += 1;
     } catch (error) {
       const terminal = message.attempts >= 5;
