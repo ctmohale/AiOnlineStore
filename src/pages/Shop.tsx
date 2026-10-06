@@ -83,9 +83,7 @@ export default function Shop() {
     </section>
 
     <section className="shop-department-strip" aria-label="Product categories">
-      <label className="shop-category-search"><Search aria-hidden="true" /><input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Find a category…" aria-label="Find a product category" />{categoryQuery && <button type="button" onClick={() => setCategoryQuery('')} aria-label="Clear category search"><X /></button>}</label>
-      {!displayedCategories.length && <p className="shop-category-empty" role="status">No categories match. Try another name or search products below.</p>}
-      <div className="shop-department-links" tabIndex={0} role="group" aria-label="Product categories; scroll horizontally for more">{displayedCategories.map((item) => <button type="button" className={category === item.name ? 'active' : ''} title={FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || item.name} aria-pressed={category === item.name} onClick={() => update('category', item.name)} key={item.name}>
+      <div className="shop-department-links" tabIndex={0} role="group" aria-label="Product categories; scroll horizontally for more">{categoryData.map((item) => <button type="button" className={category === item.name ? 'active' : ''} title={FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || item.name} aria-pressed={category === item.name} onClick={() => update('category', item.name)} key={item.name}>
         <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" loading="lazy" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
     </section>

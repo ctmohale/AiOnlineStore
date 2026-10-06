@@ -1593,13 +1593,6 @@ footer a,footer p { font-size:13px; }
 .global-loading-backdrop .global-loading small { font-size:14px; }
 
 /* Searchable category tiles, including focused shopping options. */
-.shop-category-search { display:flex; align-items:center; gap:10px; margin:12px; padding:10px 12px; border:1px solid #dde1dc; border-radius:7px; background:#fafbf9; }
-.shop-category-search>svg { width:18px; height:18px; color:var(--forest); }
-.shop-category-search input { width:100%; min-width:0; border:0; outline:0; background:transparent; color:var(--ink); font:inherit; font-size:13px; }
-.shop-category-search:focus-within { outline:2px solid var(--forest); outline-offset:2px; }
-.shop-category-search button { display:grid; place-items:center; border:0; background:transparent; cursor:pointer; color:var(--forest); }
-.shop-category-search button svg { width:18px; height:18px; }
-.shop-category-empty { padding:0 18px 14px; color:#78827d; font-size:13px; }
 .shop-department-links { grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); }
 .shop-department-links>button { border-bottom:1px solid #e7e9e5; transition:background .18s ease,box-shadow .18s ease; }
 .shop-department-links>button:focus-visible { outline:2px solid var(--forest); outline-offset:-3px; }
@@ -1769,7 +1762,6 @@ footer a,footer p { font-size:13px; }
   .shop-page-hero { min-height:195px; margin-top:10px; padding:17px 18px 21px; background-position:62% center; }
   .shop-page-hero-copy h1 { font-size:34px; }
   .shop-page-hero-copy p { font-size:11px; }
-  .shop-category-search { margin:9px; min-height:44px; }
   .shop-department-links>button { flex-basis:104px; min-height:110px; padding:7px 5px 9px; }
   .shop-department-links>button>span { width:58px; height:58px; }
   .shop-department-links strong { min-height:25px; font-size:9px; }

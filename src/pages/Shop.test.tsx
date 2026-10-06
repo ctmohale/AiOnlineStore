@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -71,7 +71,8 @@ describe('shop product search', () => {
     const user=userEvent.setup();
     mount('/shop');
     await user.type(screen.getByRole('textbox',{name:'Search departments'}),'Baby');
-    expect(screen.getAllByRole('button',{name:/Health, Beauty & Baby/}).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button',{name:/Electronics & Computing/})).not.toBeInTheDocument();
+    const filters=within(screen.getByRole('complementary',{name:'Product filters'}));
+    expect(filters.getByRole('button',{name:/Health, Beauty & Baby/})).toBeInTheDocument();
+    expect(filters.queryByRole('button',{name:/Electronics & Computing/})).not.toBeInTheDocument();
   });
 });
