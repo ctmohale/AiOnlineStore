@@ -26,6 +26,6 @@ test('shows the signed-in customer in the main navigation', async () => {
   expect(account).toHaveTextContent('Signed in');
   expect(account).toHaveTextContent('Nomsa');
   await user.click(account);
-  expect(screen.getByRole('link', { name: /My profile/ })).toHaveAttribute('href', '/account#profile');
-  expect(screen.getByRole('link', { name: /Track orders/ })).toHaveAttribute('href', '/account#orders');
+  expect(screen.getByRole('link', { name: /My profile/ })).toHaveAttribute('href', '/account');
+  expect(screen.getAllByRole('link', { name: /Track orders/ })[0]).toHaveAttribute('href', '/orders');
 });

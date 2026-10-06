@@ -13,6 +13,13 @@ export const rotatingProducts = <T>(items: T[], count: number, bucket: number, o
   return result;
 };
 
+export const homepageProductSections = <T extends { id: number }>(items: T[], bucket: number, count = 4) => {
+  const deals = rotatingProducts(items, count, bucket, 5);
+  const dealIds = new Set(deals.map((product) => product.id));
+  const popular = items.filter((product) => !dealIds.has(product.id)).slice(0, count);
+  return { deals, popular };
+};
+
 export const homepageProductPool = (products: Product[], required: number) => {
   const available = products.filter((product) => product.price > 0
     && product.price <= HOMEPAGE_PRICE_CEILING && Boolean(product.image || product.images?.some((image) => image.url))

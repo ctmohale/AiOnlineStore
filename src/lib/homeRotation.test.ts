@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Product } from '../data/products';
-import { HOME_ROTATION_MS, HOMEPAGE_PRICE_CEILING, homeRotationBucket, homepageProductPool, rotatingProducts } from './homeRotation';
+import { HOME_ROTATION_MS, HOMEPAGE_PRICE_CEILING, homeRotationBucket, homepageProductPool, homepageProductSections, rotatingProducts } from './homeRotation';
 
 describe('homepage product rotation', () => {
   it('uses stable ten-minute time windows', () => {
@@ -34,6 +34,14 @@ describe('homepage product rotation', () => {
     const hero = rotatingProducts(products, 5, 20);
     const grid = rotatingProducts(products, 6, 20, 5);
     expect(grid.some((product) => hero.includes(product))).toBe(false);
+  });
+
+  it('builds two different four-product homepage sections', () => {
+    const products = Array.from({ length: 12 }, (_, index) => ({ id: index + 1 }));
+    const { deals, popular } = homepageProductSections(products, 7);
+    expect(deals).toHaveLength(4);
+    expect(popular).toHaveLength(4);
+    expect(popular.some((product) => deals.some((deal) => deal.id === product.id))).toBe(false);
   });
 });
 

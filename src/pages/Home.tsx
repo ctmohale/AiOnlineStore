@@ -21,7 +21,7 @@ import ProductVisual from '../components/ProductVisual';
 import BrandShowcaseBanner from '../components/BrandShowcaseBanner';
 import { money } from '../data/products';
 import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
-import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
+import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, homepageProductSections, rotatingProducts } from '../lib/homeRotation';
 import { useCatalog } from '../state/CatalogContext';
 
 const categoryPresentation: Record<string, { image?: string; icon?: LucideIcon; tone: string }> = {
@@ -71,8 +71,7 @@ export default function Home() {
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
   const productPool = homepageProductPool(products, 16);
   const heroProducts = rotatingProducts(productPool, 5, rotationBucket);
-  const dealProducts = rotatingProducts(productPool, 5, rotationBucket, 5);
-  const popularProducts = productPool.slice(0, 5);
+  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(productPool, rotationBucket);
   const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);

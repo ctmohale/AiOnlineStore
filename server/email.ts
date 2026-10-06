@@ -60,7 +60,7 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   const testPrefix = isTest ? '[TEST] ' : '';
   const summaryHtml = orderSummaryHtml(order, items);
   const summaryText = orderSummaryText(order, items);
-  const accountUrl = `${storeUrl()}/account`;
+  const accountUrl = `${storeUrl()}/orders`;
   const deliveryDate = date(order.expected_delivery_at);
   const common = { html: summaryHtml, text: summaryText };
 
