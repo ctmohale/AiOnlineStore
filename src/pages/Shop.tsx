@@ -2,6 +2,7 @@ import { ArrowRight, Check, ChevronRight, Home, PackageCheck, Search, SlidersHor
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
+import BrandShowcaseBanner from '../components/BrandShowcaseBanner';
 import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries, matchesCategory, FOCUSED_CATEGORIES } from '../lib/categories';
 import { matchesProductSearch } from '../lib/productSearch';
@@ -87,6 +88,8 @@ export default function Shop() {
         <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" loading="lazy" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
     </section>
+
+    <BrandShowcaseBanner products={products} compact />
 
     <div className="shop-catalogue-layout">
       <aside className="shop-filter-panel" aria-label="Product filters">

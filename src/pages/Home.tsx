@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import ProductVisual from '../components/ProductVisual';
+import BrandShowcaseBanner from '../components/BrandShowcaseBanner';
 import { money } from '../data/products';
 import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
 import { HOME_ROTATION_MS, homeRotationBucket, homepageProductPool, rotatingProducts } from '../lib/homeRotation';
@@ -171,6 +172,8 @@ export default function Home() {
       <div><Headphones /><span><strong>Local customer support</strong><small>Help before and after your order</small></span></div>
       <div><BadgeCheck /><span><strong>Useful product details</strong><small>Shop with the information you need</small></span></div>
     </section>
+
+    <BrandShowcaseBanner products={products} />
 
     <section className="retail-section retail-categories">
       <div className="retail-section-heading"><div><span>Shop by department</span><h2>Find what you need, faster.</h2></div><Link to="/shop">View all products <ArrowRight /></Link></div>
