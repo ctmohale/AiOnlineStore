@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, LockKeyhole, ShieldCheck, Truck, UserRound } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useLayoutEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { money } from '../data/products';
 import { createOrder, customerRequest, type Customer } from '../lib/api';
@@ -12,6 +12,9 @@ import { deliveryEstimate } from '../../shared/delivery';
 const provinces = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'];
 
 export default function Checkout() {
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, []);
   const { cart, subtotal, clear } = useStore();
   const { settings } = useCatalog();
   const delivery = settings ? subtotal >= settings.freeDeliveryThreshold ? 0 : settings.standardCustomerDelivery : 0;
