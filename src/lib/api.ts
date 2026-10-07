@@ -53,11 +53,14 @@ export const customerResendVerification = (email: string) => customerPublicReque
 export const customerForgotPassword = (email: string) => customerPublicRequest<{ message: string; expiresInSeconds: number; resendAfterSeconds: number }>('forgot-password', { email });
 export const customerResetPassword = (email: string, code: string, newPassword: string) => customerPublicRequest<null>('reset-password', { email, code, newPassword });
 
-export async function customerRequest<T>(path: string, options: RequestInit = {}) {
-  const finishLoading = beginLoading();
+type CustomerRequestOptions = RequestInit & { silent?: boolean };
+
+export async function customerRequest<T>(path: string, options: CustomerRequestOptions = {}) {
+  const { silent = false, ...requestOptions } = options;
+  const finishLoading = silent ? () => undefined : beginLoading();
   try {
     const token = getCustomerToken();
-    const response = await fetch(`${API_URL}/customer${path}`, { ...options, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...options.headers } });
+    const response = await fetch(`${API_URL}/customer${path}`, { ...requestOptions, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...requestOptions.headers } });
     const body = response.status === 204 ? null : await response.json();
     if (!response.ok) throw Object.assign(new Error(body.error || 'Unable to load your account'), { status: response.status });
     return body as T;

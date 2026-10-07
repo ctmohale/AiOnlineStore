@@ -67,7 +67,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (loading || error) return;
     let cancelled = false;
     setRemoteReady(false);
-    void customerRequest<SavedCart>('/cart').then(async (saved) => {
+    void customerRequest<SavedCart>('/cart', { silent: true }).then(async (saved) => {
       if (cancelled) return;
       const merged = new Map<number, CartLine>();
       for (const item of saved.items) {
@@ -83,7 +83,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       const lines = [...merged.values()].slice(0, 50);
       replaceCart(lines);
-      await customerRequest('/cart', { method: 'PUT', body: JSON.stringify({ items: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })) }) });
+      await customerRequest('/cart', { method: 'PUT', body: JSON.stringify({ items: lines.map((line) => ({ productId: line.product.id, quantity: line.quantity })) }), silent: true });
       if (!cancelled) { localStorage.setItem(CART_OWNER_KEY, String(saved.customerId)); setRemoteReady(true); }
     }).catch((syncError) => {
       if (syncError instanceof Error && 'status' in syncError && syncError.status === 401) clearCustomerToken();
@@ -94,8 +94,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const persistLine = useCallback((productId: number, quantity: number) => {
     if (!customerToken || !remoteReady) return;
     const request = quantity < 1
-      ? customerRequest(`/cart/items/${productId}`, { method: 'DELETE' })
-      : customerRequest(`/cart/items/${productId}`, { method: 'PUT', body: JSON.stringify({ quantity }) });
+      ? customerRequest(`/cart/items/${productId}`, { method: 'DELETE', silent: true })
+      : customerRequest(`/cart/items/${productId}`, { method: 'PUT', body: JSON.stringify({ quantity }), silent: true });
     void request.catch((syncError) => console.error('Cart change could not be saved', syncError));
   }, [customerToken, remoteReady]);
   const value = useMemo(() => ({
@@ -115,7 +115,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     remove: (id: number) => { replaceCart(cartRef.current.filter((line) => line.product.id !== id)); persistLine(id, 0); },
     clear: () => {
       replaceCart([]);
-      if (customerToken && remoteReady) void customerRequest('/cart', { method: 'DELETE' }).catch((syncError) => console.error('Cart could not be cleared', syncError));
+      if (customerToken && remoteReady) void customerRequest('/cart', { method: 'DELETE', silent: true }).catch((syncError) => console.error('Cart could not be cleared', syncError));
     },
     count: cart.reduce((sum, line) => sum + line.quantity, 0),
     subtotal: cart.reduce((sum, line) => sum + line.product.price * line.quantity, 0),

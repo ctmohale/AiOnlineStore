@@ -26,7 +26,7 @@ export default function Layout() {
     const refreshCustomer = async () => {
       if (!getCustomerToken()) { if (active) setCustomer(null); return; }
       try {
-        const profile = await customerRequest<Customer>('/me');
+        const profile = await customerRequest<Customer>('/me', { silent: true });
         if (active) setCustomer(profile);
       } catch (error) {
         if (error instanceof Error && 'status' in error && error.status === 401) clearCustomerToken();

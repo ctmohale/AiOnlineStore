@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { publicRequest } from './api';
+import { customerRequest, publicRequest } from './api';
 import { getPendingRequests } from './loading';
 afterEach(() => vi.unstubAllGlobals());
 it('clears the loading indicator when a network request fails', async () => {
@@ -15,4 +15,9 @@ it('keeps loading active while the response body is still being parsed', async (
   const request = publicRequest('/products'); await Promise.resolve();
   expect(getPendingRequests()).toBe(1); resolveBody([]);
   await expect(request).resolves.toEqual([]); expect(getPendingRequests()).toBe(0);
+});
+it('does not show the global loader for silent background synchronization', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ customerId: 7, items: [] }) }));
+  await customerRequest('/cart', { silent: true });
+  expect(getPendingRequests()).toBe(0);
 });

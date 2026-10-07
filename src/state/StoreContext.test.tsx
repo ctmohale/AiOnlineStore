@@ -24,7 +24,7 @@ beforeEach(() => {
   localStorage.setItem('mzansi-mega-store-cart', JSON.stringify([{ product: products[0], quantity: 1 }]));
   vi.mocked(customerRequest).mockReset();
   vi.mocked(customerRequest).mockImplementation(async (path, options) => {
-    if (path === '/cart' && !options) return { customerId: 7, items: [{ productId: 1, quantity: 3 }, { productId: 2, quantity: 2 }] };
+    if (path === '/cart' && (!options || options.silent)) return { customerId: 7, items: [{ productId: 1, quantity: 3 }, { productId: 2, quantity: 2 }] };
     return null;
   });
 });
@@ -44,7 +44,7 @@ test('treats the database as authoritative for an already-owned cart cache', asy
   localStorage.setItem('mzansi-mega-store-cart-owner', '7');
   localStorage.setItem('mzansi-mega-store-cart', JSON.stringify([{ product: products[0], quantity: 10 }]));
   vi.mocked(customerRequest).mockImplementation(async (path, options) => {
-    if (path === '/cart' && !options) return { customerId: 7, items: [{ productId: 2, quantity: 2 }] };
+    if (path === '/cart' && (!options || options.silent)) return { customerId: 7, items: [{ productId: 2, quantity: 2 }] };
     return null;
   });
   render(<StoreProvider><CartProbe /></StoreProvider>);
