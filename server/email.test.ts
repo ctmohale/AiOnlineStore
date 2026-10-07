@@ -35,7 +35,8 @@ describe('transactional email templates', () => {
 
   it('renders a branded checkout email with a test-mode warning and escaped customer data', () => {
     const email = buildOrderEmail('checkout_ready', order, items, { paymentLink: 'https://pay.example.test/checkout', paymentMode: 'test' });
-    expect(email.subject).toBe('[TEST] Complete payment for MMS-2026-ABC123');
+    expect(email.subject).toBe('Complete payment for MMS-2026-ABC123');
+    expect(email.subject).not.toContain('[TEST]');
     expect(email.html).toContain('Pay securely with Yoco');
     expect(email.html).toContain('TEST MODE');
     expect(email.html).toContain('Nomsa &lt;Dlamini&gt;');

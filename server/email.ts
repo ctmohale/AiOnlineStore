@@ -61,7 +61,6 @@ const orderSummaryText = (order: OrderSnapshot, items: OrderItem[]) => [
 
 export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, items: OrderItem[], options: OrderEmailOptions = {}): RenderedEmail {
   const isTest = options.paymentMode === 'test';
-  const testPrefix = isTest ? '[TEST] ' : '';
   const summaryHtml = orderSummaryHtml(order, items);
   const summaryText = orderSummaryText(order, items);
   const accountUrl = `${storeUrl()}/orders`;
@@ -72,24 +71,24 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
     const title = 'Your order is ready for secure payment';
     const intro = `Hi ${order.customer_name}, we created order ${order.reference}. Complete payment securely with Yoco to confirm it.`;
     const action = options.paymentLink ? { label: 'Pay securely with Yoco', url: options.paymentLink } : { label: 'View your order', url: accountUrl };
-    return { subject: `${testPrefix}Complete payment for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nSupport: ${supportEmail()}` };
+    return { subject: `Complete payment for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nSupport: ${supportEmail()}` };
   }
   if (kind === 'payment_reminder') {
     const title = 'Your order is still awaiting payment';
     const intro = `Hi ${order.customer_name}, order ${order.reference} has been waiting for payment for 24 hours. If you would still like these items, you can complete payment securely with Yoco.`;
     const action = options.paymentLink ? { label: 'Complete secure payment', url: options.paymentLink } : { label: 'View your order', url: accountUrl };
-    return { subject: `${testPrefix}Payment reminder for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nThis is the only unpaid-payment reminder we will send for this order.\nSupport: ${supportEmail()}` };
+    return { subject: `Payment reminder for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nThis is the only unpaid-payment reminder we will send for this order.\nSupport: ${supportEmail()}` };
   }
   if (kind === 'payment_confirmed') {
     const title = 'Payment confirmed';
     const intro = `Thank you, ${order.customer_name}. Yoco confirmed your payment for order ${order.reference}. We are now preparing your order and will keep you updated.`;
     const eta = deliveryDate ? `<p style="margin:18px 0 0"><strong>Estimated delivery:</strong> ${escapeHtml(deliveryDate)}</p>` : '';
-    return { subject: `${testPrefix}Payment confirmed for ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${eta}`, { label: 'View order status', url: accountUrl }, isTest), text: `${title}\n\n${intro}\n\n${summaryText}${deliveryDate ? `\nEstimated delivery: ${deliveryDate}` : ''}\n\nView order: ${accountUrl}` };
+    return { subject: `Payment confirmed for ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${eta}`, { label: 'View order status', url: accountUrl }, isTest), text: `${title}\n\n${intro}\n\n${summaryText}${deliveryDate ? `\nEstimated delivery: ${deliveryDate}` : ''}\n\nView order: ${accountUrl}` };
   }
   if (kind === 'payment_failed') {
     const title = 'Payment did not complete';
     const intro = `Your Yoco payment for order ${order.reference} was not successful. We have not marked the order as paid.`;
-    return { subject: `${testPrefix}Payment unsuccessful for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}` };
+    return { subject: `Payment unsuccessful for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}` };
   }
   if (kind === 'purchasing') {
     const title = 'We are preparing your order';
@@ -126,7 +125,7 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   const title = `New order ${order.reference}`;
   const intro = `${order.customer_name} created an order awaiting Yoco payment.`;
   const address = `<p style="margin:18px 0 0"><strong>Customer:</strong> ${escapeHtml(order.customer_name)} · ${escapeHtml(order.customer_email)} · ${escapeHtml(order.customer_phone)}<br><strong>Delivery:</strong> ${escapeHtml([order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', '))}</p>`;
-  return { subject: `${testPrefix}New store order ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${address}`, { label: 'Open operations dashboard', url: `${storeUrl()}/admin` }, isTest, generalEmail()), text: `${title}\n\n${intro}\n\n${common.text}\n\nCustomer: ${order.customer_name}, ${order.customer_email}, ${order.customer_phone}\nDelivery: ${[order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', ')}\n\nAdmin: ${storeUrl()}/admin` };
+  return { subject: `New store order ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${address}`, { label: 'Open operations dashboard', url: `${storeUrl()}/admin` }, isTest, generalEmail()), text: `${title}\n\n${intro}\n\n${common.text}\n\nCustomer: ${order.customer_name}, ${order.customer_email}, ${order.customer_phone}\nDelivery: ${[order.address_line_1, order.suburb, order.city, order.province, order.postal_code].join(', ')}\n\nAdmin: ${storeUrl()}/admin` };
 }
 
 export function buildAccountEmail(kind: AccountEmailKind, customer: { name: string; email: string }, options: AccountEmailOptions = {}): RenderedEmail {

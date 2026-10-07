@@ -67,6 +67,8 @@ const heroStories = [
   },
 ] as const;
 
+const HOMEPAGE_SECTION_PRODUCT_COUNT = 8;
+
 export default function Home() {
   const { products, settings, loading, error, refresh } = useCatalog();
   const [rotationBucket, setRotationBucket] = useState(() => homeRotationBucket());
@@ -76,11 +78,11 @@ export default function Home() {
   const priorityHero = priorityHomepageProducts(products, 5, rotationBucket);
   const heroIds = new Set(priorityHero.map((product) => product.id));
   const heroProducts = [...priorityHero, ...rotatingProducts(productPool.filter((product) => !heroIds.has(product.id)), 5, rotationBucket)].slice(0, 5);
-  const priorityDeals = priorityHomepageProducts(products, 4, rotationBucket, true);
+  const priorityDeals = priorityHomepageProducts(products, 5, rotationBucket, true);
   const priorityDealIds = new Set(priorityDeals.map((product) => product.id));
-  const supplementalDeals = rotatingProducts(savingsPool.filter((product) => !priorityDealIds.has(product.id)), 4 - priorityDeals.length, rotationBucket, 5);
+  const supplementalDeals = rotatingProducts(savingsPool.filter((product) => !priorityDealIds.has(product.id)), HOMEPAGE_SECTION_PRODUCT_COUNT - priorityDeals.length, rotationBucket, 5);
   const dealPool = [...priorityDeals, ...supplementalDeals];
-  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(productPool, dealPool, sectionPool, rotationBucket);
+  const { deals: dealProducts, popular: popularProducts } = homepageProductSections(productPool, dealPool, sectionPool, rotationBucket, HOMEPAGE_SECTION_PRODUCT_COUNT);
   const hasSalesHistory = productPool.some((product) => (product.unitsSold || 0) > 0);
   const [activeSlide, setActiveSlide] = useState(0);
   const [activeStory, setActiveStory] = useState(0);

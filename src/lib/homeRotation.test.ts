@@ -45,14 +45,24 @@ describe('homepage product rotation', () => {
     expect(grid.some((product) => hero.includes(product))).toBe(false);
   });
 
-  it('builds two different four-product homepage sections', () => {
-    const products = Array.from({ length: 16 }, (_, index) => ({ id: index + 1 }));
-    const popularPool = products.slice(0, 6);
-    const dealPool = products.slice(6);
-    const { deals, popular } = homepageProductSections(popularPool, dealPool, products, 7);
-    expect(deals).toHaveLength(4);
-    expect(popular).toHaveLength(4);
+  it('builds two different eight-product homepage sections', () => {
+    const products = Array.from({ length: 24 }, (_, index) => ({ id: index + 1 }));
+    const popularPool = products.slice(0, 10);
+    const dealPool = products.slice(10);
+    const { deals, popular } = homepageProductSections(popularPool, dealPool, products, 7, 8);
+    expect(deals).toHaveLength(8);
+    expect(popular).toHaveLength(8);
     expect(popular.some((product) => deals.some((deal) => deal.id === product.id))).toBe(false);
+  });
+
+  it('spreads homepage products across available categories before repeating one', () => {
+    const products = [
+      { id: 1, category: 'Televisions' }, { id: 2, category: 'Televisions' },
+      { id: 3, category: 'Air Fryers' }, { id: 4, category: 'Smartphones' },
+      { id: 5, category: 'Gaming' }, { id: 6, category: 'Speakers' },
+    ];
+    const { deals } = homepageProductSections([], products, [], 0, 4);
+    expect(new Set(deals.map((product) => product.category)).size).toBe(4);
   });
 
   it('rotates both homepage rows in each new ten-minute window', () => {

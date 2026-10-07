@@ -55,21 +55,36 @@ export const priorityHomepageProducts = (products: Product[], count: number, buc
   return [...selected, ...remaining].slice(0, count);
 };
 
-export const homepageProductSections = <T extends { id: number }>(popularItems: T[], dealItems: T[], fallbackItems: T[], bucket: number, count = 4) => {
-  const deals = rotatingProducts(dealItems, count, bucket, 5);
+const categoryDiverseProducts = <T extends { id: number; category?: string }>(items: T[], count: number, excludedIds = new Set<number>()) => {
+  const selected: T[] = [];
+  const selectedIds = new Set<number>();
+  const categories = new Set<string>();
+  for (const product of items) {
+    const category = String(product.category || '').trim().toLowerCase();
+    if (excludedIds.has(product.id) || selectedIds.has(product.id) || categories.has(category)) continue;
+    selected.push(product);
+    selectedIds.add(product.id);
+    categories.add(category);
+    if (selected.length === count) return selected;
+  }
+  for (const product of items) {
+    if (excludedIds.has(product.id) || selectedIds.has(product.id)) continue;
+    selected.push(product);
+    selectedIds.add(product.id);
+    if (selected.length === count) break;
+  }
+  return selected;
+};
+
+export const homepageProductSections = <T extends { id: number; category?: string }>(popularItems: T[], dealItems: T[], fallbackItems: T[], bucket: number, count = 4) => {
+  const rotatedDeals = rotatingProducts(dealItems, dealItems.length, bucket, 5);
+  const deals = categoryDiverseProducts(rotatedDeals, count);
   const dealIds = new Set(deals.map((product) => product.id));
-  const popular: T[] = [];
-  const popularIds = new Set<number>();
   const candidates = [
     ...rotatingProducts(popularItems, popularItems.length, bucket),
     ...rotatingProducts(fallbackItems, fallbackItems.length, bucket, 9),
   ];
-  for (const product of candidates) {
-    if (dealIds.has(product.id) || popularIds.has(product.id)) continue;
-    popular.push(product);
-    popularIds.add(product.id);
-    if (popular.length === count) break;
-  }
+  const popular = categoryDiverseProducts(candidates, count, dealIds);
   return { deals, popular };
 };
 
