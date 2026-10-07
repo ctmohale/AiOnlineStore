@@ -16,6 +16,7 @@ import PolicyPage from './pages/PolicyPage';
 import { FeedbackProvider } from './components/FeedbackProvider';
 import { CatalogProvider } from './state/CatalogContext';
 import GlobalLoading from './components/GlobalLoading';
+import ScrollToTop from './components/ScrollToTop';
 import './App.css';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
     <FeedbackProvider>
       <GlobalLoading />
       <BrowserRouter>
+        <ScrollToTop />
         <CatalogProvider>
           <StoreProvider>
         <Routes>
