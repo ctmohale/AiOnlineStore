@@ -34,7 +34,7 @@ export function deliveryEstimate(input: { retailer?: string | null; fulfilmentTy
   if (input.stockStatus === 'low_stock') supplier[1] += 1;
   const courier = provinceCourierDays(input.province);
   const processingDays = 1;
-  const labels: Record<FulfilmentType, string> = { store_stock: 'Available from store stock', warehouse: 'Supplier warehouse item', online_only: 'Supplier online-only item', unknown: 'Supplier fulfilment being confirmed' };
+  const labels: Record<FulfilmentType, string> = { store_stock: 'Available from store stock', warehouse: 'Preparing your item for dispatch', online_only: 'Online item being prepared', unknown: 'Delivery timing being confirmed' };
   const totalMinDays = supplier[0] + processingDays + courier[0];
   const totalMaxDays = supplier[1] + processingDays + courier[1];
   return { fulfilmentType: type, fulfilmentLabel: labels[type], supplierMinDays: supplier[0], supplierMaxDays: supplier[1], processingDays, courierMinDays: courier[0], courierMaxDays: courier[1], totalMinDays, totalMaxDays, summary: `${totalMinDays}–${totalMaxDays} business days` };
