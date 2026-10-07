@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Product } from '../data/products';
-import { HOME_ROTATION_MS, HOMEPAGE_PRICE_CEILING, homeRotationBucket, homepageProductPool, homepageProductSections, rotatingProducts } from './homeRotation';
+import { HOME_ROTATION_MS, HOMEPAGE_PRICE_CEILING, homeRotationBucket, homepageProductPool, homepageProductSections, priorityHomepageProducts, rotatingProducts } from './homeRotation';
 
 describe('homepage product rotation', () => {
   it('uses stable ten-minute time windows', () => {
@@ -61,6 +61,33 @@ describe('homepage product rotation', () => {
     const next = homepageProductSections(products.slice(0, 7), products.slice(7), products, 21);
     expect(next.deals.map((product) => product.id)).not.toEqual(first.deals.map((product) => product.id));
     expect(next.popular.map((product) => product.id)).not.toEqual(first.popular.map((product) => product.id));
+  });
+
+  it('cycles the requested major product groups using live demand first', () => {
+    const make = (id: number, name: string, brand: string, unitsSold: number, trendingUnits = 0, compareAt = 0) => ({
+      id, name, brand, category: '', model: '', packSize: '', price: 999, compareAt: compareAt || undefined,
+      unitsSold, trendingUnits, images: [{ url: `${id}.jpg`, altText: name }], stockStatus: 'in_stock',
+    } as Product);
+    const products = [
+      make(1, 'Hisense 55 inch 4K Smart TV', 'Hisense', 12, 3, 1299),
+      make(2, 'Generic 55 inch Smart TV', 'Generic', 20, 0, 1299),
+      make(3, 'Milex Digital Air Fryer', 'Milex', 8, 2, 1199),
+      make(4, 'Samsung Galaxy Smartphone', 'Samsung', 15, 4, 1399),
+      make(5, 'Sony PlayStation 5 Gaming Console', 'Sony', 10, 2, 1299),
+      make(6, 'JBL Bluetooth Speaker', 'JBL', 11, 2, 1299),
+    ];
+    const first = priorityHomepageProducts(products, 5, 0);
+    const next = priorityHomepageProducts(products, 5, 1);
+    expect(first.map((product) => product.id)).toEqual([1, 3, 4, 5, 6]);
+    expect(next.map((product) => product.id)).toEqual([3, 4, 5, 6, 1]);
+  });
+
+  it('keeps top-deal priority products limited to genuine savings', () => {
+    const products = [
+      { id: 1, name: 'Samsung Galaxy Smartphone', brand: 'Samsung', category: 'Handsets', model: '', packSize: '', price: 999, images: [{ url: '1.jpg', altText: '' }], stockStatus: 'in_stock' },
+      { id: 2, name: 'Huawei nova Smartphone', brand: 'Huawei', category: 'Handsets', model: '', packSize: '', price: 999, compareAt: 1299, images: [{ url: '2.jpg', altText: '' }], stockStatus: 'in_stock' },
+    ] as Product[];
+    expect(priorityHomepageProducts(products, 4, 0, true).map((product) => product.id)).toEqual([2]);
   });
 });
 
