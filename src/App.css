@@ -973,7 +973,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 
 /* Makro-inspired shop catalogue, styled for Mzansi Mega Store */
 .retail-shop { --shop-page-gutter:max(1.5vw,16px); --shop-content-width:1680px; min-height:70vh; padding-bottom:60px; background:#f4f5f2; color:var(--ink); }
-.shop-page-hero { width:min(var(--shop-content-width),calc(100% - (var(--shop-page-gutter) * 2))); min-height:245px; position:relative; margin:18px auto 14px; display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,460px); grid-template-rows:auto 1fr; gap:12px 40px; align-items:center; padding:18px 30px 24px; overflow:hidden; border-radius:10px; background-image:linear-gradient(90deg,rgba(16,47,39,.98) 0%,rgba(16,47,39,.94) 42%,rgba(16,47,39,.56) 67%,rgba(16,47,39,.12) 100%),url('/featured-product-banner.jpg'); background-position:center; background-size:cover; color:#fff; }
+.shop-page-hero { width:min(var(--shop-content-width),calc(100% - (var(--shop-page-gutter) * 2))); min-height:245px; position:relative; margin:18px auto 14px; display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,460px); grid-template-rows:auto 1fr; gap:12px 40px; align-items:center; padding:18px 30px 24px; overflow:hidden; border-radius:10px; background-image:linear-gradient(90deg,rgba(16,47,39,.98) 0%,rgba(16,47,39,.94) 42%,rgba(16,47,39,.56) 67%,rgba(16,47,39,.12) 100%),url('/shop-catalogue-hero-v2.jpg'); background-position:center; background-size:cover; color:#fff; }
 .shop-page-hero>nav { grid-column:1/-1; display:flex; align-items:center; gap:6px; color:#acc0b7; font-size:10px; }
 .shop-page-hero>nav a { display:flex; align-items:center; gap:5px; }
 .shop-page-hero>nav svg { width:13px; height:13px; }
