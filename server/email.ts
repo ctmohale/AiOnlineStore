@@ -3,7 +3,7 @@ import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, pool } from './db/pool.js';
 
-export type OrderEmailKind = 'checkout_ready' | 'payment_confirmed' | 'payment_failed' | 'purchasing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'case_update' | 'admin_new_order';
+export type OrderEmailKind = 'checkout_ready' | 'payment_reminder' | 'payment_confirmed' | 'payment_failed' | 'purchasing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'case_update' | 'admin_new_order';
 export type AccountEmailKind = 'welcome' | 'password_changed' | 'profile_updated' | 'verify_email' | 'password_reset' | 'test';
 
 type OrderItem = { product_title_snapshot: string; quantity: number; agreed_unit_price: number };
@@ -33,6 +33,10 @@ const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (
 const money = (value: number) => new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', minimumFractionDigits: 2 }).format(value);
 const date = (value: Date | string | null) => value ? new Intl.DateTimeFormat('en-ZA', { dateStyle: 'long', timeZone: 'Africa/Johannesburg' }).format(new Date(value)) : null;
 const safeLink = (value: string) => { try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.toString() : storeUrl(); } catch { return storeUrl(); } };
+export const isPaymentReminderDue = (paymentCreatedAt: Date | string, now = Date.now()) => {
+  const createdAt = new Date(paymentCreatedAt).getTime();
+  return Number.isFinite(createdAt) && now - createdAt >= 24 * 60 * 60 * 1000;
+};
 
 function emailFrame(title: string, intro: string, body: string, action?: { label: string; url: string }, testMode = false, contactEmail = supportEmail()) {
   const logoUrl = `${storeUrl()}/favicon.png`;
@@ -69,6 +73,12 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
     const intro = `Hi ${order.customer_name}, we created order ${order.reference}. Complete payment securely with Yoco to confirm it.`;
     const action = options.paymentLink ? { label: 'Pay securely with Yoco', url: options.paymentLink } : { label: 'View your order', url: accountUrl };
     return { subject: `${testPrefix}Complete payment for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nSupport: ${supportEmail()}` };
+  }
+  if (kind === 'payment_reminder') {
+    const title = 'Your order is still awaiting payment';
+    const intro = `Hi ${order.customer_name}, order ${order.reference} has been waiting for payment for 24 hours. If you would still like these items, you can complete payment securely with Yoco.`;
+    const action = options.paymentLink ? { label: 'Complete secure payment', url: options.paymentLink } : { label: 'View your order', url: accountUrl };
+    return { subject: `${testPrefix}Payment reminder for ${order.reference}`, html: emailFrame(title, intro, summaryHtml, action, isTest), text: `${title}\n\n${intro}\n\n${summaryText}\n\n${action.label}: ${action.url}\n\nThis is the only unpaid-payment reminder we will send for this order.\nSupport: ${supportEmail()}` };
   }
   if (kind === 'payment_confirmed') {
     const title = 'Payment confirmed';
@@ -194,15 +204,18 @@ export async function queueConfiguredEmailTest() {
 
 export async function backfillTransactionalEmails() {
   if (!pool) return { queued: 0 };
-  const [rows] = await pool.execute(`SELECT o.id,o.status,o.created_at,pr.external_reference,pr.payment_link,pr.processing_mode,pr.verification_status
+  const [rows] = await pool.execute(`SELECT o.id,o.status,o.created_at,pr.created_at AS payment_created_at,pr.external_reference,pr.payment_link,pr.processing_mode,pr.verification_status
     FROM order_requests o LEFT JOIN payment_references pr ON pr.id=(SELECT id FROM payment_references WHERE order_request_id=o.id ORDER BY id DESC LIMIT 1)
     WHERE o.is_test=FALSE AND o.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY)
     ORDER BY o.id`);
   let queued = 0;
-  for (const row of rows as (RowDataPacket & { id:number; status:string; created_at:Date; external_reference:string | null; payment_link:string | null; processing_mode:string | null; verification_status:string | null })[]) {
+  for (const row of rows as (RowDataPacket & { id:number; status:string; created_at:Date; payment_created_at:Date | null; external_reference:string | null; payment_link:string | null; processing_mode:string | null; verification_status:string | null })[]) {
     await withTransaction(async (connection) => {
       if (row.status === 'awaiting_payment' && row.payment_link && row.external_reference && row.verification_status === 'unverified') {
-        await enqueueOrderEmail(connection, row.id, 'checkout_ready', { eventKey: `order:${row.id}:checkout:${row.external_reference}`, paymentLink: row.payment_link, paymentMode: row.processing_mode });
+        const reminderDue = isPaymentReminderDue(row.payment_created_at || row.created_at);
+        const kind: OrderEmailKind = reminderDue ? 'payment_reminder' : 'checkout_ready';
+        const eventKey = reminderDue ? `order:${row.id}:payment_reminder:24h` : `order:${row.id}:checkout:${row.external_reference}`;
+        await enqueueOrderEmail(connection, row.id, kind, { eventKey, paymentLink: row.payment_link, paymentMode: row.processing_mode });
         queued += 1;
       }
       if (['paid','purchasing','shipped','delivered'].includes(row.status) && row.external_reference && row.verification_status === 'verified') {
