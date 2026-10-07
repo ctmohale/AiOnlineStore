@@ -16,7 +16,7 @@ export default function TrackOrders() {
   const [error, setError] = useState('');
   const paymentResult = new URLSearchParams(location.search).get('payment');
 
-  useLayoutEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, []);
+  useLayoutEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }, []);
   const loadOrders = useCallback(async () => {
     if (!getCustomerToken()) { setAuthenticated(false); setLoading(false); return; }
     setLoading(true); setError('');

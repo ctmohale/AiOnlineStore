@@ -32,7 +32,7 @@ describe('shop product search', () => {
 
     try {
       mount('/shop?q=baby');
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block:'start', behavior:'instant' }));
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block:'start', behavior:'auto' }));
       expect((scrollIntoView.mock.instances[0] as HTMLElement).id).toBe('shop-results');
     } finally {
       HTMLElement.prototype.scrollIntoView = originalScrollIntoView;

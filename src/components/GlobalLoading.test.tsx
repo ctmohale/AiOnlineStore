@@ -1,8 +1,8 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { beginLoading } from '../lib/loading';
+import { beginLoading, getPendingRequests, resetLoading } from '../lib/loading';
 import GlobalLoading from './GlobalLoading';
-afterEach(() => vi.useRealTimers());
+afterEach(() => { resetLoading(); vi.useRealTimers(); });
 it('shows an accessible spinner for slow requests and hides after the last request finishes', () => {
   vi.useFakeTimers(); render(<GlobalLoading />);
   let first!: () => void; let second!: () => void;
@@ -36,4 +36,17 @@ it('keeps one continuous loading experience across a short request gap', () => {
   act(() => second());
   act(() => { vi.advanceTimersByTime(620); });
   expect(screen.getByRole('status').parentElement).toHaveClass('is-leaving');
+});
+
+it('removes a restored loading overlay after returning from hosted checkout', async () => {
+  vi.useFakeTimers(); render(<GlobalLoading />);
+  await act(async () => { await Promise.resolve(); });
+  act(() => { beginLoading(); });
+  act(() => { vi.advanceTimersByTime(240); });
+  expect(screen.getByRole('status')).toBeInTheDocument();
+
+  act(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+
+  expect(getPendingRequests()).toBe(0);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });

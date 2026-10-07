@@ -13,9 +13,9 @@ const provinces = ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Li
 
 export default function Checkout() {
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, []);
-  const { cart, subtotal, clear } = useStore();
+  const { cart, subtotal } = useStore();
   const { settings } = useCatalog();
   const delivery = settings ? subtotal >= settings.freeDeliveryThreshold ? 0 : settings.standardCustomerDelivery : 0;
   const navigate = useNavigate();
@@ -54,12 +54,11 @@ export default function Checkout() {
     try {
       const result = await createOrder({ customer: { name: text('name'), email: text('email'), phone: text('phone'), addressLine1: text('addressLine1'), suburb: text('suburb'), city: text('city'), province: text('province'), postalCode: text('postalCode'), notes: text('notes') }, items: cart.map(({ product, quantity }) => ({ productId: product.id, quantity, agreedUnitPrice: product.price })) });
       if (result.paymentLink) {
-        clear();
         notify(`Order ${result.reference} is ready for secure payment.`, 'success', 'Opening Yoco');
         window.location.assign(result.paymentLink);
         return;
       }
-      clear(); notify(result.paymentError || `Order ${result.reference} was received.`, 'warning', 'Payment unavailable'); navigate(`/confirmation/${result.reference}?payment=unavailable`);
+      notify(result.paymentError || `Order ${result.reference} was received.`, 'warning', 'Payment unavailable'); navigate(`/confirmation/${result.reference}?payment=unavailable`);
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'Something went wrong. Please try again.';
       if (requestError instanceof Error && 'status' in requestError && requestError.status === 401) { clearCustomerToken(); setCustomer(null); }

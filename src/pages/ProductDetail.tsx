@@ -13,7 +13,7 @@ import { setPageSeo } from '../lib/seo';
 export default function ProductDetail() {
   const { slug } = useParams();
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [slug]);
   const { products, settings, loading } = useCatalog();
   const product = products.find((item) => item.slug === slug);

@@ -13,9 +13,9 @@ describe('global page scrolling', () => {
       <Routes><Route path="*" element={<div>Page</div>} /></Routes>
     </MemoryRouter>);
 
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
     vi.mocked(window.scrollTo).mockClear();
     fireEvent.click(screen.getByRole('link', { name: 'Open shop' }));
-    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'auto' });
   });
 });

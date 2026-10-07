@@ -9,7 +9,7 @@ import { useCatalog } from '../state/CatalogContext';
 export default function Cart() {
   const location = useLocation();
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [location.key]);
   const { cart, subtotal, update, remove } = useStore();
   const { settings } = useCatalog();

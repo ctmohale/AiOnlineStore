@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { getPendingRequests, subscribeToLoading } from '../lib/loading';
+import { getPendingRequests, resetLoading, subscribeToLoading } from '../lib/loading';
 
 const ENTER_DELAY_MS = 240;
 const MINIMUM_VISIBLE_MS = 720;
@@ -15,6 +15,20 @@ export default function GlobalLoading() {
   const busy = pending > 0;
 
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+  useEffect(() => {
+    const resetAfterNavigation = () => {
+      resetLoading();
+      shownAt.current = 0;
+      phaseRef.current = 'hidden';
+      setPhase('hidden');
+    };
+    window.addEventListener('pagehide', resetAfterNavigation);
+    window.addEventListener('pageshow', resetAfterNavigation);
+    return () => {
+      window.removeEventListener('pagehide', resetAfterNavigation);
+      window.removeEventListener('pageshow', resetAfterNavigation);
+    };
+  }, []);
   useEffect(() => {
     let enterTimer: number | undefined;
     let leaveTimer: number | undefined;

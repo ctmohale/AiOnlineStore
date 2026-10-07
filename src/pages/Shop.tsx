@@ -33,10 +33,10 @@ export default function Shop() {
     const searchParams = new URLSearchParams(location.search);
     const hasFilteredResults = searchParams.has('category') || searchParams.has('q');
     if (!hasFilteredResults) {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       return;
     }
-    const frame = window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' }));
+    const frame = window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView?.({ block: 'start', behavior: 'auto' }));
     return () => window.cancelAnimationFrame(frame);
   }, [location.key, location.search]);
   const [params, setParams] = useSearchParams();

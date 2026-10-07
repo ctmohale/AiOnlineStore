@@ -790,7 +790,7 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .app-toast.warning>svg { color:#c38724; }
 @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
-.confirm-backdrop { position:fixed; inset:0; z-index:300; display:grid; place-items:center; padding:20px; background:rgba(16,35,27,.68); backdrop-filter:blur(4px); }
+.confirm-backdrop { position:fixed; inset:0; z-index:300; display:grid; place-items:center; padding:20px; padding-top:max(20px,env(safe-area-inset-top)); padding-bottom:max(20px,env(safe-area-inset-bottom)); background:rgba(16,35,27,.68); }
 .confirm-dialog { width:min(470px,100%); display:grid; grid-template-columns:auto 1fr; gap:15px; padding:25px; background:#fff; color:#20362d; border-top:4px solid var(--forest); box-shadow:0 25px 80px rgba(0,0,0,.32); }
 .confirm-icon { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; background:#e6eee9; color:var(--forest); }
 .confirm-icon svg { width:21px; }
@@ -1628,7 +1628,7 @@ footer a,footer p { font-size:13px; }
 @keyframes store-loading-spin { to { transform:rotate(360deg); } }
 @keyframes store-loading-progress { from { transform:translateX(-115%); } to { transform:translateX(215%); } }
 
-.global-loading-backdrop { position:fixed; inset:0; z-index:2500; display:grid; place-items:center; background:rgba(8,24,17,.52); backdrop-filter:blur(4px); animation:store-loading-backdrop-in .34s ease both; }
+.global-loading-backdrop { position:fixed; inset:0; z-index:2500; display:grid; place-items:center; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); background:rgba(8,24,17,.52); animation:store-loading-backdrop-in .34s ease both; }
 .global-loading-backdrop .global-loading { position:relative; top:auto; left:auto; transform:none; padding:24px 32px; gap:20px; border-radius:20px; background:rgba(255,255,255,.985); box-shadow:0 24px 80px rgba(0,0,0,.28); animation:store-loading-card-in .42s cubic-bezier(.2,.75,.25,1) both; }
 .global-loading-backdrop .global-loading-symbol { width:64px; height:64px; }
 .global-loading-backdrop .global-loading-symbol b { font-size:26px; }
@@ -1636,7 +1636,7 @@ footer a,footer p { font-size:13px; }
 .global-loading-backdrop .global-loading small { font-size:14px; }
 .global-loading-backdrop.is-leaving { pointer-events:none; animation:store-loading-backdrop-out .32s ease both; }
 .global-loading-backdrop.is-leaving .global-loading { animation:store-loading-card-out .28s ease both; }
-@keyframes store-loading-backdrop-in { from { opacity:0; backdrop-filter:blur(0); } to { opacity:1; backdrop-filter:blur(4px); } }
+@keyframes store-loading-backdrop-in { from { opacity:0; } to { opacity:1; } }
 @keyframes store-loading-backdrop-out { from { opacity:1; } to { opacity:0; } }
 @keyframes store-loading-card-in { from { opacity:0; transform:translateY(14px) scale(.975); } to { opacity:1; transform:none; } }
 @keyframes store-loading-card-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-8px) scale(.985); } }
