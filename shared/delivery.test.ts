@@ -14,4 +14,10 @@ describe('supplier-aware delivery estimates', () => {
   it('uses business days for the promised date', () => {
     expect(addBusinessDays(new Date('2026-10-02T12:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2026-10-05');
   });
+  it('uses customer-facing delivery wording without exposing suppliers', () => {
+    for (const fulfilmentType of ['store_stock', 'warehouse', 'online_only', 'unknown']) {
+      const estimate = deliveryEstimate({ fulfilmentType });
+      expect(estimate.fulfilmentLabel).not.toMatch(/supplier/i);
+    }
+  });
 });
