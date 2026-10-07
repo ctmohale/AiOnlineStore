@@ -1,6 +1,6 @@
-import { BadgeCheck, ChevronDown, LockKeyhole, MapPin, Menu, Search, ShoppingBag, UserRound, X } from 'lucide-react';
-import { FormEvent, useEffect, useState } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { BadgeCheck, ChevronDown, LockKeyhole, MapPin, Menu, ShoppingBag, UserRound, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../state/StoreContext';
 import { useCatalog } from '../state/CatalogContext';
 import { money } from '../data/products';
@@ -8,6 +8,7 @@ import { isStoreNavigationActive } from '../lib/navigation';
 import { CATEGORY_NAMES, FOCUSED_CATEGORIES, categorySummaries } from '../lib/categories';
 import { customerRequest, type Customer } from '../lib/api';
 import { clearCustomerToken, CUSTOMER_AUTH_EVENT, CUSTOMER_TOKEN_KEY, getCustomerToken } from '../lib/storage';
+import AdvancedSearch from './AdvancedSearch';
 
 export default function Layout() {
   const { count } = useStore();
@@ -16,9 +17,7 @@ export default function Layout() {
   const [menu, setMenu] = useState(false);
   const [categoryMenu, setCategoryMenu] = useState(false);
   const [accountMenu, setAccountMenu] = useState(false);
-  const [query, setQuery] = useState('');
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const navigate = useNavigate();
   const location = useLocation();
   const selectedCategory = new URLSearchParams(location.search).get('category') || '';
   useEffect(() => {
@@ -53,21 +52,13 @@ export default function Layout() {
     setCategoryMenu(false);
     setAccountMenu(false);
   }, [location.pathname, location.search]);
-  const search = (event: FormEvent) => {
-    event.preventDefault();
-    navigate(`/shop?q=${encodeURIComponent(query.trim())}`);
-    setMenu(false);
-  };
   return <div className="site-shell">
     <div className="announcement"><MapPin /> South African online store <span>•</span> Nationwide delivery{settings && <><span>•</span> Free delivery from {money(settings.freeDeliveryThreshold)}</>}</div>
     <header className="site-header">
       <Link className="brand" to="/" aria-label="Mzansi Mega Store home">
         <span className="brand-mark" aria-hidden="true">M</span><span>zansi</span><small>Mega Store</small>
       </Link>
-      <form className="header-search" role="search" onSubmit={search}>
-        <Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search products" placeholder="Search products, brands and more" />
-        <button type="submit" aria-label="Submit product search">Search</button>
-      </form>
+      <AdvancedSearch products={products} />
       <nav className={menu ? 'main-nav open' : 'main-nav'}>
         <Link className={isStoreNavigationActive(location.pathname, selectedCategory) ? 'active' : ''} aria-current={isStoreNavigationActive(location.pathname, selectedCategory) ? 'page' : undefined} to="/shop" onClick={() => { setMenu(false); setCategoryMenu(false); setAccountMenu(false); }}>Shop</Link>
         <div className="category-navigation">

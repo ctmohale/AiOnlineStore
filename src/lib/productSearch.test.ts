@@ -1,14 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import { mapPublicProduct } from '../data/products';
-import { matchesProductSearch } from './productSearch';
-const product=mapPublicProduct({ id:51,slug:'huggies',title:'Huggies Extra Care Nappies Size 2 Tape Diapers',brand:'Huggies',model:'Extra Care Nappies Size 2',pack_size:'1 pack',category:'Baby Care',description:'',specifications:{},selling_price:918.85,image_url:null });
-describe('product search normalization', () => {
-  it('finds copied names with quotes, punctuation, extra spaces and mixed case', () => {
-    expect(matchesProductSearch(product,'“HUGGIES, Extra-Care Nappies  Size 2 Tape Diapers”')).toBe(true);
-    expect(matchesProductSearch(product,'huggies\u00a0extra care')).toBe(true);
+import { mapPublicProduct, type Product } from '../data/products';
+import { matchesProductSearch, rankProductSearch } from './productSearch';
+
+const product = (id: number, name: string, brand: string, category: string, model = '') => ({
+  id, name, brand, category, model, packSize: '', price: 999, slug: `product-${id}`,
+} as Product);
+
+describe('advanced product search', () => {
+  const products = [
+    product(1, 'Samsung Galaxy S26 Ultra', 'Samsung', 'Smartphones'),
+    product(2, 'Hisense 65 inch Mini LED Smart TV', 'Hisense', 'Televisions'),
+    product(3, 'Goldair Digital Air Fryer', 'Goldair', 'Cooking Appliances'),
+    product(4, 'JBL Portable Bluetooth Speaker', 'JBL', 'Audio'),
+  ];
+
+  it('matches product names, brands and categories', () => {
+    expect(rankProductSearch(products, 'Samsung')[0].id).toBe(1);
+    expect(rankProductSearch(products, 'Televisions')[0].id).toBe(2);
   });
-  it('searches pack sizes and requires all query terms', () => {
-    expect(matchesProductSearch(product,'Huggies 1 pack')).toBe(true);
-    expect(matchesProductSearch(product,'Huggies kettle')).toBe(false);
+
+  it('understands common shopping terms and small spelling mistakes', () => {
+    expect(rankProductSearch(products, 'tv')[0].id).toBe(2);
+    expect(rankProductSearch(products, 'samsang')[0].id).toBe(1);
+    expect(rankProductSearch(products, 'bluetooth speaker')[0].id).toBe(4);
+  });
+
+  it('requires every typed word and respects the result limit', () => {
+    expect(rankProductSearch(products, 'Goldair fryer').map((item) => item.id)).toEqual([3]);
+    expect(rankProductSearch(products, 'Samsung fryer')).toEqual([]);
+    expect(rankProductSearch(products, 'a', 2)).toHaveLength(2);
+  });
+
+  it('keeps copied-name, punctuation and pack-size matching used by the shop', () => {
+    const huggies = mapPublicProduct({ id:51, slug:'huggies', title:'Huggies Extra Care Nappies Size 2 Tape Diapers', brand:'Huggies', model:'Extra Care Nappies Size 2', pack_size:'1 pack', category:'Baby Care', description:'', specifications:{}, selling_price:918.85, image_url:null });
+    expect(matchesProductSearch(huggies, '“HUGGIES, Extra-Care Nappies  Size 2 Tape Diapers”')).toBe(true);
+    expect(matchesProductSearch(huggies, 'huggies\u00a0extra care')).toBe(true);
+    expect(matchesProductSearch(huggies, 'Huggies 1 pack')).toBe(true);
+    expect(matchesProductSearch(huggies, 'Huggies kettle')).toBe(false);
   });
 });
