@@ -56,7 +56,7 @@ function Illustration({ kind }: { kind: VisualKind }) {
   </svg>;
 }
 
-export default function ProductVisual({ product, large = false, showModel = true }: { product: Product; large?: boolean; showModel?: boolean }) {
+export default function ProductVisual({ product, large = false, showModel = false }: { product: Product; large?: boolean; showModel?: boolean }) {
   const [failedImage, setFailedImage] = useState('');
   const hasPhoto = Boolean(product.image && failedImage !== product.image);
   return <span className={`product-visual${large ? ' large' : ''}`}>

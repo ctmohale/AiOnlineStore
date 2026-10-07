@@ -11,6 +11,13 @@ describe('SEO metadata', () => {
     expect(meta).toContain('name="twitter:card" content="summary_large_image"');
     expect(meta).toContain('"@type":"Product"');
     expect(meta).toContain('"priceCurrency":"ZAR"');
+    expect(meta).not.toContain('"sku"');
+  });
+
+  it('does not expose product identifiers in customer-facing metadata', () => {
+    const meta = productMeta({ ...product, title: 'Test Kettle 000000000850004455', model: '000000000850004455', description: 'Current public Game listing, exact item code 000000000850004455.' }, 'https://shop.example.test');
+    expect(meta).not.toContain('000000000850004455');
+    expect(meta).not.toContain('exact item code');
   });
 
   it('replaces generic metadata rather than creating conflicting tags', () => {

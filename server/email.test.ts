@@ -98,6 +98,16 @@ describe('transactional email templates', () => {
     }
   });
 
+  it('never sends a product identifier to a customer', () => {
+    const customerKinds: OrderEmailKind[] = ['checkout_ready', 'payment_reminder', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update'];
+    const identifiedItems = [{ product_title_snapshot: 'Toshiba TV product ID 000000000850004455', quantity: 1, agreed_unit_price: 7349 }];
+    for (const kind of customerKinds) {
+      const email = buildOrderEmail(kind, order, identifiedItems, { paymentLink: 'https://pay.example.test/checkout' });
+      expect(`${email.subject}\n${email.text}\n${email.html}`).not.toContain('000000000850004455');
+      expect(`${email.text}\n${email.html}`).not.toMatch(/product id/i);
+    }
+  });
+
   it('renders every template with the shared storefront branding and hosted images', () => {
     const orderKinds: OrderEmailKind[] = ['checkout_ready', 'payment_reminder', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update', 'admin_new_order'];
     const accountKinds: AccountEmailKind[] = ['welcome', 'password_changed', 'profile_updated', 'verify_email', 'password_reset', 'test'];

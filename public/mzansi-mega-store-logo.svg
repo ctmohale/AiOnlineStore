@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 410 100" role="img" aria-labelledby="title description">
+  <title id="title">Mzansi Mega Store</title>
+  <desc id="description">The current Mzansi Mega Store logo with a coral M mark and forest-green wordmark.</desc>
+  <rect x="8" y="14" width="72" height="72" rx="36" ry="33" fill="#e8694a"/>
+  <text x="42" y="68" fill="#ffffff" font-family="Georgia, 'Times New Roman', serif" font-size="49" font-style="italic" font-weight="700" text-anchor="middle">M</text>
+  <text x="82" y="68" fill="#16392f" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="60" font-weight="700" letter-spacing="-3.4">zansi</text>
+  <text x="234" y="47" fill="#e8694a" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="4.1">MEGA STORE</text>
+</svg>

@@ -1,3 +1,5 @@
+import { sanitizePublicProductName, sanitizePublicProductSpecs, sanitizePublicProductText } from '../../shared/public-product.js';
+
 export type Product = {
   unitsSold?: number;
   recentUnits?: number;
@@ -50,15 +52,17 @@ const parseSpecs = (value: PublicProductRow['specifications']) => {
 };
 
 export const mapPublicProduct = (row: PublicProductRow): Product => {
-  const images = (row.images || []).filter((item) => item.url).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).map((item) => ({ url: item.url, altText: item.alt_text || row.title }));
-  if (!images.length && row.image_url) images.push({ url: row.image_url, altText: row.title });
+  const name = sanitizePublicProductName(row.title);
+  const description = sanitizePublicProductText(row.description);
+  const images = (row.images || []).filter((item) => item.url).sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0)).map((item) => ({ url: item.url, altText: sanitizePublicProductText(item.alt_text) || name }));
+  if (!images.length && row.image_url) images.push({ url: row.image_url, altText: name });
   return ({
   unitsSold: Number(row.units_sold || 0), recentUnits: Number(row.recent_units || 0), trendingUnits: Number(row.trending_units || 0),
-  id: Number(row.id), slug: row.slug, name: row.title, brand: row.brand || '', model: row.model || '', packSize: row.pack_size || '',
+  id: Number(row.id), slug: row.slug, name, brand: row.brand || '', model: sanitizePublicProductText(row.model), packSize: sanitizePublicProductText(row.pack_size),
   category: row.category, price: Number(row.selling_price), compareAt: row.original_displayed_price && Number(row.original_displayed_price) > Number(row.selling_price) ? Number(row.original_displayed_price) : undefined,
   promotionStartAt: row.promotion_start_at || undefined, promotionEndAt: row.promotion_end_at || undefined,
-  image: images[0]?.url || '', images, accent: accents[Number(row.id) % accents.length], short: row.description?.slice(0, 140) || '', description: row.description || '',
-  specs: parseSpecs(row.specifications), status: 'published', retailer: row.retailer || 'Mzansi Mega Store', stockStatus: row.stock_status || 'unknown', fulfilmentType: row.fulfilment_type || 'unknown', fulfilmentSignal: row.fulfilment_signal || undefined, supplierCheckRequired: Boolean(row.supplier_check_required), supplierLastCheckedAt: row.last_checked_at || undefined,
+  image: images[0]?.url || '', images, accent: accents[Number(row.id) % accents.length], short: description.slice(0, 140), description,
+  specs: sanitizePublicProductSpecs(parseSpecs(row.specifications)), status: 'published', retailer: row.retailer || 'Mzansi Mega Store', stockStatus: row.stock_status || 'unknown', fulfilmentType: row.fulfilment_type || 'unknown', fulfilmentSignal: row.fulfilment_signal || undefined, supplierCheckRequired: Boolean(row.supplier_check_required), supplierLastCheckedAt: row.last_checked_at || undefined,
   deliveryEstimate: row.delivery_estimate || { fulfilmentLabel: 'Delivery timing being confirmed', supplierMinDays: 2, supplierMaxDays: 6, processingDays: 1, courierMinDays: 3, courierMaxDays: 5, totalMinDays: 6, totalMaxDays: 12, summary: '6–12 business days' },
   });
 };

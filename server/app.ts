@@ -9,6 +9,7 @@ import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
 import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '../shared/domain.js';
 import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
+import { publicProductSlugBase, sanitizePublicProductName, sanitizePublicProductSpecs, sanitizePublicProductText } from '../shared/public-product.js';
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
@@ -27,7 +28,7 @@ app.use(express.json({ limit: '200kb', verify: (request, _response, buffer) => {
 const publicLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
 const reference = () => `MMS-${new Date().getFullYear()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-const productSlug = (title: string, model: string) => `${title}-${model}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 170) + `-${crypto.randomBytes(3).toString('hex')}`;
+const productSlug = (title: string) => `${publicProductSlugBase(title).slice(0, 170)}-${crypto.randomBytes(3).toString('hex')}`;
 const OTP_EXPIRY_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
 const OTP_RESEND_SECONDS = 60;
@@ -86,6 +87,28 @@ async function withProductImages(rows: RowDataPacket[]) {
 }
 
 const withDeliveryEstimates = (rows: RowDataPacket[], province?: string) => rows.map((row) => ({ ...row, delivery_estimate: deliveryEstimate({ retailer: String(row.retailer || ''), fulfilmentType: String(row.fulfilment_type || 'unknown'), stockStatus: String(row.stock_status || 'unknown'), province }) }));
+
+const sanitizePublicProducts = (rows: Record<string, unknown>[]) => rows.map((product) => {
+  let specifications: Record<string, string> = {};
+  if (product.specifications && typeof product.specifications === 'object') specifications = product.specifications as Record<string, string>;
+  if (typeof product.specifications === 'string') {
+    try { specifications = JSON.parse(product.specifications) as Record<string, string>; } catch { specifications = {}; }
+  }
+  const name = sanitizePublicProductName(product.title);
+  const images = Array.isArray(product.images) ? product.images.map((image) => {
+    const item = image as Record<string, unknown>;
+    return { ...item, alt_text: sanitizePublicProductText(item.alt_text) || name };
+  }) : product.images;
+  return {
+    ...product,
+    title: name,
+    model: sanitizePublicProductText(product.model),
+    pack_size: sanitizePublicProductText(product.pack_size),
+    description: sanitizePublicProductText(product.description),
+    specifications: sanitizePublicProductSpecs(specifications),
+    images,
+  };
+});
 
 async function replaceProductImages(connection: PoolConnection, productId: number | string, title: string, urls: string[]) {
   const unique = [...new Set(urls.filter(Boolean))].slice(0, 20);
@@ -256,7 +279,8 @@ app.get('/api/products', async (request, response, next) => {
       FROM order_items oi JOIN order_requests orders ON orders.id=oi.order_request_id
       WHERE orders.is_test=FALSE AND orders.status IN ('paid','purchasing','shipped','delivered') GROUP BY oi.product_id
     ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
-    response.json(await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || ''))));
+    const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
+    response.json(sanitizePublicProducts(products));
   } catch (error) { next(error); }
 });
 
@@ -274,9 +298,10 @@ app.get('/api/products/:slug', async (request, response, next) => {
     const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.promotion_start_at,o.promotion_end_at,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url
       FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1
-      WHERE p.slug=? AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
-        AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1`, [String(request.params.slug)]);
-    const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
+      WHERE (p.slug=? OR EXISTS (SELECT 1 FROM product_slug_aliases alias WHERE alias.product_id=p.id AND alias.slug=?))
+        AND p.status='published' AND p.deleted_at IS NULL AND p.gallery_image_count>=1 AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
+        AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1`, [String(request.params.slug), String(request.params.slug)]);
+    const products = sanitizePublicProducts(await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || ''))));
     if (!products.length) return response.status(404).json({ error: 'Product not found' });
     response.json(products[0]);
   } catch (error) { next(error); }
@@ -507,7 +532,7 @@ app.get('/api/customer/orders', requireCustomer, async (_request, response, next
     COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary,
     (SELECT pr.payment_link FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_link,
     (SELECT pr.provider FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_provider
-    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json(rows); } catch (error) { next(error); }
+    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json((rows as (RowDataPacket & { item_summary:string })[]).map((order) => ({ ...order, item_summary: sanitizePublicProductText(order.item_summary) }))); } catch (error) { next(error); }
 });
 
 app.post('/api/orders', publicLimiter, requireCustomer, async (request, response, next) => {
@@ -671,7 +696,7 @@ app.post('/api/admin/products', requireAdmin, async (request, response, next) =>
         const [duplicates] = await connection.execute('SELECT id FROM products WHERE LOWER(brand)=LOWER(?) AND LOWER(model)=LOWER(?) AND LOWER(pack_size)=LOWER(?) AND deleted_at IS NULL LIMIT 1', [input.brand, input.model, input.packSize]); duplicateRows = duplicates as RowDataPacket[];
       }
       if (duplicateRows.length) throw Object.assign(new Error('An exact product with this barcode or model and pack size already exists'), { status: 409 });
-      const slug = productSlug(input.title, input.model);
+      const slug = productSlug(input.title);
       const [result] = await connection.execute("INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,minimum_profit,estimated_customer_delivery_cost,delivery_time,item_weight_size,internal_review_notes,status,review_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?)", [slug, input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.minimumProfit ?? null, input.estimatedCustomerDeliveryCost ?? 0, input.deliveryTime || null, input.itemWeightSize || null, input.reviewNotes || null, 'New product requires supplier verification']);
       const id = Number((result as { insertId: number }).insertId);
       await replaceProductImages(connection, id, input.title, input.imageUrls || (input.imageUrl ? [input.imageUrl] : []));

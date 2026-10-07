@@ -30,6 +30,7 @@ export function installFrontend(app: Express, options: FrontendOptions = {}) {
       const html = await template();
       if (!result.ok) return response.status(result.status === 404 ? 404 : 200).set('X-Robots-Tag', result.status === 404 ? 'noindex' : 'index, follow').send(html);
       const product = await result.json() as SeoProduct;
+      if (product.slug !== request.params.slug) return response.redirect(301, `/product/${encodeURIComponent(product.slug)}`);
       response.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600').send(injectHead(html, productMeta(product, storeUrl)));
     } catch { response.sendFile(path.join(dist, 'index.html')); }
   });

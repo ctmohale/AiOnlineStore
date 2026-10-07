@@ -1,3 +1,5 @@
+import { sanitizePublicProductName, sanitizePublicProductText } from '../shared/public-product.js';
+
 export type SeoProduct = {
   id: number; slug: string; title: string; brand?: string; model?: string; category?: string; description?: string;
   selling_price: number; original_displayed_price?: number | null; image_url?: string | null;
@@ -11,15 +13,16 @@ const safeJson = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003
 export function productMeta(product: SeoProduct, storeUrl: string) {
   const canonical = absoluteUrl(storeUrl, `/product/${encodeURIComponent(product.slug)}`);
   const image = product.images?.[0]?.url || product.image_url || absoluteUrl(storeUrl, '/mzansi-mega-store-card.png');
-  const description = String(product.description || `Shop ${product.title} from Mzansi Mega Store with nationwide South African delivery.`).replace(/\s+/g, ' ').trim().slice(0, 220);
-  const title = `${product.title} | Mzansi Mega Store`;
-  const jsonLd = { '@context': 'https://schema.org', '@type': 'Product', name: product.title, description, image: (product.images?.map((item) => item.url).filter(Boolean) || [image]), sku: product.model || String(product.id), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, url: canonical, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: Number(product.selling_price).toFixed(2), availability: 'https://schema.org/InStock', url: canonical, seller: { '@type': 'Organization', name: 'Mzansi Mega Store' } } };
+  const productName = sanitizePublicProductName(product.title);
+  const description = sanitizePublicProductText(product.description || `Shop ${productName} from Mzansi Mega Store with nationwide South African delivery.`).replace(/\s+/g, ' ').trim().slice(0, 220);
+  const title = `${productName} | Mzansi Mega Store`;
+  const jsonLd = { '@context': 'https://schema.org', '@type': 'Product', name: productName, description, image: (product.images?.map((item) => item.url).filter(Boolean) || [image]), brand: { '@type': 'Brand', name: product.brand || 'Unbranded' }, category: product.category, url: canonical, offers: { '@type': 'Offer', priceCurrency: 'ZAR', price: Number(product.selling_price).toFixed(2), availability: 'https://schema.org/InStock', url: canonical, seller: { '@type': 'Organization', name: 'Mzansi Mega Store' } } };
   return `<title>${escapeHtml(title)}</title>
 <meta name="description" content="${escapeHtml(description)}" />
 <link rel="canonical" href="${escapeHtml(canonical)}" />
 <meta property="og:type" content="product" /><meta property="og:site_name" content="Mzansi Mega Store" />
 <meta property="og:title" content="${escapeHtml(title)}" /><meta property="og:description" content="${escapeHtml(description)}" />
-<meta property="og:url" content="${escapeHtml(canonical)}" /><meta property="og:image" content="${escapeHtml(image)}" /><meta property="og:image:alt" content="${escapeHtml(product.title)}" />
+<meta property="og:url" content="${escapeHtml(canonical)}" /><meta property="og:image" content="${escapeHtml(image)}" /><meta property="og:image:alt" content="${escapeHtml(productName)}" />
 <meta property="product:price:amount" content="${Number(product.selling_price).toFixed(2)}" /><meta property="product:price:currency" content="ZAR" />
 <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escapeHtml(title)}" /><meta name="twitter:description" content="${escapeHtml(description)}" /><meta name="twitter:image" content="${escapeHtml(image)}" />
 <script type="application/ld+json">${safeJson(jsonLd)}</script>`;
@@ -29,8 +32,8 @@ export function catalogueMeta(products: SeoProduct[], title: string, storeUrl: s
   const cleanTitle = title.trim().slice(0, 90) || 'Selected deals from Mzansi Mega Store';
   const canonical = absoluteUrl(storeUrl, requestPath);
   const image = products[0]?.images?.[0]?.url || products[0]?.image_url || absoluteUrl(storeUrl, '/mzansi-mega-store-card.png');
-  const description = products.length ? `${products.length} selected products from Mzansi Mega Store: ${products.slice(0, 4).map((item) => item.title).join(', ')}.` : 'Browse selected products from Mzansi Mega Store.';
-  const list = { '@context': 'https://schema.org', '@type': 'ItemList', name: cleanTitle, url: canonical, numberOfItems: products.length, itemListElement: products.map((product, index) => ({ '@type': 'ListItem', position: index + 1, url: absoluteUrl(storeUrl, `/product/${encodeURIComponent(product.slug)}`), name: product.title })) };
+  const description = products.length ? `${products.length} selected products from Mzansi Mega Store: ${products.slice(0, 4).map((item) => sanitizePublicProductName(item.title)).join(', ')}.` : 'Browse selected products from Mzansi Mega Store.';
+  const list = { '@context': 'https://schema.org', '@type': 'ItemList', name: cleanTitle, url: canonical, numberOfItems: products.length, itemListElement: products.map((product, index) => ({ '@type': 'ListItem', position: index + 1, url: absoluteUrl(storeUrl, `/product/${encodeURIComponent(product.slug)}`), name: sanitizePublicProductName(product.title) })) };
   return `<title>${escapeHtml(cleanTitle)} | Mzansi Mega Store</title><meta name="description" content="${escapeHtml(description)}" /><link rel="canonical" href="${escapeHtml(canonical)}" />
 <meta property="og:type" content="website" /><meta property="og:site_name" content="Mzansi Mega Store" /><meta property="og:title" content="${escapeHtml(cleanTitle)}" /><meta property="og:description" content="${escapeHtml(description)}" /><meta property="og:url" content="${escapeHtml(canonical)}" /><meta property="og:image" content="${escapeHtml(image)}" />
 <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escapeHtml(cleanTitle)}" /><meta name="twitter:description" content="${escapeHtml(description)}" /><meta name="twitter:image" content="${escapeHtml(image)}" /><script type="application/ld+json">${safeJson(list)}</script>`;

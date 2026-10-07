@@ -52,7 +52,11 @@ export default function AdvancedSearch({ products }: { products: Product[] }) {
     setActiveIndex(-1);
     navigate(`/product/${product.slug}`);
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); activeIndex >= 0 && suggestions[activeIndex] ? openProduct(suggestions[activeIndex]) : searchAll(); };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (activeIndex >= 0 && suggestions[activeIndex]) openProduct(suggestions[activeIndex]);
+    else searchAll();
+  };
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') { setOpen(false); setActiveIndex(-1); return; }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;

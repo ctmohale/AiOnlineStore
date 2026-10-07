@@ -135,7 +135,7 @@ function gameCandidate(product) {
   const promotionEndAt = product.price?.endDate && sale ? new Date(`${product.price.endDate} 23:59:59 GMT+0200`).toISOString() : null;
   return {
     title, brand, model: clean(product.mpn || product.code, 120), barcode: clean(product.ean || '', 64) || null, packSize, category,
-    description: clean(`${title}. Current public Game listing, exact item code ${product.code}.`, 10000),
+    description: clean(`${title}.`, 10000),
     specifications: Object.fromEntries((product.classifications || []).flatMap((group) => group.features || []).slice(0, 12).map((feature, index) => [clean(feature.name || `Specification ${index + 1}`, 100), clean(feature.featureValues?.map((item) => item.value).join(', ') || '', 500)])),
     sellingPrice: sellingPrice(current, sale ? original : 0), imageUrl,
     estimatedCustomerDeliveryCost: deliveryEstimate(category, title), itemWeightSize: packSize, deliveryTime: '2–5 business days after supplier confirmation',

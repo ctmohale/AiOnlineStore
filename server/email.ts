@@ -2,6 +2,7 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
 import { withTransaction, pool } from './db/pool.js';
+import { sanitizePublicProductName } from '../shared/public-product.js';
 
 export type OrderEmailKind = 'checkout_ready' | 'payment_reminder' | 'payment_confirmed' | 'payment_failed' | 'purchasing' | 'shipped' | 'delivered' | 'cancelled' | 'refunded' | 'case_update' | 'admin_new_order';
 export type AccountEmailKind = 'welcome' | 'password_changed' | 'profile_updated' | 'verify_email' | 'password_reset' | 'test';
@@ -47,14 +48,14 @@ function emailFrame(title: string, intro: string, body: string, action?: { label
 }
 
 const orderSummaryHtml = (order: OrderSnapshot, items: OrderItem[]) => {
-  const rows = items.map((item) => `<tr><td style="padding:11px 0;border-bottom:1px solid #e8e3da;color:#35463f;font-size:14px;line-height:20px">${escapeHtml(item.product_title_snapshot)} <span style="color:#7a857f">× ${item.quantity}</span></td><td align="right" valign="top" style="padding:11px 0 11px 14px;border-bottom:1px solid #e8e3da;color:#173e32;font-size:14px;font-weight:700;white-space:nowrap">${escapeHtml(money(Number(item.agreed_unit_price) * item.quantity))}</td></tr>`).join('');
+  const rows = items.map((item) => `<tr><td style="padding:11px 0;border-bottom:1px solid #e8e3da;color:#35463f;font-size:14px;line-height:20px">${escapeHtml(sanitizePublicProductName(item.product_title_snapshot))} <span style="color:#7a857f">× ${item.quantity}</span></td><td align="right" valign="top" style="padding:11px 0 11px 14px;border-bottom:1px solid #e8e3da;color:#173e32;font-size:14px;font-weight:700;white-space:nowrap">${escapeHtml(money(Number(item.agreed_unit_price) * item.quantity))}</td></tr>`).join('');
   const delivery = Number(order.customer_delivery_charged);
   return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:8px 0 4px;border:1px solid #e3ddd2;border-radius:12px;background:#faf8f3"><tr><td style="padding:18px 20px"><div style="color:#ed6848;font-size:10px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase">Order reference</div><div style="margin-top:4px;color:#173e32;font-family:Georgia,'Times New Roman',serif;font-size:21px;font-weight:700">${escapeHtml(order.reference)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:12px">${rows}<tr><td style="padding-top:12px;color:#5e6c66;font-size:13px">Delivery</td><td align="right" style="padding-top:12px;color:#173e32;font-size:13px;font-weight:700">${delivery ? escapeHtml(money(delivery)) : 'Free'}</td></tr><tr><td style="padding-top:10px;color:#173e32;font-size:16px;font-weight:800">Total</td><td align="right" style="padding-top:10px;color:#ed6848;font-size:18px;font-weight:800">${escapeHtml(money(Number(order.product_revenue) + delivery))}</td></tr></table></td></tr></table>`;
 };
 
 const orderSummaryText = (order: OrderSnapshot, items: OrderItem[]) => [
   `Order reference: ${order.reference}`,
-  ...items.map((item) => `${item.product_title_snapshot} × ${item.quantity} — ${money(Number(item.agreed_unit_price) * item.quantity)}`),
+  ...items.map((item) => `${sanitizePublicProductName(item.product_title_snapshot)} × ${item.quantity} — ${money(Number(item.agreed_unit_price) * item.quantity)}`),
   `Delivery: ${Number(order.customer_delivery_charged) ? money(Number(order.customer_delivery_charged)) : 'Free'}`,
   `Total: ${money(Number(order.product_revenue) + Number(order.customer_delivery_charged))}`,
 ].join('\n');
