@@ -116,6 +116,20 @@ async function replaceProductImages(connection: PoolConnection, productId: numbe
   for (const [index, url] of unique.entries()) await connection.execute('INSERT INTO product_images (product_id,url,alt_text,sort_order) VALUES (?,?,?,?)', [productId, url, `${title} - image ${index + 1}`, index]);
 }
 
+async function removePurchasedCartItems(connection: PoolConnection, orderId: number | string) {
+  // Remove only the quantities paid for by this order. Anything the customer
+  // added later on another device must remain in their account cart.
+  await connection.execute(`DELETE ci FROM customer_cart_items ci
+    JOIN order_requests o ON o.customer_id=ci.customer_id AND o.id=?
+    JOIN order_items oi ON oi.order_request_id=o.id AND oi.product_id=ci.product_id
+    WHERE ci.quantity<=oi.quantity`, [orderId]);
+  await connection.execute(`UPDATE customer_cart_items ci
+    JOIN order_requests o ON o.customer_id=ci.customer_id AND o.id=?
+    JOIN order_items oi ON oi.order_request_id=o.id AND oi.product_id=ci.product_id
+    SET ci.quantity=ci.quantity-oi.quantity,ci.updated_at=UTC_TIMESTAMP()
+    WHERE ci.quantity>oi.quantity`, [orderId]);
+}
+
 type PaymentOrderRow = RowDataPacket & { id: number; reference: string; status: string; is_test: number; product_revenue: number; customer_delivery_charged: number };
 
 async function provisionYocoCheckout(orderId: string | number) {
@@ -251,6 +265,7 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
       if (reference.order_status === 'awaiting_payment') {
         await connection.execute("UPDATE order_requests SET status='paid' WHERE id=? AND status='awaiting_payment'", [reference.order_id]);
         await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'awaiting_payment','paid','Yoco payment verified automatically')", [reference.order_id]);
+        await removePurchasedCartItems(connection, reference.order_id);
         await enqueueOrderEmail(connection, reference.order_id, 'payment_confirmed', { eventKey: `yoco:${eventId}:payment_confirmed`, paymentMode: mode });
       }
       const outcome = reference.order_status === 'awaiting_payment' || reference.order_status === 'paid' ? 'payment_verified' : 'payment_verified_order_not_payable';
@@ -573,8 +588,11 @@ app.post('/api/orders', publicLimiter, requireCustomer, async (request, response
         const product = productRows.find((row) => row.id === item.productId)!;
         const itemEstimate = deliveryEstimate({ retailer: product.retailer, fulfilmentType: product.fulfilment_type, stockStatus: product.stock_status, province: customer.province });
         await connection.execute('INSERT INTO order_items (order_request_id,product_id,product_title_snapshot,model_snapshot,pack_size_snapshot,quantity,agreed_unit_price,supplier_retailer_snapshot,supplier_source_url_snapshot,supplier_sku_snapshot,supplier_unit_cost_snapshot,supplier_fulfilment_snapshot,estimated_supplier_days_min,estimated_supplier_days_max) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [orderId, product.id, product.title, product.model, product.pack_size, item.quantity, product.selling_price, product.retailer, product.source_url, product.supplier_sku, product.current_cost, itemEstimate.fulfilmentType, itemEstimate.supplierMinDays, itemEstimate.supplierMaxDays]);
+        // Checkout is not payment. Keep every requested item in the account cart
+        // until a verified payment webhook removes the purchased quantity.
+        await connection.execute(`INSERT INTO customer_cart_items (customer_id,product_id,quantity) VALUES (?,?,?)
+          ON DUPLICATE KEY UPDATE quantity=GREATEST(quantity,VALUES(quantity)),updated_at=UTC_TIMESTAMP()`, [account.id, product.id, item.quantity]);
       }
-      await connection.execute('DELETE FROM customer_cart_items WHERE customer_id=?', [account.id]);
       const needsFreshSupplierCheck = productRows.some((product) => !product.last_checked_at || now - new Date(product.last_checked_at).getTime() > product.stale_hours * 3_600_000);
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,NULL,'requested',?)", [orderId, needsFreshSupplierCheck ? 'Order submitted for secure payment; supplier data should be rechecked before purchasing' : 'Order submitted for secure payment']);
       return orderId;
@@ -1094,6 +1112,7 @@ app.patch('/api/admin/orders/:id/confirm-payment', requireAdmin, async (request,
       const [result] = await connection.execute("UPDATE payment_references pr JOIN order_requests o ON o.id=pr.order_request_id SET pr.verification_status='verified',pr.verified_at=UTC_TIMESTAMP(),o.status='paid' WHERE o.id=? AND pr.external_reference=? AND pr.provider<>'yoco' AND o.status='awaiting_payment' AND o.is_test=FALSE", [request.params.id, externalReference]);
       if ((result as { affectedRows: number }).affectedRows === 0) throw Object.assign(new Error('Payment reference could not be verified for this order'), { status: 409 });
       await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note,changed_by_admin_id) VALUES (?,'awaiting_payment','paid','Payment reference verified',?)", [request.params.id,response.locals.admin.sub]);
+      await removePurchasedCartItems(connection, String(request.params.id));
       await enqueueOrderEmail(connection, String(request.params.id), 'payment_confirmed', { eventKey: `order:${request.params.id}:manual_payment:${externalReference}` });
     });
     response.json({ status: 'paid' });

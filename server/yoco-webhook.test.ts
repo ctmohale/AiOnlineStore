@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { Server } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, outcome: '', queuedEmails: [] as string[] }));
+const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, cartCleanupQueries: 0, outcome: '', queuedEmails: [] as string[] }));
 
 vi.mock('./email.js', () => ({
   enqueueAccountEmail: vi.fn(),
@@ -22,6 +22,7 @@ vi.mock('./db/pool.js', () => ({
       if (sql.startsWith('UPDATE payment_references')) { state.paymentUpdates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('UPDATE order_requests')) { state.orderUpdates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('INSERT INTO order_status_history')) { state.historyWrites++; return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('DELETE ci FROM customer_cart_items') || sql.startsWith('UPDATE customer_cart_items ci')) { state.cartCleanupQueries++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('UPDATE payment_webhook_events')) { state.outcome = String(params[0] ?? sql.match(/processing_outcome='([^']+)'/)?.[1]); return [{ affectedRows: 1 }]; }
       throw new Error(`Unexpected query: ${sql}`);
     },
@@ -46,6 +47,15 @@ describe('Yoco webhook endpoint', () => {
     base = `http://127.0.0.1:${address.port}`;
   });
   afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
+  beforeEach(() => {
+    state.events.clear();
+    state.paymentUpdates = 0;
+    state.orderUpdates = 0;
+    state.historyWrites = 0;
+    state.cartCleanupQueries = 0;
+    state.outcome = '';
+    state.queuedEmails.length = 0;
+  });
 
   const send = (event: Record<string, unknown>, valid = true) => {
     const body = JSON.stringify(event);
@@ -66,6 +76,7 @@ describe('Yoco webhook endpoint', () => {
     expect(state.paymentUpdates).toBe(1);
     expect(state.orderUpdates).toBe(1);
     expect(state.historyWrites).toBe(1);
+    expect(state.cartCleanupQueries).toBe(2);
     expect(state.queuedEmails).toEqual(['payment_confirmed']);
 
     const duplicate = await send(event);
@@ -73,6 +84,7 @@ describe('Yoco webhook endpoint', () => {
     expect(state.paymentUpdates).toBe(1);
     expect(state.orderUpdates).toBe(1);
     expect(state.historyWrites).toBe(1);
+    expect(state.cartCleanupQueries).toBe(2);
     expect(state.queuedEmails).toEqual(['payment_confirmed']);
   });
 
@@ -80,7 +92,18 @@ describe('Yoco webhook endpoint', () => {
     const event = { id: 'evt_mismatch_1', type: 'payment.succeeded', payload: { id: 'pay_2', amount: 100, currency: 'ZAR', mode: 'test', status: 'succeeded', metadata: { checkoutId: 'ch_test_123' } } };
     const accepted = await send(event);
     expect(await accepted.json()).toMatchObject({ received: true, outcome: 'rejected_payment_mismatch' });
+    expect(state.paymentUpdates).toBe(0);
+    expect(state.orderUpdates).toBe(0);
+    expect(state.cartCleanupQueries).toBe(0);
+  });
+
+  it('keeps the account cart when Yoco reports a failed payment', async () => {
+    const event = { id: 'evt_failed_1', type: 'payment.failed', payload: { id: 'pay_3', amount: 172400, currency: 'ZAR', mode: 'test', status: 'failed', metadata: { checkoutId: 'ch_test_123' } } };
+    const accepted = await send(event);
+    expect(await accepted.json()).toMatchObject({ received: true, outcome: 'payment_failed' });
     expect(state.paymentUpdates).toBe(1);
-    expect(state.orderUpdates).toBe(1);
+    expect(state.orderUpdates).toBe(0);
+    expect(state.cartCleanupQueries).toBe(0);
+    expect(state.queuedEmails).toEqual(['payment_failed']);
   });
 });
