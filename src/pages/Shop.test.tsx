@@ -66,6 +66,17 @@ describe('shop product search', () => {
     await waitFor(() => expect(screen.getByRole('link',{name:extraCare})).toBeInTheDocument());
     expect(screen.getByTestId('location')).toHaveTextContent('?q=Huggies%20Extra%20Care');
   });
+  it('replaces an active search when a department tile is selected', async () => {
+    const user=userEvent.setup();
+    mount('/shop?q=Huggies');
+    const categories=screen.getByRole('group',{name:'Product categories; scroll horizontally for more'});
+    await user.click(within(categories).getByRole('button',{name:/Baby & Nursery/}));
+    const nextParams=new URLSearchParams(screen.getByTestId('location').textContent || '');
+    expect(nextParams.get('category')).toBe('Baby & Nursery');
+    expect(nextParams.has('q')).toBe(false);
+    expect(screen.getByRole('textbox',{name:'Search products'})).toHaveValue('');
+    expect(screen.getAllByRole('link',{name:/Huggies/})).toHaveLength(2);
+  });
   it('opens and closes the compact mobile filter panel', async () => {
     const user=userEvent.setup();
     mount('/shop');

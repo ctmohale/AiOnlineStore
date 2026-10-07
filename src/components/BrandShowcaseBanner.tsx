@@ -46,7 +46,7 @@ export default function BrandShowcaseBanner({ products, compact = false }: Props
   const titleId = compact ? 'shop-brand-showcase-title' : 'home-brand-showcase-title';
 
   return <section className={`brand-showcase${compact ? ' compact' : ''}`} aria-labelledby={titleId}>
-    <img className="brand-showcase-art" src="/brand-showcase-banner-v1.webp" alt="Television, appliances, laptop, phone, blender and outdoor gazebo" loading={compact ? 'lazy' : 'eager'} decoding="async" />
+    <img className="brand-showcase-art" src="/brand-showcase-banner-v2.jpg" alt="Premium home appliances and technology overlooking Cape Town at sunset" loading={compact ? 'lazy' : 'eager'} decoding="async" />
     <div className="brand-showcase-content">
       <span className="brand-showcase-kicker">Leading brands</span>
       <h2 id={titleId}>Big brands.<br /><em>Mzansi choice.</em></h2>

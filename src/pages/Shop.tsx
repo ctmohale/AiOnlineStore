@@ -68,6 +68,13 @@ export default function Shop() {
   const pageProducts = visible.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const paginationItems = [...new Set([1, currentPage - 1, currentPage, currentPage + 1, pageCount])].filter((item) => item >= 1 && item <= pageCount).sort((a, b) => a - b);
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value && value !== 'All') next.set(key, value); else next.delete(key); next.delete('page'); setParams(next); };
+  const selectCategory = (value: string) => {
+    const next = new URLSearchParams(params);
+    next.delete('q');
+    next.delete('page');
+    if (value && value !== 'All') next.set('category', value); else next.delete('category');
+    setParams(next);
+  };
   const clearFilters = () => { setPriceRange('all'); setParams({}); };
   const searchAllProducts = () => { setPriceRange('all'); const next = new URLSearchParams(params); next.delete('category'); next.delete('page'); setParams(next); };
   const goToPage = (nextPage: number) => {
@@ -84,7 +91,7 @@ export default function Shop() {
     </section>
 
     <section className="shop-department-strip" aria-label="Product categories">
-      <div className="shop-department-links" tabIndex={0} role="group" aria-label="Product categories; scroll horizontally for more">{categoryData.map((item) => <button type="button" className={category === item.name ? 'active' : ''} title={FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || item.name} aria-pressed={category === item.name} onClick={() => update('category', item.name)} key={item.name}>
+      <div className="shop-department-links" tabIndex={0} role="group" aria-label="Product categories; scroll horizontally for more">{categoryData.map((item) => <button type="button" className={category === item.name ? 'active' : ''} title={FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || item.name} aria-pressed={category === item.name} onClick={() => selectCategory(item.name)} key={item.name}>
         <span>{departmentImages[item.name] ? <img src={departmentImages[item.name]} alt="" loading="lazy" /> : <PackageCheck />}</span><strong>{item.name}</strong><small>{item.count.toLocaleString('en-ZA')} products</small>
       </button>)}</div>
     </section>
@@ -96,7 +103,7 @@ export default function Shop() {
       <aside id="shop-filter-panel" className={`shop-filter-panel${filtersOpen ? ' open' : ''}`} aria-label="Product filters">
         <div className="shop-filter-title"><div><SlidersHorizontal /><strong>Filters</strong></div>{(category !== 'All' || priceRange !== 'all' || query) && <button type="button" onClick={clearFilters}>Clear all</button>}</div>
         <label className="shop-filter-category-search"><Search aria-hidden="true" /><input value={categoryQuery} onChange={(event) => setCategoryQuery(event.target.value)} placeholder="Search departments" aria-label="Search departments" />{categoryQuery && <button type="button" onClick={() => setCategoryQuery('')} aria-label="Clear department search"><X /></button>}</label>
-        <div className="shop-filter-group"><h2>Department</h2><button type="button" aria-pressed={category === 'All'} className={category === 'All' ? 'active' : ''} onClick={() => update('category', 'All')}><span aria-hidden="true">{category === 'All' && <Check />}</span><b>All products</b><small>{products.length.toLocaleString('en-ZA')}</small></button>{displayedCategories.map((item) => <button type="button" aria-pressed={category === item.name} className={category === item.name ? 'active' : ''} onClick={() => update('category', item.name)} key={item.name}><span aria-hidden="true">{category === item.name && <Check />}</span><b>{item.name}</b><small>{item.count.toLocaleString('en-ZA')}</small></button>)}{!displayedCategories.length && <p className="shop-filter-empty" role="status">No departments match your search.</p>}</div>
+        <div className="shop-filter-group"><h2>Department</h2><button type="button" aria-pressed={category === 'All'} className={category === 'All' ? 'active' : ''} onClick={() => selectCategory('All')}><span aria-hidden="true">{category === 'All' && <Check />}</span><b>All products</b><small>{products.length.toLocaleString('en-ZA')}</small></button>{displayedCategories.map((item) => <button type="button" aria-pressed={category === item.name} className={category === item.name ? 'active' : ''} onClick={() => selectCategory(item.name)} key={item.name}><span aria-hidden="true">{category === item.name && <Check />}</span><b>{item.name}</b><small>{item.count.toLocaleString('en-ZA')}</small></button>)}{!displayedCategories.length && <p className="shop-filter-empty" role="status">No departments match your search.</p>}</div>
         <div className="shop-filter-group"><h2>Price</h2>{priceOptions.map((option) => <button type="button" aria-pressed={priceRange === option.value} className={priceRange === option.value ? 'active' : ''} onClick={() => { setPriceRange(option.value); update('page', ''); }} key={option.value}><span aria-hidden="true">{priceRange === option.value && <Check />}</span><b>{option.label}</b></button>)}</div>
       </aside>
 
