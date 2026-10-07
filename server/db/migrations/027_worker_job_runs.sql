@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS worker_job_runs (
+  job_name VARCHAR(80) PRIMARY KEY,
+  last_started_at DATETIME NULL,
+  last_completed_at DATETIME NULL,
+  last_error TEXT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

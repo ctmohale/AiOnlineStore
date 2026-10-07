@@ -20,7 +20,7 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.disable('etag');
-app.use(helmet());
+app.use('/api', helmet());
 app.use(cors({ origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:5173'], methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
 app.use(express.json({ limit: '200kb', verify: (request, _response, buffer) => { (request as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
 
@@ -1111,7 +1111,7 @@ app.post('/api/admin/emails/test', requireAdmin, async (_request, response, next
   } catch (error) { next(error); }
 });
 
-app.use((_request, response) => response.status(404).json({ error: 'Not found' }));
+app.use('/api', (_request, response) => response.status(404).json({ error: 'Not found' }));
 app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
   void _next;
   const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : error && typeof error === 'object' && 'issues' in error ? 400 : 500;

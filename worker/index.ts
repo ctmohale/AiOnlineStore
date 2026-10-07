@@ -132,15 +132,48 @@ async function promotionEndRecheck() {
   if (Number((rows as { due: number }[])[0]?.due) > 0) await dailyRun();
 }
 
-cron.schedule(process.env.WORKER_CRON || '0 * * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
-cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
-cron.schedule('* * * * *', () => void processEmailOutbox().then((result) => {
+async function runClaimedJob(jobName: string, minimumMinutes: number, task: () => Promise<unknown>) {
+  if (!pool) return;
+  const claimed = await withTransaction(async (connection) => {
+    await connection.execute('INSERT IGNORE INTO worker_job_runs (job_name) VALUES (?)', [jobName]);
+    const [rows] = await connection.execute('SELECT last_started_at,last_completed_at FROM worker_job_runs WHERE job_name=? FOR UPDATE', [jobName]);
+    const current = (rows as { last_started_at: Date | null; last_completed_at: Date | null }[])[0];
+    const mostRecent = current?.last_completed_at || current?.last_started_at;
+    if (mostRecent && Date.now() - new Date(mostRecent).getTime() < minimumMinutes * 60_000) return false;
+    await connection.execute('UPDATE worker_job_runs SET last_started_at=UTC_TIMESTAMP(),last_error=NULL WHERE job_name=?', [jobName]);
+    return true;
+  });
+  if (!claimed) return;
+  try {
+    await task();
+    await pool.execute('UPDATE worker_job_runs SET last_completed_at=UTC_TIMESTAMP(),last_error=NULL WHERE job_name=?', [jobName]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await pool.execute('UPDATE worker_job_runs SET last_error=? WHERE job_name=?', [message.slice(0, 4000), jobName]);
+    throw error;
+  }
+}
+
+async function scheduledRun() {
+  await runClaimedJob('transactional_email_backfill', 14, backfillTransactionalEmails);
+  const result = await processEmailOutbox();
   if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
-}).catch(console.error), { timezone: 'Africa/Johannesburg' });
-cron.schedule('*/15 * * * *', () => void backfillTransactionalEmails().catch(console.error), { timezone: 'Africa/Johannesburg' });
-console.log('Mzansi Mega Store worker scheduled.');
-if (process.argv.includes('--once')) dailyRun().then(() => processEmailOutbox()).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
-else {
+  await runClaimedJob('promotion_end_recheck', 55, promotionEndRecheck);
+  await runClaimedJob('daily_catalogue_maintenance', 20 * 60, dailyRun);
+}
+
+if (process.argv.includes('--scheduled-once')) {
+  scheduledRun().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
+} else if (process.argv.includes('--once')) {
+  dailyRun().then(() => processEmailOutbox()).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
+} else {
+  cron.schedule(process.env.WORKER_CRON || '0 * * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
+  cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
+  cron.schedule('* * * * *', () => void processEmailOutbox().then((result) => {
+    if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
+  }).catch(console.error), { timezone: 'Africa/Johannesburg' });
+  cron.schedule('*/15 * * * *', () => void backfillTransactionalEmails().catch(console.error), { timezone: 'Africa/Johannesburg' });
+  console.log('Mzansi Mega Store worker scheduled.');
   void (async () => {
     const test = await queueConfiguredEmailTest();
     if (test.queued) console.log(`Branded email test is queued for ${test.recipient}.`);
