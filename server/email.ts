@@ -72,7 +72,7 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   }
   if (kind === 'payment_confirmed') {
     const title = 'Payment confirmed';
-    const intro = `Thank you, ${order.customer_name}. Yoco confirmed your payment for order ${order.reference}. We will verify supplier availability before purchasing your items.`;
+    const intro = `Thank you, ${order.customer_name}. Yoco confirmed your payment for order ${order.reference}. We are now preparing your order and will keep you updated.`;
     const eta = deliveryDate ? `<p style="margin:18px 0 0"><strong>Estimated delivery:</strong> ${escapeHtml(deliveryDate)}</p>` : '';
     return { subject: `${testPrefix}Payment confirmed for ${order.reference}`, html: emailFrame(title, intro, `${summaryHtml}${eta}`, { label: 'View order status', url: accountUrl }, isTest), text: `${title}\n\n${intro}\n\n${summaryText}${deliveryDate ? `\nEstimated delivery: ${deliveryDate}` : ''}\n\nView order: ${accountUrl}` };
   }
@@ -83,7 +83,7 @@ export function buildOrderEmail(kind: OrderEmailKind, order: OrderSnapshot, item
   }
   if (kind === 'purchasing') {
     const title = 'We are preparing your order';
-    const intro = `Supplier availability is confirmed and we are purchasing the items for order ${order.reference}.`;
+    const intro = `Your order items are confirmed and order ${order.reference} is now being prepared for delivery.`;
     return { subject: `Order ${order.reference} is being prepared`, html: emailFrame(title, intro, summaryHtml, { label: 'View order status', url: accountUrl }), text: `${title}\n\n${intro}\n\n${summaryText}\n\nView order: ${accountUrl}` };
   }
   if (kind === 'shipped') {
