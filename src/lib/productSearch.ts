@@ -40,8 +40,11 @@ const editDistance = (left: string, right: string) => {
 };
 
 const tokenMatches = (token: string, words: string[]) => words.some((word) => {
-  if (word.includes(token) || token.includes(word)) return true;
-  if (token.length < 4 || word.length < 4 || Math.abs(token.length - word.length) > 2) return false;
+  if (word.includes(token)) return true;
+  // Keep useful singular/plural partial matches without letting tiny words match
+  // longer queries (for example, the "by" in "side by side" matching "baby").
+  if (word.length >= 4 && token.includes(word) && token.length - word.length <= 2) return true;
+  if (token.length < 5 || word.length < 5 || Math.abs(token.length - word.length) > 2) return false;
   return editDistance(token, word) <= (token.length >= 7 ? 2 : 1);
 });
 

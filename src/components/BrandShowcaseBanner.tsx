@@ -6,6 +6,17 @@ const priorityBrands = ['Samsung', 'Hisense', 'Defy', 'LG', 'Huawei', 'HP', 'Bos
 
 const brandKey = (value: string) => value.trim().toLocaleLowerCase('en-ZA');
 
+const brandLogos: Record<string, string> = {
+  samsung: 'https://upload.wikimedia.org/wikipedia/commons/b/b4/Samsung_wordmark.svg',
+  hisense: 'https://upload.wikimedia.org/wikipedia/commons/4/47/Hisense.svg',
+  defy: 'https://upload.wikimedia.org/wikipedia/commons/7/7d/Defy-logo.jpg',
+  lg: 'https://upload.wikimedia.org/wikipedia/commons/9/92/LG_Electronics_Logo_%28modern%29.svg',
+  huawei: 'https://upload.wikimedia.org/wikipedia/commons/d/db/Huawei_wordmark_2019.svg',
+  hp: 'https://upload.wikimedia.org/wikipedia/commons/a/ad/HP_logo_2012.svg',
+  bosch: 'https://upload.wikimedia.org/wikipedia/commons/1/16/Bosch-logo.svg',
+  philips: 'https://upload.wikimedia.org/wikipedia/commons/5/52/Philips_logo_new.svg',
+};
+
 function featuredBrandNames(products: Product[], limit = 8) {
   const catalogueBrands = new Map<string, { name: string; count: number }>();
   products.forEach((product) => {
@@ -44,7 +55,13 @@ export default function BrandShowcaseBanner({ products, compact = false }: Props
     <div className="brand-showcase-rail">
       <span>Featured brands</span>
       <nav aria-label="Featured product brands">
-        {brands.map((brand) => <Link className={`brand-wordmark brand-${brandKey(brand).replace(/[^a-z0-9]+/g, '-')}`} key={brand} to={`/shop?q=${encodeURIComponent(brand)}`} aria-label={`Shop ${brand} products`}>{brand}</Link>)}
+        {brands.map((brand) => {
+          const key = brandKey(brand);
+          const logo = brandLogos[key];
+          return <Link className="brand-wordmark" key={brand} to={`/shop?q=${encodeURIComponent(brand)}`} aria-label={`Shop ${brand} products`}>
+            {logo ? <img src={logo} alt={`${brand} logo`} loading="lazy" decoding="async" /> : <span>{brand}</span>}
+          </Link>;
+        })}
       </nav>
     </div>
   </section>;

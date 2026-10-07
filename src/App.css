@@ -909,16 +909,9 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .brand-showcase-rail>span { padding-right:18px; border-right:1px solid #d9dfda; color:#68766f; text-transform:uppercase; letter-spacing:.13em; font-size:9px; font-weight:800; white-space:nowrap; }
 .brand-showcase-rail nav { min-width:0; display:grid; grid-template-columns:repeat(8,minmax(82px,1fr)); align-items:center; }
 .brand-wordmark { min-width:0; height:44px; display:flex; align-items:center; justify-content:center; padding:0 12px; border-right:1px solid #e4e8e5; color:#243f35; font-size:14px; font-weight:850; letter-spacing:-.025em; text-align:center; white-space:nowrap; }
+.brand-wordmark img { display:block; width:100%; max-width:92px; height:24px; object-fit:contain; }
 .brand-wordmark:last-child { border-right:0; }
 .brand-wordmark:hover { background:#f2f6f3; color:var(--coral); }
-.brand-wordmark.brand-samsung { color:#1428a0; letter-spacing:.05em; text-transform:uppercase; }
-.brand-wordmark.brand-hisense { color:#008f88; font-size:16px; }
-.brand-wordmark.brand-defy { color:#263f8f; font-size:17px; }
-.brand-wordmark.brand-lg { color:#a50034; font-size:18px; }
-.brand-wordmark.brand-huawei { color:#c8102e; letter-spacing:.04em; text-transform:uppercase; }
-.brand-wordmark.brand-hp { color:#0879b9; font-size:18px; font-style:italic; }
-.brand-wordmark.brand-bosch { color:#e20015; letter-spacing:.03em; text-transform:uppercase; }
-.brand-wordmark.brand-philips { color:#0b5ed7; letter-spacing:.04em; text-transform:uppercase; }
 .retail-section { width:min(var(--retail-content-width),calc(100% - (var(--retail-page-gutter) * 2))); margin:0 auto; padding:50px 0; }
 .retail-section-heading { display:flex; justify-content:space-between; align-items:flex-end; gap:25px; margin-bottom:26px; }
 .retail-section-heading>div>span { display:block; margin-bottom:5px; color:var(--coral); text-transform:uppercase; letter-spacing:.13em; font-size:10px; }
@@ -1798,6 +1791,7 @@ footer a,footer p { font-size:13px; }
   .brand-showcase-rail { padding:9px 10px; }
   .brand-showcase-rail nav { display:flex; overflow-x:auto; }
   .brand-wordmark { flex:0 0 100px; height:38px; padding:0 8px; font-size:12px; }
+  .brand-wordmark img { max-width:84px; height:22px; }
 
   .retail-section { padding:36px 0; }
   .retail-section-heading { gap:10px; margin-bottom:18px; }

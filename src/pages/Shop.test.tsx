@@ -25,6 +25,19 @@ describe('shop product search', () => {
     expect(screen.getByRole('link',{name:extraCare})).toHaveAttribute('href','/product/'+products[0].slug);
     expect(screen.queryByText('No exact matches yet')).not.toBeInTheDocument();
   });
+  it('scrolls a query search to the beginning of the product results', async () => {
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      mount('/shop?q=baby');
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ block:'start', behavior:'instant' }));
+      expect((scrollIntoView.mock.instances[0] as HTMLElement).id).toBe('shop-results');
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
   it('recovers a department-hidden match without losing the search text', async () => {
     const user=userEvent.setup();
     mount('/shop?category=Electronics&q='+encodeURIComponent(extraCare));

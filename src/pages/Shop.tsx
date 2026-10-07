@@ -30,8 +30,9 @@ export default function Shop() {
   const location = useLocation();
   const resultsRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
-    const categoryPage = new URLSearchParams(location.search).has('category');
-    if (!categoryPage) {
+    const searchParams = new URLSearchParams(location.search);
+    const hasFilteredResults = searchParams.has('category') || searchParams.has('q');
+    if (!hasFilteredResults) {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       return;
     }
