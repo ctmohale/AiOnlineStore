@@ -73,6 +73,14 @@ describe('transactional email templates', () => {
     expect(refundEmail.html).toContain('product-return@mzansimegastore.co.za');
   });
 
+  it('keeps supplier operations private in every customer order email', () => {
+    const customerKinds: OrderEmailKind[] = ['checkout_ready', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update'];
+    for (const kind of customerKinds) {
+      const email = buildOrderEmail(kind, order, items, { paymentLink: 'https://pay.example.test/checkout' });
+      expect(`${email.subject}\n${email.text}\n${email.html}`).not.toMatch(/supplier/i);
+    }
+  });
+
   it('renders every template with the shared storefront branding and hosted images', () => {
     const orderKinds: OrderEmailKind[] = ['checkout_ready', 'payment_confirmed', 'payment_failed', 'purchasing', 'shipped', 'delivered', 'cancelled', 'refunded', 'case_update', 'admin_new_order'];
     const accountKinds: AccountEmailKind[] = ['welcome', 'password_changed', 'profile_updated', 'verify_email', 'password_reset', 'test'];
