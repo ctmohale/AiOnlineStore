@@ -20,6 +20,15 @@ function mount(entry:string, header=false) {
 }
 
 describe('shop product search', () => {
+  it('keeps the relevance order returned by product search', () => {
+    mount('/shop?q=Huggies');
+    const results = within(document.getElementById('shop-results')!);
+    expect(results.getAllByRole('link', { name: /Huggies/ }).map((link) => link.textContent)).toEqual([
+      products[1].name,
+      products[0].name,
+    ]);
+  });
+
   it('finds the reported Huggies product by its exact title', () => {
     mount('/shop?q='+encodeURIComponent(extraCare));
     expect(screen.getByRole('link',{name:extraCare})).toHaveAttribute('href','/product/'+products[0].slug);

@@ -5,7 +5,7 @@ import ProductCard from '../components/ProductCard';
 import BrandShowcaseBanner from '../components/BrandShowcaseBanner';
 import { useCatalog } from '../state/CatalogContext';
 import { categorySummaries, matchesCategory, FOCUSED_CATEGORIES } from '../lib/categories';
-import { matchesProductSearch } from '../lib/productSearch';
+import { rankProductSearch } from '../lib/productSearch';
 
 const departmentImages: Record<string, string> = {
   ...Object.fromEntries(FOCUSED_CATEGORIES.map(({ name, image }) => [name, image])),
@@ -50,7 +50,7 @@ export default function Shop() {
   const requestedPage = Math.max(1, Number(params.get('page')) || 1);
   const categoryData = categorySummaries(products);
   const displayedCategories = categoryData.filter((item) => `${item.name} ${FOCUSED_CATEGORIES.find((focused) => focused.name === item.name)?.description || ''}`.toLowerCase().includes(categoryQuery.trim().toLowerCase()));
-  const searchMatches = useMemo(() => products.filter((product) => matchesProductSearch(product, query)), [products, query]);
+  const searchMatches = useMemo(() => query.trim() ? rankProductSearch(products, query, products.length) : products, [products, query]);
   const visible = useMemo(() => {
     const filtered = searchMatches.filter((product) => {
       const matchesPrice = priceRange === 'under-500' ? product.price < 500
@@ -59,7 +59,9 @@ export default function Shop() {
             : true;
       return matchesPrice && matchesCategory(product.category, category, `${product.name} ${product.brand} ${product.model}`);
     });
-    return [...filtered].sort((a, b) => sort === 'low' ? a.price - b.price : sort === 'high' ? b.price - a.price : a.id - b.id);
+    return sort === 'low' ? [...filtered].sort((a, b) => a.price - b.price)
+      : sort === 'high' ? [...filtered].sort((a, b) => b.price - a.price)
+        : filtered;
   }, [category, priceRange, searchMatches, sort]);
   const hiddenMatches = query.trim() ? searchMatches.length - visible.length : 0;
   const pageSize = 24;

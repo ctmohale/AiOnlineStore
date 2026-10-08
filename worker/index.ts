@@ -162,6 +162,19 @@ async function scheduledRun() {
   await runClaimedJob('daily_catalogue_maintenance', 20 * 60, dailyRun);
 }
 
+const emailPollIntervalMs = Math.max(5_000, Number(process.env.EMAIL_POLL_INTERVAL_MS || 30_000));
+let emailDeliveryRunning = false;
+async function deliverQueuedEmails() {
+  if (emailDeliveryRunning) return;
+  emailDeliveryRunning = true;
+  try {
+    const result = await processEmailOutbox();
+    if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
+  } finally {
+    emailDeliveryRunning = false;
+  }
+}
+
 if (process.argv.includes('--scheduled-once')) {
   scheduledRun().then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); });
 } else if (process.argv.includes('--once')) {
@@ -169,9 +182,7 @@ if (process.argv.includes('--scheduled-once')) {
 } else {
   cron.schedule(process.env.WORKER_CRON || '0 * * * *', () => void dailyRun().catch(console.error), { timezone: 'Africa/Johannesburg' });
   cron.schedule('5 * * * *', () => void promotionEndRecheck().catch(console.error), { timezone: 'Africa/Johannesburg' });
-  cron.schedule('* * * * *', () => void processEmailOutbox().then((result) => {
-    if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
-  }).catch(console.error), { timezone: 'Africa/Johannesburg' });
+  setInterval(() => void deliverQueuedEmails().catch(console.error), emailPollIntervalMs);
   cron.schedule('*/15 * * * *', () => void backfillTransactionalEmails().catch(console.error), { timezone: 'Africa/Johannesburg' });
   console.log('Mzansi Mega Store worker scheduled.');
   void (async () => {

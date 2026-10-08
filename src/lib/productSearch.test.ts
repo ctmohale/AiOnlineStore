@@ -35,6 +35,28 @@ describe('advanced product search', () => {
     expect(rankProductSearch(babyProducts, 'baby').map((item) => item.id)).toEqual([5]);
   });
 
+  it('does not return similarly spelled but unrelated product types', () => {
+    const catalogue = [
+      product(8, 'Wonderwagon Baby Stroller', 'Wonderwagon', 'Baby Travel'),
+      product(9, 'Solid Oak Kitchen Trolley', 'Home Living', 'Kitchen Storage'),
+      product(10, '600W Spark Machine', 'Generic', 'Electronic Security'),
+      product(11, 'Defy Front Loader Washing Machine', 'Defy', 'Washers-Dryers'),
+    ];
+
+    expect(rankProductSearch(catalogue, 'stroller', 20).map((item) => item.id)).toEqual([8]);
+    expect(rankProductSearch(catalogue, 'washing machine', 20).map((item) => item.id)).toEqual([11]);
+  });
+
+  it('uses typo matching only when there is no direct partial match', () => {
+    const catalogue = [
+      product(12, 'Apple iPhone 8', 'Apple', 'Handsets'),
+      product(13, 'Defy Kitchen Appliance Set', 'Defy', 'Kitchen Appliances'),
+    ];
+
+    expect(rankProductSearch(catalogue, 'appli', 20).map((item) => item.id)).toEqual([13]);
+    expect(rankProductSearch(products, 'samsang')[0].id).toBe(1);
+  });
+
   it('requires every typed word and respects the result limit', () => {
     expect(rankProductSearch(products, 'Goldair fryer').map((item) => item.id)).toEqual([3]);
     expect(rankProductSearch(products, 'Samsung fryer')).toEqual([]);

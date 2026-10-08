@@ -24,6 +24,7 @@ const order = {
   tracking_url: null,
 };
 const items = [{ product_title_snapshot: 'Stand Mixer <script>alert(1)</script>', quantity: 1, agreed_unit_price: 1724 }];
+const checkout = { ...order, reference: 'MMS-CHK-2026-ABC123' };
 
 describe('transactional email templates', () => {
   it('only makes the unpaid-payment reminder due after a full 24 hours', () => {
@@ -34,20 +35,22 @@ describe('transactional email templates', () => {
   });
 
   it('renders a branded checkout email with a test-mode warning and escaped customer data', () => {
-    const email = buildOrderEmail('checkout_ready', order, items, { paymentLink: 'https://pay.example.test/checkout', paymentMode: 'test' });
-    expect(email.subject).toBe('Complete payment for MMS-2026-ABC123');
+    const email = buildOrderEmail('checkout_ready', checkout, items, { paymentLink: 'https://pay.example.test/checkout', paymentMode: 'test' });
+    expect(email.subject).toBe('Complete payment for MMS-CHK-2026-ABC123');
     expect(email.subject).not.toContain('[TEST]');
     expect(email.html).toContain('Pay securely with Yoco');
     expect(email.html).toContain('TEST MODE');
     expect(email.html).toContain('Nomsa &lt;Dlamini&gt;');
     expect(email.html).not.toContain('<script>alert(1)</script>');
     expect(email.text).toContain('https://pay.example.test/checkout');
+    expect(email.text).toContain('Checkout reference: MMS-CHK-2026-ABC123');
+    expect(email.text).toContain('confirmed order and order reference are created only after Yoco verifies payment');
   });
 
   it('renders a single, calm 24-hour payment reminder', () => {
-    const email = buildOrderEmail('payment_reminder', order, items, { paymentLink: 'https://pay.example.test/checkout' });
-    expect(email.subject).toBe('Payment reminder for MMS-2026-ABC123');
-    expect(email.html).toContain('Your order is still awaiting payment');
+    const email = buildOrderEmail('payment_reminder', checkout, items, { paymentLink: 'https://pay.example.test/checkout' });
+    expect(email.subject).toBe('Payment reminder for MMS-CHK-2026-ABC123');
+    expect(email.html).toContain('Your checkout is still awaiting payment');
     expect(email.html).toContain('Complete secure payment');
     expect(email.text).toContain('waiting for payment for 24 hours');
     expect(email.text).toContain('only unpaid-payment reminder');

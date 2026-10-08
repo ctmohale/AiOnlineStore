@@ -39,12 +39,12 @@ const editDistance = (left: string, right: string) => {
   return row[right.length];
 };
 
-const tokenMatches = (token: string, words: string[]) => words.some((word) => {
+const tokenMatches = (token: string, words: string[], allowFuzzy = true) => words.some((word) => {
   if (word.includes(token)) return true;
   // Keep useful singular/plural partial matches without letting tiny words match
   // longer queries (for example, the "by" in "side by side" matching "baby").
   if (word.length >= 4 && token.includes(word) && token.length - word.length <= 2) return true;
-  if (token.length < 5 || word.length < 5 || Math.abs(token.length - word.length) > 2) return false;
+  if (!allowFuzzy || token[0] !== word[0] || token.length < 5 || word.length < 5 || Math.abs(token.length - word.length) > 2) return false;
   return editDistance(token, word) <= (token.length >= 7 ? 2 : 1);
 });
 
@@ -54,9 +54,12 @@ export const rankProductSearch = (products: Product[], rawQuery: string, limit =
   const directTokens = query.split(' ').filter(Boolean);
   const aliasTokens = directTokens.flatMap((token) => SEARCH_ALIASES[token] || []).flatMap((alias) => normalizeSearchText(alias).split(' '));
   const tokens = [...new Set([...directTokens, ...aliasTokens])];
-  const matchGroups = directTokens.map((token) => [token, ...(SEARCH_ALIASES[token] || []).flatMap((alias) => normalizeSearchText(alias).split(' '))]);
+  const matchGroups = directTokens.map((token) => [
+    [token],
+    ...(SEARCH_ALIASES[token] || []).map((alias) => normalizeSearchText(alias).split(' ').filter(Boolean)),
+  ]);
 
-  return products.map((product) => {
+  const candidates = products.map((product) => {
     const name = normalizeSearchText(product.name);
     const brand = normalizeSearchText(product.brand);
     const category = normalizeSearchText(product.category);
@@ -64,7 +67,19 @@ export const rankProductSearch = (products: Product[], rawQuery: string, limit =
     const packSize = normalizeSearchText(product.packSize);
     const searchable = `${name} ${brand} ${category} ${model} ${packSize}`.trim();
     const words = searchable.split(' ').filter(Boolean);
-    if (!matchGroups.every((group) => group.some((token) => tokenMatches(token, words)))) return null;
+    return { product, name, brand, category, model, searchable, words };
+  });
+  // A misspelling is only used as a fallback when the catalogue has no direct
+  // match for that typed word. This keeps partial searches such as "appli"
+  // focused on appliances instead of mixing in fuzzy matches for Apple.
+  const allowFuzzy = directTokens.map((token) => !candidates.some(({ words }) => tokenMatches(token, words, false)));
+
+  return candidates.map(({ product, name, brand, category, model, searchable, words }) => {
+    const matchesEveryGroup = matchGroups.every((alternatives, groupIndex) => alternatives.some((alternative, alternativeIndex) => (
+      alternative.every((token) => tokenMatches(token, words, alternativeIndex === 0 && allowFuzzy[groupIndex]))
+      || (alternative.length > 1 && searchable.includes(alternative.join(' ')))
+    )));
+    if (!matchesEveryGroup) return null;
 
     let score = 0;
     if (name === query) score += 1200;

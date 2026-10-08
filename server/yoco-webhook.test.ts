@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, cartCleanupQueries: 0, outcome: '', queuedEmails: [] as string[] }));
+const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, cartCleanupQueries: 0, confirmedReference: '', outcome: '', queuedEmails: [] as string[] }));
 
 vi.mock('./email.js', () => ({
   enqueueAccountEmail: vi.fn(),
@@ -18,9 +18,9 @@ vi.mock('./db/pool.js', () => ({
         if (state.events.has(eventId)) return [{ affectedRows: 0 }];
         state.events.add(eventId); return [{ affectedRows: 1 }];
       }
-      if (sql.startsWith('SELECT pr.id AS payment_reference_id')) return [[{ payment_reference_id: 5, expected_amount_cents: 172400, currency: 'ZAR', processing_mode: 'test', verification_status: 'unverified', order_id: 9, order_status: 'awaiting_payment', is_test: 0 }]];
+      if (sql.startsWith('SELECT pr.id AS payment_reference_id')) return [[{ payment_reference_id: 5, expected_amount_cents: 172400, currency: 'ZAR', processing_mode: 'test', verification_status: 'unverified', order_id: 9, order_reference: 'MMS-CHK-2026-ABC123', order_status: 'awaiting_payment', is_test: 0 }]];
       if (sql.startsWith('UPDATE payment_references')) { state.paymentUpdates++; return [{ affectedRows: 1 }]; }
-      if (sql.startsWith('UPDATE order_requests')) { state.orderUpdates++; return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('UPDATE order_requests')) { state.orderUpdates++; state.confirmedReference = String(params[0]); return [{ affectedRows: 1 }]; }
       if (sql.startsWith('INSERT INTO order_status_history')) { state.historyWrites++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('DELETE ci FROM customer_cart_items') || sql.startsWith('UPDATE customer_cart_items ci')) { state.cartCleanupQueries++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('UPDATE payment_webhook_events')) { state.outcome = String(params[0] ?? sql.match(/processing_outcome='([^']+)'/)?.[1]); return [{ affectedRows: 1 }]; }
@@ -53,6 +53,7 @@ describe('Yoco webhook endpoint', () => {
     state.orderUpdates = 0;
     state.historyWrites = 0;
     state.cartCleanupQueries = 0;
+    state.confirmedReference = '';
     state.outcome = '';
     state.queuedEmails.length = 0;
   });
@@ -75,9 +76,11 @@ describe('Yoco webhook endpoint', () => {
     expect(await accepted.json()).toMatchObject({ received: true, duplicate: false, outcome: 'payment_verified' });
     expect(state.paymentUpdates).toBe(1);
     expect(state.orderUpdates).toBe(1);
+    expect(state.confirmedReference).toMatch(/^MMS-\d{4}-[A-F0-9]{6}$/);
+    expect(state.confirmedReference).not.toContain('-CHK-');
     expect(state.historyWrites).toBe(1);
     expect(state.cartCleanupQueries).toBe(2);
-    expect(state.queuedEmails).toEqual(['payment_confirmed']);
+    expect(state.queuedEmails).toEqual(['payment_confirmed', 'admin_new_order']);
 
     const duplicate = await send(event);
     expect(await duplicate.json()).toMatchObject({ duplicate: true, outcome: 'already_processed' });
@@ -85,7 +88,7 @@ describe('Yoco webhook endpoint', () => {
     expect(state.orderUpdates).toBe(1);
     expect(state.historyWrites).toBe(1);
     expect(state.cartCleanupQueries).toBe(2);
-    expect(state.queuedEmails).toEqual(['payment_confirmed']);
+    expect(state.queuedEmails).toEqual(['payment_confirmed', 'admin_new_order']);
   });
 
   it('does not mark an order paid when Yoco reports a different amount', async () => {
