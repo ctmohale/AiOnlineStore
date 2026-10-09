@@ -6,6 +6,7 @@ const DRY_RUN = process.env.IMPORT_LIVE !== 'true';
 const DIRECT_DB = process.env.IMPORT_DIRECT_DB === 'true';
 const REQUEST_CONCURRENCY = Math.min(24, Math.max(1, Number(process.env.REQUEST_CONCURRENCY || 12)));
 const IMPORT_CONCURRENCY = Math.min(20, Math.max(1, Number(process.env.IMPORT_CONCURRENCY || 10)));
+const SOURCE_ONLY = String(process.env.SOURCE_ONLY || 'all').toLowerCase();
 const checkedAt = new Date();
 const USER_AGENT = 'Mozilla/5.0 (compatible; MzansiMegaStore/1.0; +https://www.mzansimegastore.co.za)';
 
@@ -300,10 +301,16 @@ async function importDirect(candidates) {
 
 async function main() {
   const checkersShare = TARGET_COUNT < 100 ? Math.max(1, Math.round(TARGET_COUNT * 0.20)) : Math.max(300, Math.round(TARGET_COUNT * 0.12));
-  const checkersTarget = Math.ceil(checkersShare * 1.75);
-  const makroTarget = Math.ceil((TARGET_COUNT - Math.min(TARGET_COUNT, checkersShare)) * 1.75);
-  const [makro, checkers, game] = await Promise.all([collectMakro(makroTarget), collectCheckers(checkersTarget), gameAvailability()]);
-  const candidates = [...makro, ...checkers].filter((item) => item.sellingPrice >= MIN_SELLING_PRICE);
+  const checkersTarget = SOURCE_ONLY === 'checkers' ? Math.ceil(TARGET_COUNT * 2.1) : SOURCE_ONLY === 'makro' ? 0 : Math.ceil(checkersShare * 1.75);
+  const makroTarget = SOURCE_ONLY === 'makro' ? Math.ceil(TARGET_COUNT * 1.75) : SOURCE_ONLY === 'checkers' ? 0 : Math.ceil((TARGET_COUNT - Math.min(TARGET_COUNT, checkersShare)) * 1.75);
+  const [makro, checkers, game] = await Promise.all([
+    makroTarget ? collectMakro(makroTarget) : [],
+    checkersTarget ? collectCheckers(checkersTarget) : [],
+    gameAvailability(),
+  ]);
+  // Checkers has the smaller focused pool, so reserve those candidates before
+  // filling the remaining import target from Makro's much larger catalogue.
+  const candidates = [...checkers, ...makro].filter((item) => item.sellingPrice >= MIN_SELLING_PRICE);
   const summary = {
     target: TARGET_COUNT, minimumSellingPrice: MIN_SELLING_PRICE, dryRun: DRY_RUN,
     collected: candidates.length, makro: makro.length, checkers: checkers.length,
