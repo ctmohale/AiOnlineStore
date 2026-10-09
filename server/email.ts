@@ -208,7 +208,7 @@ export async function backfillTransactionalEmails() {
   if (!pool) return { queued: 0 };
   const [rows] = await pool.execute(`SELECT o.id,o.status,o.created_at,pr.created_at AS payment_created_at,pr.external_reference,pr.payment_link,pr.processing_mode,pr.verification_status
     FROM order_requests o LEFT JOIN payment_references pr ON pr.id=(SELECT id FROM payment_references WHERE order_request_id=o.id ORDER BY id DESC LIMIT 1)
-    WHERE o.is_test=FALSE AND o.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY)
+    WHERE o.is_test=FALSE AND o.deleted_at IS NULL AND o.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY)
     ORDER BY o.id`);
   let queued = 0;
   for (const row of rows as (RowDataPacket & { id:number; status:string; created_at:Date; payment_created_at:Date | null; external_reference:string | null; payment_link:string | null; processing_mode:string | null; verification_status:string | null })[]) {

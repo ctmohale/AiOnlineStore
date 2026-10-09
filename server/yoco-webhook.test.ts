@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, cartCleanupQueries: 0, confirmedReference: '', outcome: '', queuedEmails: [] as string[] }));
+const state = vi.hoisted(() => ({ events: new Set<string>(), paymentUpdates: 0, orderUpdates: 0, historyWrites: 0, cartCleanupQueries: 0, confirmedReference: '', outcome: '', queuedEmails: [] as string[], orderDeleted: false, orderRestored: false }));
 
 vi.mock('./email.js', () => ({
   enqueueAccountEmail: vi.fn(),
@@ -18,9 +18,9 @@ vi.mock('./db/pool.js', () => ({
         if (state.events.has(eventId)) return [{ affectedRows: 0 }];
         state.events.add(eventId); return [{ affectedRows: 1 }];
       }
-      if (sql.startsWith('SELECT pr.id AS payment_reference_id')) return [[{ payment_reference_id: 5, expected_amount_cents: 172400, currency: 'ZAR', processing_mode: 'test', verification_status: 'unverified', order_id: 9, order_reference: 'MMS-CHK-2026-ABC123', order_status: 'awaiting_payment', is_test: 0 }]];
+      if (sql.startsWith('SELECT pr.id AS payment_reference_id')) return [[{ payment_reference_id: 5, expected_amount_cents: 172400, currency: 'ZAR', processing_mode: 'test', verification_status: 'unverified', order_id: 9, order_reference: 'MMS-CHK-2026-ABC123', order_status: 'awaiting_payment', is_test: 0, deleted_at: state.orderDeleted ? new Date() : null }]];
       if (sql.startsWith('UPDATE payment_references')) { state.paymentUpdates++; return [{ affectedRows: 1 }]; }
-      if (sql.startsWith('UPDATE order_requests')) { state.orderUpdates++; state.confirmedReference = String(params[0]); return [{ affectedRows: 1 }]; }
+      if (sql.startsWith('UPDATE order_requests')) { state.orderUpdates++; state.confirmedReference = String(params[0]); state.orderRestored = sql.includes('deleted_at=NULL'); return [{ affectedRows: 1 }]; }
       if (sql.startsWith('INSERT INTO order_status_history')) { state.historyWrites++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('DELETE ci FROM customer_cart_items') || sql.startsWith('UPDATE customer_cart_items ci')) { state.cartCleanupQueries++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('UPDATE payment_webhook_events')) { state.outcome = String(params[0] ?? sql.match(/processing_outcome='([^']+)'/)?.[1]); return [{ affectedRows: 1 }]; }
@@ -56,6 +56,8 @@ describe('Yoco webhook endpoint', () => {
     state.confirmedReference = '';
     state.outcome = '';
     state.queuedEmails.length = 0;
+    state.orderDeleted = false;
+    state.orderRestored = false;
   });
 
   const send = (event: Record<string, unknown>, valid = true) => {
@@ -108,5 +110,24 @@ describe('Yoco webhook endpoint', () => {
     expect(state.orderUpdates).toBe(0);
     expect(state.cartCleanupQueries).toBe(0);
     expect(state.queuedEmails).toEqual(['payment_failed']);
+  });
+
+  it('restores a queue-deleted order when Yoco later verifies its payment', async () => {
+    state.orderDeleted = true;
+    const event = { id: 'evt_late_success_1', type: 'payment.succeeded', payload: { id: 'pay_4', amount: 172400, currency: 'ZAR', mode: 'test', status: 'succeeded', metadata: { checkoutId: 'ch_test_123' } } };
+    const accepted = await send(event);
+
+    expect(await accepted.json()).toMatchObject({ received: true, outcome: 'payment_verified' });
+    expect(state.orderRestored).toBe(true);
+    expect(state.queuedEmails).toEqual(['payment_confirmed', 'admin_new_order']);
+  });
+
+  it('does not email about a failed checkout for a queue-deleted order', async () => {
+    state.orderDeleted = true;
+    const event = { id: 'evt_deleted_failed_1', type: 'payment.failed', payload: { id: 'pay_5', amount: 172400, currency: 'ZAR', mode: 'test', status: 'failed', metadata: { checkoutId: 'ch_test_123' } } };
+    const accepted = await send(event);
+
+    expect(await accepted.json()).toMatchObject({ received: true, outcome: 'payment_failed' });
+    expect(state.queuedEmails).toEqual([]);
   });
 });

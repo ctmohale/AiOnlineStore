@@ -13,7 +13,7 @@ import { publicProductSlugBase, sanitizePublicProductName, sanitizePublicProduct
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
-import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, customerCartItemSchema, customerCartSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
+import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, bulkOrderDeleteSchema, customerCartItemSchema, customerCartSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
 import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
 
@@ -136,7 +136,7 @@ type PaymentOrderRow = RowDataPacket & { id: number; reference: string; status: 
 async function provisionYocoCheckout(orderId: string | number) {
   if (!pool) throw Object.assign(new Error('Database not configured'), { status: 503 });
   if (!isYocoConfigured()) throw Object.assign(new Error('Yoco is not configured. Add YOCO_SECRET_KEY to the API service.'), { status: 503 });
-  const [orderRows] = await pool.execute('SELECT id,reference,status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? LIMIT 1', [orderId]);
+  const [orderRows] = await pool.execute('SELECT id,reference,status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? AND deleted_at IS NULL LIMIT 1', [orderId]);
   const order = (orderRows as PaymentOrderRow[])[0];
   if (!order || order.is_test) throw Object.assign(new Error('Real order not found'), { status: 404 });
   if (!['requested', 'quoted', 'awaiting_payment'].includes(order.status)) throw Object.assign(new Error('This order cannot receive a Yoco checkout.'), { status: 409 });
@@ -146,7 +146,7 @@ async function provisionYocoCheckout(orderId: string | number) {
   const amountCents = Math.round((Number(order.product_revenue) + Number(order.customer_delivery_charged)) * 100);
   if (active && Number(active.expected_amount_cents) === amountCents && active.currency === 'ZAR') {
     if (order.status !== 'awaiting_payment') await withTransaction(async (connection) => {
-      const [lockedRows] = await connection.execute('SELECT status,is_test FROM order_requests WHERE id=? FOR UPDATE', [orderId]);
+      const [lockedRows] = await connection.execute('SELECT status,is_test FROM order_requests WHERE id=? AND deleted_at IS NULL FOR UPDATE', [orderId]);
       const locked = (lockedRows as (RowDataPacket & { status: string; is_test: number })[])[0];
       if (!locked || locked.is_test || !['requested', 'quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
       if (locked.status !== 'awaiting_payment') {
@@ -162,7 +162,7 @@ async function provisionYocoCheckout(orderId: string | number) {
   const checkout = await createYocoCheckout({ amountCents, orderReference: order.reference, attempt });
 
   await withTransaction(async (connection) => {
-    const [lockedRows] = await connection.execute('SELECT status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? FOR UPDATE', [orderId]);
+    const [lockedRows] = await connection.execute('SELECT status,is_test,product_revenue,customer_delivery_charged FROM order_requests WHERE id=? AND deleted_at IS NULL FOR UPDATE', [orderId]);
     const locked = (lockedRows as (RowDataPacket & { status: string; is_test: number; product_revenue: number; customer_delivery_charged: number })[])[0];
     if (!locked || locked.is_test || !['requested', 'quoted', 'awaiting_payment'].includes(locked.status)) throw Object.assign(new Error('The order is no longer awaiting checkout creation.'), { status: 409 });
     const lockedAmount = Math.round((Number(locked.product_revenue) + Number(locked.customer_delivery_charged)) * 100);
@@ -241,10 +241,10 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
         VALUES ('yoco',?,?,?,?,?,?,?,'received')`, [eventId, eventType, checkoutId, paymentId, amountCents, currency, mode]);
       if ((insertResult as { affectedRows: number }).affectedRows === 0) return { duplicate: true, outcome: 'already_processed' };
 
-      const [referenceRows] = await connection.execute(`SELECT pr.id AS payment_reference_id,pr.expected_amount_cents,pr.currency,pr.processing_mode,pr.verification_status,o.id AS order_id,o.reference AS order_reference,o.status AS order_status,o.is_test
+      const [referenceRows] = await connection.execute(`SELECT pr.id AS payment_reference_id,pr.expected_amount_cents,pr.currency,pr.processing_mode,pr.verification_status,o.id AS order_id,o.reference AS order_reference,o.status AS order_status,o.is_test,o.deleted_at
         FROM payment_references pr JOIN order_requests o ON o.id=pr.order_request_id
         WHERE pr.provider='yoco' AND pr.external_reference=? FOR UPDATE`, [checkoutId]);
-      const reference = (referenceRows as (RowDataPacket & { payment_reference_id: number; expected_amount_cents: number; currency: string; processing_mode: string; verification_status: string; order_id: number; order_reference: string; order_status: string; is_test: number })[])[0];
+      const reference = (referenceRows as (RowDataPacket & { payment_reference_id: number; expected_amount_cents: number; currency: string; processing_mode: string; verification_status: string; order_id: number; order_reference: string; order_status: string; is_test: number; deleted_at: Date | null })[])[0];
       if (!reference) {
         await connection.execute("UPDATE payment_webhook_events SET processing_outcome='ignored_unknown_checkout' WHERE provider='yoco' AND event_id=?", [eventId]);
         return { duplicate: false, outcome: 'ignored_unknown_checkout' };
@@ -258,14 +258,14 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
       if (eventType === 'payment.failed') {
         await connection.execute("UPDATE payment_references SET verification_status='failed',provider_payment_id=?,failure_reason='Yoco reported that the payment failed' WHERE id=? AND verification_status='unverified'", [paymentId, reference.payment_reference_id]);
         await connection.execute("UPDATE payment_webhook_events SET processing_outcome='payment_failed' WHERE provider='yoco' AND event_id=?", [eventId]);
-        await enqueueOrderEmail(connection, reference.order_id, 'payment_failed', { eventKey: `yoco:${eventId}:payment_failed`, paymentMode: mode });
+        if (!reference.deleted_at) await enqueueOrderEmail(connection, reference.order_id, 'payment_failed', { eventKey: `yoco:${eventId}:payment_failed`, paymentMode: mode });
         return { duplicate: false, outcome: 'payment_failed' };
       }
 
       await connection.execute("UPDATE payment_references SET verification_status='verified',provider_payment_id=?,failure_reason=NULL,verified_at=UTC_TIMESTAMP() WHERE id=?", [paymentId, reference.payment_reference_id]);
       if (reference.order_status === 'awaiting_payment') {
         const confirmedReference = reference.order_reference.startsWith('MMS-CHK-') ? orderReference() : reference.order_reference;
-        await connection.execute("UPDATE order_requests SET status='paid',reference=? WHERE id=? AND status='awaiting_payment'", [confirmedReference, reference.order_id]);
+        await connection.execute("UPDATE order_requests SET status='paid',reference=?,deleted_at=NULL,deleted_by_admin_id=NULL WHERE id=? AND status='awaiting_payment'", [confirmedReference, reference.order_id]);
         await connection.execute("INSERT INTO order_status_history (order_request_id,from_status,to_status,note) VALUES (?,'awaiting_payment','paid','Yoco payment verified automatically')", [reference.order_id]);
         await removePurchasedCartItems(connection, reference.order_id);
         await enqueueOrderEmail(connection, reference.order_id, 'payment_confirmed', { eventKey: `yoco:${eventId}:payment_confirmed`, paymentMode: mode });
@@ -295,7 +295,7 @@ app.get('/api/products', async (request, response, next) => {
         SUM(CASE WHEN orders.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY) THEN oi.quantity ELSE 0 END) AS recent_units,
         SUM(CASE WHEN orders.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END) AS trending_units
       FROM order_items oi JOIN order_requests orders ON orders.id=oi.order_request_id
-      WHERE orders.is_test=FALSE AND orders.status IN ('paid','purchasing','shipped','delivered') GROUP BY oi.product_id
+      WHERE orders.is_test=FALSE AND orders.deleted_at IS NULL AND orders.status IN ('paid','purchasing','shipped','delivered') GROUP BY oi.product_id
     ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
     const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     response.json(sanitizePublicProducts(products));
@@ -550,7 +550,7 @@ app.get('/api/customer/orders', requireCustomer, async (_request, response, next
     COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary,
     (SELECT pr.payment_link FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_link,
     (SELECT pr.provider FROM payment_references pr WHERE pr.order_request_id=o.id AND pr.verification_status='unverified' ORDER BY pr.id DESC LIMIT 1) AS payment_provider
-    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json((rows as (RowDataPacket & { item_summary:string })[]).map((order) => ({ ...order, item_summary: sanitizePublicProductText(order.item_summary) }))); } catch (error) { next(error); }
+    FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.customer_id=? AND o.is_test=FALSE AND o.deleted_at IS NULL GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`, [response.locals.customer.sub]); response.json((rows as (RowDataPacket & { item_summary:string })[]).map((order) => ({ ...order, item_summary: sanitizePublicProductText(order.item_summary) }))); } catch (error) { next(error); }
 });
 
 app.post('/api/orders', publicLimiter, requireCustomer, async (request, response, next) => {
@@ -664,7 +664,7 @@ app.get('/api/admin/customers', requireAdmin, async (_request, response, next) =
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
     const [rows] = await pool.execute(`SELECT c.id,c.email,c.name,c.phone,c.created_at,c.updated_at,
       COUNT(o.id) AS order_count,MAX(o.created_at) AS last_order_at
-      FROM customers c LEFT JOIN order_requests o ON o.customer_id=c.id
+      FROM customers c LEFT JOIN order_requests o ON o.customer_id=c.id AND o.deleted_at IS NULL
       GROUP BY c.id ORDER BY c.updated_at DESC LIMIT 500`);
     response.json(rows);
   } catch (error) { next(error); }
@@ -851,7 +851,40 @@ app.patch('/api/admin/pricing-settings', requireAdmin, async (request, response,
 });
 
 app.get('/api/admin/orders', requireAdmin, async (_request, response, next) => {
-  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.*,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
+  try { if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.execute("SELECT o.*,COALESCE(GROUP_CONCAT(CONCAT(oi.product_title_snapshot,' × ',oi.quantity) ORDER BY oi.id SEPARATOR ', '),'No items') AS item_summary FROM order_requests o LEFT JOIN order_items oi ON oi.order_request_id=o.id WHERE o.deleted_at IS NULL GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200"); response.json(rows); } catch (error) { next(error); }
+});
+
+app.delete('/api/admin/orders', requireAdmin, async (request, response, next) => {
+  try {
+    if (response.locals.admin.role !== 'admin') return response.status(403).json({ error: 'Administrator access required' });
+    const input = bulkOrderDeleteSchema.parse(request.body);
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const ids = [...new Set(input.ids)].sort((left, right) => left - right);
+    const placeholders = ids.map(() => '?').join(',');
+    const deleted = await withTransaction(async (connection) => {
+      const [paymentRows] = await connection.execute(`SELECT order_request_id,verification_status FROM payment_references WHERE order_request_id IN (${placeholders}) ORDER BY order_request_id,id FOR UPDATE`, ids);
+      const [orderRows] = await connection.execute(`SELECT id,reference,status,is_test FROM order_requests WHERE id IN (${placeholders}) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, ids);
+      const orders = orderRows as (RowDataPacket & { id:number; reference:string; status:string; is_test:number })[];
+      if (orders.length !== ids.length) throw Object.assign(new Error('One or more selected orders no longer exist. Refresh the order queue and try again.'), { status: 404 });
+
+      const protectedStatuses = new Set(['paid', 'purchasing', 'shipped', 'delivered', 'refunded']);
+      const protectedPayments = new Set((paymentRows as (RowDataPacket & { order_request_id:number; verification_status:string })[])
+        .filter((payment) => ['verified', 'refunded'].includes(payment.verification_status))
+        .map((payment) => Number(payment.order_request_id)));
+      const blocked = orders.filter((order) => Boolean(order.is_test) || protectedStatuses.has(order.status) || protectedPayments.has(Number(order.id)));
+      if (blocked.length) {
+        const references = blocked.slice(0, 5).map((order) => order.reference).join(', ');
+        throw Object.assign(new Error(`Paid, fulfilled, refunded, or test orders cannot be deleted: ${references}`), { status: 409 });
+      }
+
+      for (const order of orders) {
+        await connection.execute("DELETE FROM email_outbox WHERE status IN ('pending','failed') AND (event_key LIKE ? OR (message_type LIKE 'order\\_%' AND text_body LIKE ?))", [`order:${order.id}:%`, `%${order.reference}%`]);
+      }
+      const [result] = await connection.execute(`UPDATE order_requests SET deleted_at=UTC_TIMESTAMP(),deleted_by_admin_id=? WHERE id IN (${placeholders}) AND deleted_at IS NULL`, [response.locals.admin.sub, ...ids]);
+      return Number((result as { affectedRows:number }).affectedRows || 0);
+    });
+    response.json({ deleted });
+  } catch (error) { next(error); }
 });
 
 app.get('/api/admin/analytics', requireAdmin, async (_request, response, next) => {
@@ -871,12 +904,12 @@ app.get('/api/admin/analytics', requireAdmin, async (_request, response, next) =
         SUM(CASE WHEN status NOT IN ('delivered','cancelled','refunded') AND ((expected_delivery_at IS NOT NULL AND expected_delivery_at<UTC_TIMESTAMP()) OR (status='requested' AND created_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 24 HOUR))) THEN 1 ELSE 0 END) AS orders_at_risk,
         SUM(CASE WHEN status='delivered' AND expected_delivery_at IS NOT NULL THEN 1 ELSE 0 END) AS delivery_sla_sample,
         SUM(CASE WHEN status='delivered' AND expected_delivery_at IS NOT NULL AND delivered_at<=expected_delivery_at THEN 1 ELSE 0 END) AS on_time_deliveries
-        FROM order_requests WHERE is_test=FALSE`),
+        FROM order_requests WHERE is_test=FALSE AND deleted_at IS NULL`),
       pool.execute(`SELECT DATE(created_at) AS day,COUNT(*) AS orders,
         SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN product_revenue+customer_delivery_charged ELSE 0 END) AS revenue,
         SUM(CASE WHEN status IN ('paid','purchasing','shipped','delivered') THEN COALESCE(actual_profit,expected_profit) ELSE 0 END) AS profit
-        FROM order_requests WHERE is_test=FALSE AND created_at>=DATE_SUB(UTC_DATE(),INTERVAL 29 DAY) GROUP BY DATE(created_at) ORDER BY day`),
-      pool.execute("SELECT status,COUNT(*) AS count FROM order_requests WHERE is_test=FALSE GROUP BY status ORDER BY count DESC"),
+        FROM order_requests WHERE is_test=FALSE AND deleted_at IS NULL AND created_at>=DATE_SUB(UTC_DATE(),INTERVAL 29 DAY) GROUP BY DATE(created_at) ORDER BY day`),
+      pool.execute("SELECT status,COUNT(*) AS count FROM order_requests WHERE is_test=FALSE AND deleted_at IS NULL GROUP BY status ORDER BY count DESC"),
       pool.execute("SELECT COUNT(*) AS total_products,SUM(status='published') AS published_products,SUM(status='pending_review') AS review_products,SUM(status='paused') AS paused_products,SUM(status='unavailable') AS unavailable_products FROM products WHERE deleted_at IS NULL"),
       pool.execute('SELECT COUNT(*) AS customers FROM customers'),
     ]);

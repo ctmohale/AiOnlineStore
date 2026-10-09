@@ -735,6 +735,17 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .review-table article strong,.review-table article span,.review-table article small,.review-table article b { display:block; font-size:9px; }
 .review-table article span,.review-table article small { color:#89928c; font-size:8px; margin-top:3px; }
 .orders-table-card { width:100%; }
+.orders-table-card .card-heading { gap:20px; }
+.orders-table-card.has-bulk-selection .order-list>div { grid-template-columns:auto auto 1fr auto auto auto; }
+.bulk-order-actions { margin-left:auto; display:flex; align-items:center; justify-content:flex-end; gap:9px; flex-wrap:wrap; }
+.bulk-order-actions label { display:flex; align-items:center; gap:6px; color:#53665c; font-size:10px; font-weight:600; white-space:nowrap; }
+.bulk-order-actions>span { color:#78847d; font-size:9px; white-space:nowrap; }
+.bulk-order-actions .outline-button,.bulk-order-actions .danger-button { min-height:34px; padding:7px 11px; border-radius:4px; font-size:10px; display:inline-flex; align-items:center; gap:6px; }
+.bulk-order-actions .danger-button svg { width:14px; height:14px; }
+.bulk-order-actions button:disabled { opacity:.5; cursor:not-allowed; }
+.order-select { display:grid; place-items:center; width:22px; height:32px; }
+.order-select input,.bulk-order-actions input { width:16px; height:16px; accent-color:var(--forest); cursor:pointer; }
+.order-select input:disabled { cursor:not-allowed; opacity:.35; }
 .order-list .outline-button { min-height:34px; padding:0 11px; border:1px solid #cfd4d0; border-radius:4px; background:#fff; color:var(--forest); font-size:10px; white-space:nowrap; }
 .order-list .outline-button:hover { background:#edf3ef; }
 .order-operations-modal { width:min(1180px,100%); }
@@ -1301,6 +1312,9 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
   .order-operations-modal .quote-fields { grid-template-columns:1fr; }
   .order-operations-body { padding:17px; }
   .order-list>div { grid-template-columns:auto 1fr auto; }
+  .orders-table-card .card-heading { display:block; }
+  .bulk-order-actions { margin:14px 0 0; justify-content:flex-start; }
+  .orders-table-card.has-bulk-selection .order-list>div { grid-template-columns:auto auto 1fr auto; }
   .order-list .status,.order-value { display:none; }
   .product-actions { width:100%; margin:12px 0 0; }
   .customer-manager .product-actions { flex-wrap:wrap; }

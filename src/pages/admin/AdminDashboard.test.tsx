@@ -28,12 +28,15 @@ const order = {
   is_test: false,
   created_at: '2026-10-01T08:00:00Z',
 };
+let orderDeleted = false;
 
 beforeEach(() => {
+  orderDeleted = false;
   localStorage.setItem(ADMIN_TOKEN_KEY, 'test-token');
   vi.mocked(adminRequest).mockReset();
-  vi.mocked(adminRequest).mockImplementation(async (path) => {
-    if (path === '/orders') return [order];
+  vi.mocked(adminRequest).mockImplementation(async (path, options) => {
+    if (path === '/orders' && options?.method === 'DELETE') { orderDeleted = true; return { deleted: 1 }; }
+    if (path === '/orders') return orderDeleted ? [] : [order];
     if (path === '/review-queue' || path === '/products') return [];
     if (path === '/pricing-settings') return { minimum_profit: 100, minimum_margin_percent: 5, standard_markup_percent: 7, supplier_stale_hours: 24, free_delivery_threshold: 1000, standard_customer_delivery: 99 };
     if (path === '/me') return { id: 1, email: 'admin@example.com', name: 'Admin User', role: 'admin' };
@@ -77,4 +80,20 @@ test('shows and hides each administrator password field independently', async ()
 
   await user.click(screen.getByRole('button', { name: 'Show new password' }));
   expect(newPassword).toHaveAttribute('type', 'text');
+});
+
+test('selects and bulk-deletes unpaid orders after a destructive confirmation', async () => {
+  const user = userEvent.setup();
+  render(<MemoryRouter><FeedbackProvider><AdminDashboard /></FeedbackProvider></MemoryRouter>);
+
+  await waitFor(() => expect(adminRequest).toHaveBeenCalledWith('/orders'));
+  await user.click(screen.getByRole('button', { name: /^Orders/ }));
+  await user.click(await screen.findByRole('checkbox', { name: 'Select MMS-1004' }));
+  expect(screen.getByText('1 selected')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Delete selected' }));
+  await user.click(screen.getByRole('button', { name: 'Delete 1 order' }));
+
+  await waitFor(() => expect(adminRequest).toHaveBeenCalledWith('/orders', { method: 'DELETE', body: JSON.stringify({ ids: [4] }) }));
+  await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Select MMS-1004' })).not.toBeInTheDocument());
+  expect(screen.getByText('No customer orders in the database.')).toBeInTheDocument();
 });

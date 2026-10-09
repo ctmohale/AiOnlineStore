@@ -59,6 +59,10 @@ export const orderStatusSchema = z.object({
 
 export const paymentConfirmationSchema = z.object({ externalReference: z.string().trim().min(2).max(255) });
 
+export const bulkOrderDeleteSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1).max(100),
+});
+
 export const customerRegisterSchema = z.object({
   name: z.string().trim().min(2).max(160),
   email: z.email().max(190),

@@ -40,6 +40,7 @@ Order body:
 - `POST /api/admin/login` — email/password sign-in; returns an 8-hour JWT. Limited to 10 attempts per IP per 15 minutes.
 - `GET /api/admin/me` — current authenticated administrator profile used by the dashboard.
 - `GET /api/admin/review-queue` — changed, expired, stale, unavailable, and uncertain products.
+- `DELETE /api/admin/orders` — removes up to 100 selected unpaid/cancelled orders from the admin queue and customer history. Paid, fulfilled, refunded, test, and payment-verified orders are protected; payment mappings are retained so a late verified Yoco payment safely restores its order.
 - `GET /api/admin/products` — list the active admin catalogue, including the primary image and latest offer summary.
 - `POST /api/admin/products/import-url` — read public structured metadata from an allowlisted Game or Makro HTTPS product URL and return a review draft; it never saves or verifies the result automatically.
 - `POST /api/admin/products` — create a product and its latest supplier sourcing record, optional primary image URL, fulfilment estimates, tracking fields, and initial price-history record.

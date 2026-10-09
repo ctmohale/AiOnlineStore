@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Box, Check, ChevronRight, CircleDollarSign, Clock3, Eye, EyeOff, FileSearch, LayoutDashboard, LogOut, Menu, PackageCheck, RefreshCw, Search, Settings, Share2, ShoppingBag, Users, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, Bell, Box, Check, ChevronRight, CircleDollarSign, Clock3, Eye, EyeOff, FileSearch, LayoutDashboard, LogOut, Menu, PackageCheck, RefreshCw, Search, Settings, Share2, ShoppingBag, Trash2, Users, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useFeedback } from '../../components/FeedbackProvider';
@@ -22,6 +22,7 @@ type ReviewItem = { id?: number; name: string; reason: string; source: string; v
 type PricingSettings = { minimumProfit: number; minimumMarginPercent: number; standardMarkupPercent: number; supplierStaleHours: number; freeDeliveryThreshold: number; standardCustomerDelivery: number };
 type AdminProfile = { id: number; email: string; name: string; role: string };
 type EmailDelivery = { summary: Record<'pending' | 'processing' | 'sent' | 'failed', number>; messages: { id:number; message_type:string; recipient_email:string; recipient_name:string | null; subject:string; status:string; attempts:number; sent_at:string | null; last_error:string | null; created_at:string }[] };
+const deletableOrderStatuses = new Set(['requested', 'checking_supplier', 'quoted', 'awaiting_payment', 'cancelled']);
 
 function AdminPasswordInput({ name, label, autoComplete }: { name: string; label: string; autoComplete: 'current-password' | 'new-password' }) {
   const [visible, setVisible] = useState(false);
@@ -43,7 +44,9 @@ export default function AdminDashboard() {
   const [savingQuote, setSavingQuote] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [deletingOrders, setDeletingOrders] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<number | undefined>();
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<number>>(() => new Set());
   const [reviewProductId, setReviewProductId] = useState<number | undefined>();
   const [settings, setSettings] = useState<PricingSettings | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -55,6 +58,8 @@ export default function AdminDashboard() {
   const searchText = search.trim().toLowerCase();
   const realOrders = orders.filter((order) => !order.isTest);
   const visibleOrders = searchText ? realOrders.filter((order) => `${order.ref} ${order.customer} ${order.items} ${order.status}`.toLowerCase().includes(searchText)) : realOrders;
+  const visibleDeletableOrderIds = visibleOrders.filter((order) => order.id && deletableOrderStatuses.has(order.status)).map((order) => order.id as number);
+  const allVisibleDeletableSelected = visibleDeletableOrderIds.length > 0 && visibleDeletableOrderIds.every((id) => selectedOrderIds.has(id));
   const actionableOrders = realOrders.filter((order) => !['delivered', 'cancelled', 'refunded'].includes(order.status));
   const visibleActionableOrders = visibleOrders.filter((order) => !['delivered', 'cancelled', 'refunded'].includes(order.status));
   const visibleReviews = searchText ? reviewItems.filter((item) => `${item.name} ${item.reason} ${item.source}`.toLowerCase().includes(searchText)) : reviewItems;
@@ -80,6 +85,7 @@ export default function AdminDashboard() {
       }));
       setOrders(mappedOrders);
       setSelectedOrderId((current) => mappedOrders.some((order) => order.id === current && !order.isTest) ? current : undefined);
+      setSelectedOrderIds((current) => new Set([...current].filter((id) => mappedOrders.some((order) => order.id === id && !order.isTest && deletableOrderStatuses.has(order.status)))));
       setReviewItems(reviewRows.map((row): ReviewItem => ({ id: Number(row.id), name: String(row.title), reason: String(row.review_reason || 'Needs review'), source: String(row.retailer || 'No offer'), value: row.current_cost ? money(Number(row.current_cost)) : 'Needs review', severity: String(row.review_reason).includes('expired') ? 'urgent' : 'warning' })));
       setCatalogProducts(productRows.map((row) => ({ id: Number(row.id), slug: String(row.slug), name: String(row.title), brand: String(row.brand), model: String(row.model), packSize: String(row.pack_size), category: String(row.category), price: Number(row.selling_price), compareAt: row.original_displayed_price ? Number(row.original_displayed_price) : undefined, image: String(row.image_url || ''), images: Array.isArray(row.images) ? (row.images as { url: string; alt_text?: string }[]).map((image) => ({ url: image.url, altText: image.alt_text || String(row.title) })) : [], accent: '#e6eee9', short: String(row.description || '').slice(0, 140), description: String(row.description), specs: row.specifications as Record<string,string>, status: String(row.status) as Product['status'] })));
       if (!pricing) throw new Error('Pricing settings are not configured');
@@ -159,6 +165,38 @@ export default function AdminDashboard() {
     try { await adminRequest(`/emails/${id}/retry`, { method: 'POST' }); notify('The email was queued for another delivery attempt.', 'success', 'Email requeued'); await loadDashboard(); }
     catch (error) { notify(error instanceof Error ? error.message : 'The email could not be requeued.', 'error'); }
   };
+  const toggleOrderSelection = (id: number) => setSelectedOrderIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleVisibleOrders = () => setSelectedOrderIds((current) => {
+    const next = new Set(current);
+    if (allVisibleDeletableSelected) visibleDeletableOrderIds.forEach((id) => next.delete(id));
+    else visibleDeletableOrderIds.forEach((id) => next.add(id));
+    return next;
+  });
+  const deleteSelectedOrders = async () => {
+    const selected = realOrders.filter((order) => order.id && selectedOrderIds.has(order.id));
+    if (!selected.length) return notify('Select at least one unpaid or cancelled order first.', 'warning');
+    const preview = selected.slice(0, 3).map((order) => order.ref).join(', ');
+    const remainder = selected.length > 3 ? ` and ${selected.length - 3} more` : '';
+    if (!await confirm({
+      title: `Delete ${selected.length} order${selected.length === 1 ? '' : 's'}?`,
+      message: `Remove ${preview}${remainder} from the order queue and customer order history? Paid, fulfilled, and refunded orders are always protected. Payment safety records are retained in case a hosted checkout reports a late verified payment.`,
+      confirmLabel: `Delete ${selected.length} order${selected.length === 1 ? '' : 's'}`,
+      tone: 'danger',
+    })) return;
+    setDeletingOrders(true);
+    try {
+      const result = await adminRequest<{ deleted:number }>('/orders', { method: 'DELETE', body: JSON.stringify({ ids: selected.map((order) => order.id) }) });
+      setSelectedOrderIds(new Set());
+      if (selectedOrderId && selectedOrderIds.has(selectedOrderId)) setSelectedOrderId(undefined);
+      notify(`${result.deleted} order${result.deleted === 1 ? '' : 's'} deleted from the queue.`, 'success', 'Orders deleted');
+      await loadDashboard();
+    } catch (error) { notify(error instanceof Error ? error.message : 'The selected orders could not be deleted.', 'error'); }
+    finally { setDeletingOrders(false); }
+  };
   const initials = (profile?.name || profile?.email || 'Admin').split(/[\s@]+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
   const nav = (value: Tab, icon: React.ReactNode, label: string, count?: number) => <button type="button" className={tab === value ? 'active' : ''} onClick={() => { setTab(value); setMobileNav(false); }}>{icon}<span>{label}</span>{count ? <b>{count}</b> : null}</button>;
 
@@ -176,7 +214,7 @@ export default function AdminDashboard() {
       {tab === 'products' && <div className="admin-content"><section className="context-metrics"><div><span>Total products</span><strong>{Number(analytics?.summary.total_products ?? catalogProducts.length)}</strong></div><div><span>Published</span><strong>{Number(analytics?.summary.published_products ?? publishedProducts)}</strong></div><div><span>Needs review</span><strong>{Number(analytics?.summary.review_products ?? reviewItems.length)}</strong></div><div><span>Paused</span><strong>{Number(analytics?.summary.paused_products || 0)}</strong></div></section><ProductManager searchQuery={search} onChanged={() => void loadDashboard()} initialEditId={reviewProductId} onInitialEditHandled={() => setReviewProductId(undefined)} /></div>}
       {tab === 'marketing' && <div className="admin-content"><section className="context-metrics"><div><span>Shareable products</span><strong>{publishedProducts}</strong></div><div><span>Maximum per catalogue</span><strong>24</strong></div><div><span>Social networks</span><strong>4</strong></div><div><span>Preview format</span><strong>Large image</strong></div></section><CatalogueShareManager products={catalogProducts} /></div>}
       {tab === 'review' && <div className="admin-content"><section className="context-metrics"><div><span>Total waiting</span><strong>{reviewItems.length}</strong></div><div><span>Urgent / expired</span><strong>{urgentReviews}</strong></div><div><span>Price or margin</span><strong>{pricingReviews}</strong></div><div><span>Supplier or stock</span><strong>{supplierReviews}</strong></div></section><section className="admin-card review-table"><div className="card-heading"><div><p className="kicker">Human verification required</p><h2>{visibleReviews.length} items waiting</h2></div><button type="button" className="outline-button" disabled={refreshing} onClick={() => void loadDashboard(true)}><RefreshCw /> {refreshing ? 'Refreshing…' : 'Refresh queue'}</button></div>{visibleReviews.map((item) => <article key={item.name}><i className={item.severity}><AlertTriangle /></i><div><strong>{item.name}</strong><span>{item.reason}</span></div><div><small>Source</small><b>{item.source}</b></div><div><small>Change</small><b>{item.value}</b></div><button type="button" className="outline-button" onClick={() => openReview(item)}>Review <ChevronRight /></button></article>)}{visibleReviews.length === 0 && <div className="admin-empty"><PackageCheck /><p>No products currently require review.</p></div>}</section></div>}
-      {tab === 'orders' && <div className="admin-content"><section className="context-metrics"><div><span>Customer orders</span><strong>{realOrders.length}</strong></div><div><span>Active</span><strong>{actionableOrders.length}</strong></div><div><span>Awaiting payment</span><strong>{Number(analytics?.summary.awaiting_payment || 0)}</strong></div><div><span>Paid orders</span><strong>{Number(analytics?.summary.paid_orders || 0)}</strong></div></section><section className="admin-card orders-table-card"><div className="card-heading"><div><p className="kicker">Order queue</p><h2>Customer orders</h2></div></div><div className="order-list">{visibleOrders.map((order) => <div className={order.id && order.id === selectedOrderId ? 'selected' : ''} key={order.ref}><span className="order-avatar">{order.customer.slice(0, 2).toUpperCase()}</span><div className="order-person"><strong>{order.customer}</strong><span>{order.ref} · {order.items}</span></div><StatusPill status={order.status} /><div className="order-value"><strong>{money(order.total)}</strong><span>{order.age}</span></div><button type="button" className="outline-button" onClick={() => openOrder(order)}>Order details</button></div>)}</div>{visibleOrders.length === 0 && <div className="admin-empty"><ShoppingBag /><p>No customer orders in the database.</p></div>}</section>
+      {tab === 'orders' && <div className="admin-content"><section className="context-metrics"><div><span>Customer orders</span><strong>{realOrders.length}</strong></div><div><span>Active</span><strong>{actionableOrders.length}</strong></div><div><span>Awaiting payment</span><strong>{Number(analytics?.summary.awaiting_payment || 0)}</strong></div><div><span>Paid orders</span><strong>{Number(analytics?.summary.paid_orders || 0)}</strong></div></section><section className={`admin-card orders-table-card${profile?.role === 'admin' ? ' has-bulk-selection' : ''}`}><div className="card-heading"><div><p className="kicker">Order queue</p><h2>Customer orders</h2></div>{profile?.role === 'admin' && <div className="bulk-order-actions"><label><input type="checkbox" checked={allVisibleDeletableSelected} disabled={!visibleDeletableOrderIds.length || deletingOrders} onChange={toggleVisibleOrders} /> Select all shown</label><span>{selectedOrderIds.size} selected</span>{selectedOrderIds.size > 0 && <button type="button" className="outline-button" disabled={deletingOrders} onClick={() => setSelectedOrderIds(new Set())}>Clear</button>}<button type="button" className="danger-button" disabled={!selectedOrderIds.size || deletingOrders} onClick={() => void deleteSelectedOrders()}><Trash2 /> {deletingOrders ? 'Deleting…' : 'Delete selected'}</button></div>}</div><div className="order-list">{visibleOrders.map((order) => { const canDelete = Boolean(order.id && deletableOrderStatuses.has(order.status)); return <div className={order.id && order.id === selectedOrderId ? 'selected' : ''} key={order.ref}>{profile?.role === 'admin' && <label className="order-select" title={canDelete ? `Select ${order.ref}` : 'Paid, fulfilled, and refunded orders are protected'}><input type="checkbox" aria-label={`Select ${order.ref}`} checked={Boolean(order.id && selectedOrderIds.has(order.id))} disabled={!canDelete || deletingOrders} onChange={() => order.id && toggleOrderSelection(order.id)} /></label>}<span className="order-avatar">{order.customer.slice(0, 2).toUpperCase()}</span><div className="order-person"><strong>{order.customer}</strong><span>{order.ref} · {order.items}</span></div><StatusPill status={order.status} /><div className="order-value"><strong>{money(order.total)}</strong><span>{order.age}</span></div><button type="button" className="outline-button" onClick={() => openOrder(order)}>Order details</button></div>; })}</div>{visibleOrders.length === 0 && <div className="admin-empty"><ShoppingBag /><p>No customer orders in the database.</p></div>}</section>
         {selectedOrder && <div className="product-modal-backdrop order-operations-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedOrderId(undefined); }}><section className="product-modal order-operations-modal" role="dialog" aria-modal="true" aria-labelledby="order-operations-title"><header><div><p className="kicker">Order operations</p><h2 id="order-operations-title">{selectedOrder.ref}</h2></div><button type="button" aria-label="Close order operations" onClick={() => setSelectedOrderId(undefined)}><X /></button></header><div className="order-operations-body"><OrderWorkflow key={selectedOrder.ref} order={selectedOrder} onChanged={() => loadDashboard()} /><section className="quote-card"><div className="card-heading"><div><p className="kicker">Quote and costs</p><h2>Order pricing</h2></div></div><div className="quote-fields">{Object.entries(quote).map(([key, value]) => <label key={key}><span>{key.replace(/([A-Z])/g, ' $1')}</span><div>R <input type="number" min="0" step="0.01" value={value} readOnly={key === 'productRevenue' || key === 'supplierCost'} onChange={(event) => setQuote({ ...quote, [key]: Number(event.target.value) })} /></div></label>)}</div><div className={profit >= (settings?.minimumProfit || 0) && margin >= (settings?.minimumMarginPercent || 0) ? 'profit-box healthy' : 'profit-box danger'}><span>Expected profit</span><strong>{money(profit)}</strong><small>{margin.toFixed(1)}% margin</small></div><button type="button" className="solid-button full" disabled={savingQuote || !['checking_supplier', 'quoted'].includes(selectedOrder.status)} onClick={() => void confirmQuote()}><Check /> {savingQuote ? 'Saving quote…' : 'Confirm quote'}</button><p className="quote-warning">Verify supplier costs and availability, then confirm the quote. Payment must still be independently verified.</p></section></div></section></div>}
       </div>}
       {tab === 'customers' && profile?.role === 'admin' && <div className="admin-content"><section className="context-metrics"><div><span>Registered customers</span><strong>{Number(analytics?.summary.customers || 0)}</strong></div><div><span>Real requests</span><strong>{realOrders.length}</strong></div><div><span>Paid customers</span><strong>{Number(analytics?.summary.paid_orders || 0)}</strong></div><div><span>Delivered orders</span><strong>{Number(analytics?.summary.delivered_orders || 0)}</strong></div></section><CustomerManager /></div>}
