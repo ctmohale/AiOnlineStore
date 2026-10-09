@@ -198,6 +198,7 @@ async function scheduledRun() {
   const result = await processEmailOutbox();
   if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
   await runClaimedJob('promotion_end_recheck', 55, promotionEndRecheck);
+  await runClaimedJob('full_catalogue_price_audit_v1', 55, fullCataloguePriceAudit, true);
   await runClaimedJob('daily_catalogue_maintenance', 20 * 60, dailyRun);
 }
 
