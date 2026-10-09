@@ -282,6 +282,8 @@ app.post('/api/payments/yoco/webhook', async (request, response, next) => {
 app.get('/api/products', async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const offset = Number(request.query.offset || 0);
+    if (!Number.isSafeInteger(offset) || offset < 0) return response.status(400).json({ error: 'Invalid product offset' });
     const search = String(request.query.q || '');
     const category = String(request.query.category || '');
     const terms: string[] = ["p.status = 'published'", 'p.deleted_at IS NULL', 'p.gallery_image_count >= 1', 'o.price_verified = TRUE', "o.stock_status IN ('in_stock','low_stock')", '(o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())'];
@@ -296,7 +298,7 @@ app.get('/api/products', async (request, response, next) => {
         SUM(CASE WHEN orders.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END) AS trending_units
       FROM order_items oi JOIN order_requests orders ON orders.id=oi.order_request_id
       WHERE orders.is_test=FALSE AND orders.deleted_at IS NULL AND orders.status IN ('paid','purchasing','shipped','delivered') GROUP BY oi.product_id
-    ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC LIMIT 3000`, params);
+    ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC,p.id DESC LIMIT 3000 OFFSET ?`, [...params, offset]);
     const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     response.json(sanitizePublicProducts(products));
   } catch (error) { next(error); }

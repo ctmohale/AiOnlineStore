@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { mapPublicProduct, type Product, type PublicProductRow } from '../data/products';
+import { mapPublicProduct, type Product } from '../data/products';
 import { publicRequest } from '../lib/api';
+import { loadPublicCatalogue } from './catalogueLoader';
 
 export type StoreSettings = { freeDeliveryThreshold: number; standardCustomerDelivery: number };
 type CatalogContextValue = { products: Product[]; settings: StoreSettings | null; loading: boolean; error: string; refresh: () => Promise<void> };
@@ -14,7 +15,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [rows, storeSettings] = await Promise.all([publicRequest<PublicProductRow[]>('/products'), publicRequest<StoreSettings>('/store-settings')]);
+      const [rows, storeSettings] = await Promise.all([loadPublicCatalogue(), publicRequest<StoreSettings>('/store-settings')]);
       setProducts(rows.map(mapPublicProduct)); setSettings(storeSettings);
     } catch (requestError) {
       setProducts([]); setSettings(null); setError(requestError instanceof Error ? requestError.message : 'The live catalogue could not be loaded.');
