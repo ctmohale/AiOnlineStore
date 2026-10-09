@@ -200,13 +200,13 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   const now = Date.now();
   if (now - new Date(product.last_checked_at as string | Date).getTime() > Number(product.supplier_stale_hours) * 3_600_000) throw Object.assign(new Error('The supplier check is stale; recheck it before publishing'), { status: 422 });
   if (product.promotion_end_at && new Date(product.promotion_end_at as string | Date).getTime() <= now) throw Object.assign(new Error('The supplier promotion has ended; recheck the price before publishing'), { status: 422 });
-  const publicationMinimumProfit = Math.max(10, Number(product.minimum_profit ?? product.global_minimum_profit));
-  const publicationMinimumMargin = Math.max(4, Number(product.minimum_margin_percent));
+  const publicationMinimumProfit = Math.max(20, Number(product.minimum_profit ?? product.global_minimum_profit));
+  const publicationMinimumMargin = Math.max(5, Number(product.minimum_margin_percent));
   const target = profitProtectedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent), publicationMinimumProfit, publicationMinimumMargin);
   if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
   const productProfit = Number(product.selling_price) - Number(product.current_cost);
   const productMargin = productProfit / Number(product.selling_price) * 100;
-  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit + 0.001 >= publicationMinimumProfit && productMargin + 0.000001 >= publicationMinimumMargin };
+  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit + 0.001 >= publicationMinimumProfit && (target.salePricingApplied || productMargin + 0.000001 >= publicationMinimumMargin) };
   if (!pricing.passes) throw Object.assign(new Error(`Product profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit; delivery is excluded)`), { status: 422 });
   return pricing;
 }

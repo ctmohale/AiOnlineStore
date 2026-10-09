@@ -46,21 +46,21 @@ describe('publish pricing', () => {
     db.freeDeliveryThreshold = 500;
   });
 
-  it('rejects an arbitrary price and accepts the capped promotion price', async () => {
+  it('rejects an arbitrary price and accepts the half-discount promotion price', async () => {
     const review = (sellingPrice: number) => fetch(`${base}/api/admin/products/5/review`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signAdminToken({ sub: '1', email: 'admin@example.test', role: 'admin' })}` },
       body: JSON.stringify({ status: 'published', sellingPrice, checklist: { exactProductMatch: true, supplierPriceChecked: true, stockChecked: true, promotionDatesChecked: true, imagesChecked: true, descriptionChecked: true } }),
     });
     const wrong = await review(920);
     expect(wrong.status).toBe(422);
-    expect((await wrong.json()).error).toContain('R849.99');
-    const right = await review(849.99);
+    expect((await wrong.json()).error).toContain('R825.00');
+    const right = await review(825);
     expect(right.status).toBe(200);
     expect((await right.json()).status).toBe('published');
     expect(db.updates).toBe(2);
   });
 
-  it('enforces an R10 publication profit floor even when configuration is lower', async () => {
+  it('enforces an R20 publication profit floor even when configuration is lower', async () => {
     db.currentCost = 100;
     db.originalPrice = null;
     db.freeDeliveryThreshold = 0;
@@ -70,6 +70,6 @@ describe('publish pricing', () => {
     });
 
     expect(response.status).toBe(422);
-    expect((await response.json()).error).toContain('R110.00');
+    expect((await response.json()).error).toContain('R120.00');
   });
 });

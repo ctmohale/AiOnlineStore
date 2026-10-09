@@ -25,20 +25,22 @@ export function recommendedSellingPrice(source: SourcePrice, standardMarkupPerce
   const end = source.promotionEndAt ? new Date(source.promotionEndAt) : null;
   const promotionActive = original != null && Number.isFinite(original) && original > source.cost && (!end || end.getTime() > now.getTime());
   const regular = Math.round(source.cost * (1 + standardMarkupPercent / 100) * 100) / 100;
-  const sellingPrice = promotionActive ? Math.min(Math.round(source.cost * 1.15 * 100) / 100, Math.round(original! * 100) / 100 - 0.01) : regular;
+  const sellingPrice = promotionActive ? source.cost + (original! - source.cost) / 2 : regular;
   return { sellingPrice: Math.round(sellingPrice * 100) / 100, promotionActive };
 }
 
-export function profitProtectedSellingPrice(source: SourcePrice, standardMarkupPercent = 7, minimumProfit = 10, minimumMarginPercent = 4, now = new Date()) {
+export function profitProtectedSellingPrice(source: SourcePrice, standardMarkupPercent = 7, minimumProfit = 20, minimumMarginPercent = 5, now = new Date()) {
   if (!Number.isFinite(minimumProfit) || minimumProfit < 0) throw new Error('Minimum profit must be zero or greater');
   if (!Number.isFinite(minimumMarginPercent) || minimumMarginPercent < 0 || minimumMarginPercent >= 100) throw new Error('Minimum margin must be between 0% and 99.99%');
   const sourcePrice = recommendedSellingPrice(source, standardMarkupPercent, now);
   const cost = Number(source.cost);
   const marginRate = minimumMarginPercent / 100;
-  const minimumPrice = Math.max(sourcePrice.sellingPrice, cost + minimumProfit, cost / (1 - marginRate));
+  const minimumPrice = sourcePrice.promotionActive
+    ? Math.max(sourcePrice.sellingPrice, cost + minimumProfit)
+    : Math.max(sourcePrice.sellingPrice, cost + minimumProfit, cost / (1 - marginRate));
   const sellingPrice = Math.ceil((minimumPrice - Number.EPSILON) * 100) / 100;
   const original = source.originalPrice == null ? null : Number(source.originalPrice);
-  return { sellingPrice, promotionActive: sourcePrice.promotionActive && original != null && sellingPrice < original };
+  return { sellingPrice, promotionActive: sourcePrice.promotionActive && original != null && sellingPrice < original, salePricingApplied: sourcePrice.promotionActive };
 }
 
 export function isExactProductMatch(a: MatchableProduct, b: MatchableProduct) {

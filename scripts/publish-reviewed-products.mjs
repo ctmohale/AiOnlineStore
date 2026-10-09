@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 
-const MINIMUM_PROFIT = Math.max(10, Number(process.env.MINIMUM_PUBLICATION_PROFIT || 10));
-const MINIMUM_MARGIN_PERCENT = Math.max(4, Number(process.env.MINIMUM_PUBLICATION_MARGIN_PERCENT || 4));
+const MINIMUM_PROFIT = Math.max(20, Number(process.env.MINIMUM_PUBLICATION_PROFIT || 20));
+const MINIMUM_MARGIN_PERCENT = Math.max(5, Number(process.env.MINIMUM_PUBLICATION_MARGIN_PERCENT || 5));
 const APPLY = process.env.PUBLISH_LIVE === 'true';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -12,18 +12,18 @@ const batchReference = `bulk-profit-approval-${new Date().toISOString()}`;
 
 const profitExpression = `(p.selling_price-o.current_cost)`;
 
-const expectedPriceExpression = `(CASE
-  WHEN o.original_displayed_price IS NOT NULL
+const promotionExpression = `(o.original_displayed_price IS NOT NULL
     AND o.original_displayed_price > o.current_cost
-    AND (o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP())
-  THEN LEAST(ROUND(o.current_cost * 1.15, 2), ROUND(o.original_displayed_price, 2) - 0.01)
+    AND (o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP()))`;
+const expectedPriceExpression = `(CASE
+  WHEN ${promotionExpression}
+  THEN ROUND(o.current_cost+(o.original_displayed_price-o.current_cost)/2,2)
   ELSE ROUND(o.current_cost * (1 + s.standard_markup_percent / 100), 2)
 END)`;
-const protectedPriceExpression = `(CEIL(GREATEST(
-  ${expectedPriceExpression},
-  o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)),
-  o.current_cost/(1-GREATEST(?,s.minimum_margin_percent)/100)
-)*100)/100)`;
+const protectedPriceExpression = `(CASE WHEN ${promotionExpression}
+  THEN CEIL(GREATEST(${expectedPriceExpression},o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)))*100)/100
+  ELSE CEIL(GREATEST(${expectedPriceExpression},o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)),o.current_cost/(1-GREATEST(?,s.minimum_margin_percent)/100))*100)/100
+END)`;
 
 try {
   await connection.beginTransaction();
@@ -61,7 +61,7 @@ try {
       AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP())
       AND ABS(p.selling_price-${protectedPriceExpression})<=0.001
       AND ${profitExpression}>=GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit))
-      AND (${profitExpression}/p.selling_price*100)>=GREATEST(?,s.minimum_margin_percent)`, [MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
+      AND (${promotionExpression} OR (${profitExpression}/p.selling_price*100)>=GREATEST(?,s.minimum_margin_percent))`, [MINIMUM_PROFIT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
 
   const [summaryRows] = await connection.query(`SELECT COUNT(*) AS eligible_count,
       ROUND(MIN(estimated_profit),2) AS minimum_profit,
@@ -96,7 +96,7 @@ try {
       (product_id,admin_id,previous_status,decision,checklist,notes)
       SELECT eligible.product_id,?,'pending_review','published',?,CONCAT(?,
         '; automated publication gates passed; estimated profit R',
-        FORMAT(eligible.estimated_profit,2),' product profit (minimum R',FORMAT(?,2),' and ',FORMAT(?,2),'%; delivery excluded)')
+        FORMAT(eligible.estimated_profit,2),' product profit (minimum R',FORMAT(?,2),'; regular minimum ',FORMAT(?,2),'% or 50% of an active supplier discount; delivery excluded)')
       FROM eligible_product_publication eligible
       JOIN products p ON p.id=eligible.product_id AND p.status='pending_review'`,
     [admin.id, checklist, batchReference, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);

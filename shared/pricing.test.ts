@@ -4,9 +4,9 @@ import { profitProtectedSellingPrice, recommendedSellingPrice } from './domain';
 describe('source pricing', () => {
   const now = new Date('2026-10-01T08:00:00Z');
 
-  it('adds 15% to an active promotion while staying below the normal source price', () => {
-    expect(recommendedSellingPrice({ cost: 800, originalPrice: 1200, promotionEndAt: '2026-10-02T00:00:00Z' }, 7, now)).toEqual({ sellingPrice: 920, promotionActive: true });
-    expect(recommendedSellingPrice({ cost: 800, originalPrice: 850 }, 7, now)).toEqual({ sellingPrice: 849.99, promotionActive: true });
+  it('keeps half of an active supplier discount as product profit', () => {
+    expect(recommendedSellingPrice({ cost: 800, originalPrice: 1200, promotionEndAt: '2026-10-02T00:00:00Z' }, 7, now)).toEqual({ sellingPrice: 1000, promotionActive: true });
+    expect(recommendedSellingPrice({ cost: 800, originalPrice: 850 }, 7, now)).toEqual({ sellingPrice: 825, promotionActive: true });
   });
 
   it('reverts to regular markup after the promotion and supports the configured 5–10% range', () => {
@@ -26,12 +26,13 @@ describe('profit-protected product pricing', () => {
   const now = new Date('2026-10-01T08:00:00Z');
 
   it('enforces product profit and margin without using delivery charges or costs', () => {
-    expect(profitProtectedSellingPrice({ cost: 100 }, 5, 10, 4, now).sellingPrice).toBe(110);
+    expect(profitProtectedSellingPrice({ cost: 100 }, 5, 10, 5, now).sellingPrice).toBe(110);
     expect(profitProtectedSellingPrice({ cost: 1000 }, 5, 10, 6, now).sellingPrice).toBe(1063.83);
   });
 
-  it('raises a capped supplier promotion price when it cannot satisfy the product margin', () => {
-    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 7, 10, 4, now)).toEqual({ sellingPrice: 833.34, promotionActive: false });
+  it('uses half of a supplier sale discount while retaining the absolute profit floor', () => {
+    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 1000 }, 7, 20, 5, now)).toEqual({ sellingPrice: 900, promotionActive: true, salePricingApplied: true });
+    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 7, 20, 5, now)).toEqual({ sellingPrice: 820, promotionActive: false, salePricingApplied: true });
   });
 
   it('rejects invalid product profit guardrails', () => {

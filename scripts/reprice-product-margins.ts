@@ -2,8 +2,8 @@ import mysql from 'mysql2/promise';
 import { profitProtectedSellingPrice } from '../shared/domain.js';
 
 const APPLY = process.env.REPRICE_LIVE === 'true';
-const MINIMUM_PROFIT = Math.max(10, Number(process.env.MINIMUM_PRODUCT_PROFIT || 10));
-const MINIMUM_MARGIN_PERCENT = Math.max(4, Number(process.env.MINIMUM_PRODUCT_MARGIN_PERCENT || 4));
+const MINIMUM_PROFIT = Math.max(20, Number(process.env.MINIMUM_PRODUCT_PROFIT || 20));
+const MINIMUM_MARGIN_PERCENT = Math.max(5, Number(process.env.MINIMUM_PRODUCT_MARGIN_PERCENT || 5));
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 
@@ -24,15 +24,13 @@ try {
     const cost = Number(row.current_cost);
     const minimumProfit = Math.max(MINIMUM_PROFIT, Number(row.minimum_profit ?? row.global_minimum_profit));
     const minimumMargin = Math.max(MINIMUM_MARGIN_PERCENT, Number(row.minimum_margin_percent));
-    const currentProfit = currentPrice - cost;
-    const currentMargin = currentProfit / currentPrice * 100;
-    if (currentProfit + 0.001 >= minimumProfit && currentMargin + 0.000001 >= minimumMargin) return [];
     const target = profitProtectedSellingPrice({
       cost,
       originalPrice: row.original_displayed_price == null ? null : Number(row.original_displayed_price),
       promotionEndAt: row.promotion_end_at as Date | null,
-    }, Number(row.standard_markup_percent), minimumProfit, minimumMargin).sellingPrice;
-    return [{ id: Number(row.id), offerId: Number(row.offer_id), cost, oldPrice: currentPrice, newPrice: target, status: String(row.status) }];
+    }, Number(row.standard_markup_percent), minimumProfit, minimumMargin);
+    if (Math.abs(currentPrice - target.sellingPrice) <= 0.001) return [];
+    return [{ id: Number(row.id), offerId: Number(row.offer_id), cost, oldPrice: currentPrice, newPrice: target.sellingPrice, status: String(row.status), salePricingApplied: target.salePricingApplied }];
   });
 
   const [restorableRows] = await connection.query(`SELECT COUNT(*) AS count FROM products
@@ -43,9 +41,11 @@ try {
     minimumProductProfit: MINIMUM_PROFIT,
     minimumProductMarginPercent: MINIMUM_MARGIN_PERCENT,
     productsChecked: rows.length,
-    pricesToIncrease: adjustments.length,
+    pricesToChange: adjustments.length,
+    salePricesToChange: adjustments.filter((item) => item.salePricingApplied).length,
     previouslyPausedToRestore: restorableCount,
-    largestIncrease: adjustments.length ? Math.max(...adjustments.map((item) => item.newPrice - item.oldPrice)).toFixed(2) : '0.00',
+    largestIncrease: adjustments.length ? Math.max(0, ...adjustments.map((item) => item.newPrice - item.oldPrice)).toFixed(2) : '0.00',
+    largestDecrease: adjustments.length ? Math.min(0, ...adjustments.map((item) => item.newPrice - item.oldPrice)).toFixed(2) : '0.00',
   };
 
   if (!APPLY) {
@@ -66,7 +66,7 @@ try {
         batch.flatMap((item) => [item.id, item.offerId, item.cost, item.oldPrice, item.newPrice]));
     }
     const [historyResult] = await connection.query(`INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason)
-      SELECT product_id,offer_id,supplier_cost,new_price,CONCAT('Raised from R',FORMAT(old_price,2),' to enforce R',FORMAT(?,2),' product profit and ',FORMAT(?,2),'% product margin; delivery excluded')
+      SELECT product_id,offer_id,supplier_cost,new_price,CONCAT('Changed from R',FORMAT(old_price,2),' to enforce R',FORMAT(?,2),' product profit, ',FORMAT(?,2),'% regular margin, or 50% of an active supplier discount; delivery excluded')
       FROM product_margin_adjustments`, [MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
     const [updateResult] = await connection.query(`UPDATE products p JOIN product_margin_adjustments adjustment ON adjustment.product_id=p.id
       SET p.selling_price=adjustment.new_price`);
@@ -78,7 +78,7 @@ try {
     if (restorableCount) {
       const [reviewResult] = await connection.execute(`INSERT INTO product_reviews (product_id,admin_id,previous_status,decision,checklist,notes)
         SELECT id,?,'paused','published',JSON_OBJECT('minimumProfitChecked',TRUE,'minimumMarginChecked',TRUE),
-          'Restored after confirming the product-only R10 and 4% guardrails; customer delivery is excluded from product profit.'
+          'Restored after confirming the current product-only profit and margin guardrails; customer delivery is excluded from product profit.'
         FROM products WHERE deleted_at IS NULL AND status='paused' AND review_reason='estimated_profit_below_R10'`, [adminId]);
       const [restoreResult] = await connection.query(`UPDATE products SET status='published',review_reason=NULL
         WHERE deleted_at IS NULL AND status='paused' AND review_reason='estimated_profit_below_R10'`);
@@ -89,12 +89,13 @@ try {
     await connection.query(`UPDATE pricing_settings SET minimum_profit=GREATEST(minimum_profit,?),minimum_margin_percent=GREATEST(minimum_margin_percent,?) WHERE id=1`, [MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
     const [verificationRows] = await connection.query(`SELECT COUNT(*) AS checked,
         SUM((p.selling_price-o.current_cost)<GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit))) AS below_profit_floor,
-        SUM(((p.selling_price-o.current_cost)/p.selling_price*100)<GREATEST(?,s.minimum_margin_percent)) AS below_margin_floor
+        SUM(CASE WHEN o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) THEN 0 ELSE ((p.selling_price-o.current_cost)/p.selling_price*100)<GREATEST(?,s.minimum_margin_percent) END) AS below_regular_margin_floor,
+        SUM(CASE WHEN o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) THEN (p.selling_price-o.current_cost)+0.005<(o.original_displayed_price-o.current_cost)/2 ELSE 0 END) AS below_sale_discount_share
       FROM products p
       JOIN supplier_offers o ON o.id=(SELECT latest.id FROM supplier_offers latest WHERE latest.product_id=p.id ORDER BY latest.last_checked_at DESC,latest.id DESC LIMIT 1)
       JOIN pricing_settings s ON s.id=1 WHERE p.deleted_at IS NULL AND o.current_cost>0`, [MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
     const verification = (verificationRows as Record<string, unknown>[])[0];
-    if (Number(verification.below_profit_floor) || Number(verification.below_margin_floor) || updateResult.affectedRows !== adjustments.length || historyResult.affectedRows !== adjustments.length) {
+    if (Number(verification.below_profit_floor) || Number(verification.below_regular_margin_floor) || Number(verification.below_sale_discount_share) || updateResult.affectedRows !== adjustments.length || historyResult.affectedRows !== adjustments.length) {
       throw new Error(`Post-repricing verification failed: ${JSON.stringify(verification)}`);
     }
     await connection.commit();
