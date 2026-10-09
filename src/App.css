@@ -324,6 +324,11 @@ footer a,footer p { display:block; font-size:11px; line-height:1.8; color:#9fb2a
 .detail-benefits svg { width:15px; color:var(--coral); }
 .product-share { margin-top:28px; padding-top:22px; border-top:1px solid var(--line); }
 .product-share h2 { margin:0 0 12px; font-size:16px; }
+.related-products { margin-top:80px; padding-top:42px; border-top:1px solid var(--line); }
+.related-products-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:24px; }
+.related-products-heading .kicker { margin-bottom:7px; }
+.related-products-heading h2 { margin:0; font-size:clamp(30px,4vw,45px); letter-spacing:-.04em; }
+.related-products-heading>a { color:var(--forest); font-size:11px; font-weight:800; text-decoration:underline; text-underline-offset:4px; }
 .share-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .share-actions a,.share-actions button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:38px; padding:8px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); font:inherit; font-size:10px; text-decoration:none; cursor:pointer; }
 .share-actions a:hover,.share-actions button:hover,.share-actions .share-native { border-color:var(--forest); background:var(--forest); color:#fff; }
@@ -1910,6 +1915,9 @@ footer a,footer p { font-size:13px; }
   .product-share h2 { font-size:17px; }
   .product-share .share-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
   .product-share .share-actions a,.product-share .share-actions button { width:100%; min-height:42px; padding-inline:8px; }
+  .related-products { margin-top:48px; padding-top:30px; }
+  .related-products-heading { align-items:flex-start; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .related-products-heading h2 { font-size:30px; }
 
   .cart-line { grid-template-columns:72px minmax(0,1fr) auto; gap:10px 12px; padding:16px 0; }
   .cart-thumb { width:72px; height:72px; align-self:start; }

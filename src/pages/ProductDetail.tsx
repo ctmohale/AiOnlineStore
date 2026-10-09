@@ -1,6 +1,6 @@
 import { productSale } from '../lib/productSale';
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Minus, Plus, ShieldCheck, Truck, X } from 'lucide-react';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { money } from '../data/products';
 import { useStore } from '../state/StoreContext';
@@ -8,7 +8,9 @@ import { useFeedback } from '../components/FeedbackProvider';
 import { useCatalog } from '../state/CatalogContext';
 import ProductVisual from '../components/ProductVisual';
 import ShareActions from '../components/ShareActions';
+import ProductCard from '../components/ProductCard';
 import { setPageSeo } from '../lib/seo';
+import { relatedProductsFor } from '../lib/productRecommendations';
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -23,6 +25,7 @@ export default function ProductDetail() {
   const { add } = useStore();
   const { notify } = useFeedback();
   const navigate = useNavigate();
+  const relatedProducts = useMemo(() => product ? relatedProductsFor(product, products, 4) : [], [product, products]);
   useEffect(() => { setImageIndex(0); setZoomed(false); }, [slug]);
   useEffect(() => { const close = (event: KeyboardEvent) => event.key === 'Escape' && setZoomed(false); window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close); }, []);
   useEffect(() => {
@@ -55,6 +58,10 @@ export default function ProductDetail() {
         <div className="product-share"><h2>Share this product</h2><ShareActions url={`${window.location.origin}/product/${product.slug}`} title={product.name} text={`${product.name} for ${money(product.price)} at Mzansi Mega Store.`} /></div>
       </div>
     </div>
+    {relatedProducts.length > 0 && <section className="related-products" aria-labelledby="related-products-title">
+      <div className="related-products-heading"><div><p className="kicker">More to explore</p><h2 id="related-products-title">Related products</h2></div><Link to={`/shop?category=${encodeURIComponent(product.category)}`}>View more {product.category}</Link></div>
+      <div className="product-grid shop-product-grid related-product-grid">{relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div>
+    </section>}
     {zoomed && selectedImage && <div className="image-lightbox" role="dialog" aria-modal="true" aria-label="Full-size product image" onClick={() => setZoomed(false)}><button type="button" aria-label="Close full-size image"><X /></button><img src={selectedImage.url} alt={selectedImage.altText} onClick={(event) => event.stopPropagation()} /></div>}
   </section>;
 }
