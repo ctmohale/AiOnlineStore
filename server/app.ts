@@ -609,11 +609,17 @@ app.post('/api/orders', publicLimiter, requireCustomer, async (request, response
       try {
         await withTransaction(async (connection) => {
           await enqueueOrderEmail(connection, orderId, 'checkout_ready', { eventKey: `order:${orderId}:checkout:${checkout.checkoutId}`, paymentLink: checkout.paymentLink, paymentMode: checkout.processingMode });
+          await enqueueOrderEmail(connection, orderId, 'admin_new_order', { eventKey: `order:${orderId}:admin_new_order`, paymentMode: checkout.processingMode });
         });
-      } catch (emailError) { console.error('Checkout emails could not be queued', emailError); }
+      } catch (emailError) { console.error('Order emails could not be queued', emailError); }
       response.status(201).json({ reference: checkoutRef, status: 'awaiting_payment', paymentLink: checkout.paymentLink, processingMode: checkout.processingMode });
     } catch (paymentError) {
       console.error('Order created but Yoco checkout creation failed', paymentError);
+      try {
+        await withTransaction(async (connection) => {
+          await enqueueOrderEmail(connection, orderId, 'admin_new_order', { eventKey: `order:${orderId}:admin_new_order` });
+        });
+      } catch (emailError) { console.error('New-order notification could not be queued', emailError); }
       response.status(201).json({ reference: checkoutRef, status: 'requested', paymentLink: null, paymentError: 'Your checkout was saved, but secure payment could not be started. Please contact support with your checkout reference.' });
     }
   } catch (error) { next(error); }

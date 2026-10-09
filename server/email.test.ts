@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAccountEmail, buildOrderEmail, isPaymentReminderDue, type AccountEmailKind, type OrderEmailKind } from './email.js';
+import { buildAccountEmail, buildOrderEmail, enqueueOrderEmail, isPaymentReminderDue, type AccountEmailKind, type OrderEmailKind } from './email.js';
 
 const originalEnv = { ...process.env };
 afterEach(() => { process.env = { ...originalEnv }; });
@@ -137,5 +137,23 @@ describe('transactional email templates', () => {
     process.env.EMAIL_FROM = 'Mzansi Mega Store <no-reply@mzansimegastore.co.za>';
     expect(process.env.EMAIL_FROM).toContain(`<${process.env.SMTP_USER}>`);
     expect(process.env.SMTP_USER.split('@')[1]).toBe('mzansimegastore.co.za');
+  });
+
+  it('queues new-order operations alerts to the configured administrator email', async () => {
+    process.env.EMAIL_ADMIN = 'mohalebrown@gmail.com';
+    const calls: { sql: string; params?: unknown[] }[] = [];
+    const connection = { execute: async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT id,reference')) return [[order]];
+      if (sql.startsWith('SELECT product_title_snapshot')) return [items];
+      return [{ affectedRows: 1 }];
+    } };
+
+    await enqueueOrderEmail(connection as never, order.id, 'admin_new_order');
+
+    const insert = calls.find((call) => call.sql.startsWith('INSERT INTO email_outbox'));
+    expect(insert?.params?.[1]).toBe('order_admin_new_order');
+    expect(insert?.params?.[2]).toBe('mohalebrown@gmail.com');
+    expect(insert?.params?.[5]).toBe(`New store order ${order.reference}`);
   });
 });
