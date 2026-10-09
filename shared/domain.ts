@@ -25,8 +25,10 @@ export function recommendedSellingPrice(source: SourcePrice, standardMarkupPerce
   const end = source.promotionEndAt ? new Date(source.promotionEndAt) : null;
   const promotionActive = original != null && Number.isFinite(original) && original > source.cost && source.cost >= original * 0.4 && (!end || end.getTime() > now.getTime());
   const regular = Math.round(source.cost * (1 + standardMarkupPercent / 100) * 100) / 100;
-  const sellingPrice = promotionActive ? source.cost + (original! - source.cost) / 2 : regular;
-  return { sellingPrice: Math.round(sellingPrice * 100) / 100, promotionActive };
+  const sellingPrice = promotionActive
+    ? Math.ceil((source.cost + (original! - source.cost) / 2 - Number.EPSILON) * 100) / 100
+    : regular;
+  return { sellingPrice, promotionActive };
 }
 
 export function profitProtectedSellingPrice(source: SourcePrice, standardMarkupPercent = 7, minimumProfit = 20, now = new Date()) {

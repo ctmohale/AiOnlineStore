@@ -37,6 +37,7 @@ describe('profit-protected product pricing', () => {
   it('uses half of a supplier sale discount while retaining the absolute profit floor', () => {
     expect(profitProtectedSellingPrice({ cost: 4000, originalPrice: 5000 }, 5, 20, now)).toEqual({ sellingPrice: 4500, promotionActive: true, salePricingApplied: true });
     expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 5, 20, now)).toEqual({ sellingPrice: 820, promotionActive: false, salePricingApplied: true });
+    expect(profitProtectedSellingPrice({ cost: 1000, originalPrice: 1100.01 }, 5, 20, now).sellingPrice).toBe(1050.01);
   });
 
   it('rejects invalid product profit guardrails', () => {

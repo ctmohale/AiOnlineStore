@@ -44,7 +44,7 @@ const clean = (value, maximum = 255) => String(value || '').replace(/\s+/g, ' ')
 const price = (value) => Math.round(Number(value) * 100) / 100;
 const sellingPrice = (cost, original) => {
   const onSale = original > cost && cost >= original * 0.4;
-  const sourcePrice = onSale ? price(cost + (original - cost) / 2) : price(cost * 1.05);
+  const sourcePrice = onSale ? Math.ceil((cost + (original - cost) / 2 - Number.EPSILON) * 100) / 100 : price(cost * 1.05);
   return Math.ceil(Math.max(sourcePrice, cost + 20) * 100) / 100;
 };
 const makroImage = (value) => String(value || '').replace('{@width}', '1000').replace('{@height}', '1000').replace('{@quality}', '95');
