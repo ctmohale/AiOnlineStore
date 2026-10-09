@@ -26,7 +26,7 @@ try {
     const minimumMargin = Math.max(MINIMUM_MARGIN_PERCENT, Number(row.minimum_margin_percent));
     const currentProfit = currentPrice - cost;
     const currentMargin = currentProfit / currentPrice * 100;
-    if (currentProfit >= minimumProfit && currentMargin >= minimumMargin) return [];
+    if (currentProfit + 0.001 >= minimumProfit && currentMargin + 0.000001 >= minimumMargin) return [];
     const target = profitProtectedSellingPrice({
       cost,
       originalPrice: row.original_displayed_price == null ? null : Number(row.original_displayed_price),

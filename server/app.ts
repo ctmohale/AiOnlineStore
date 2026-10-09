@@ -206,7 +206,7 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
   const productProfit = Number(product.selling_price) - Number(product.current_cost);
   const productMargin = productProfit / Number(product.selling_price) * 100;
-  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit >= publicationMinimumProfit && productMargin >= publicationMinimumMargin };
+  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit + 0.001 >= publicationMinimumProfit && productMargin + 0.000001 >= publicationMinimumMargin };
   if (!pricing.passes) throw Object.assign(new Error(`Product profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit; delivery is excluded)`), { status: 422 });
   return pricing;
 }

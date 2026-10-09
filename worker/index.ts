@@ -102,7 +102,7 @@ async function repriceVerifiedOffers() {
     const { sellingPrice } = profitProtectedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent), minimumProfit, minimumMargin);
     const profit = sellingPrice - Number(item.current_cost);
     const margin = profit / sellingPrice * 100;
-    if (profit < minimumProfit || margin < minimumMargin) {
+    if (profit + 0.001 < minimumProfit || margin + 0.000001 < minimumMargin) {
       await connection.execute("UPDATE products SET status='pending_review',review_reason='New price does not cover estimated costs' WHERE id=?", [row.id]);
       return;
     }
