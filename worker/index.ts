@@ -2,30 +2,50 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import { pool, withTransaction } from '../server/db/pool.js';
 import { importProductUrl, isSupportedProductUrl } from '../server/product-import.js';
-import { profitProtectedSellingPrice } from '../shared/domain.js';
+import { isSupplierIdentityMatch, profitProtectedSellingPrice } from '../shared/domain.js';
 import { PermittedRetailerFeedAdapter } from './adapters/retailerFeed.js';
 import { ingest } from './ingest.js';
 import { backfillTransactionalEmails, inspectEmailAuthenticationDns, isEmailConfigured, processEmailOutbox, queueConfiguredEmailTest, verifyEmailTransport } from '../server/email.js';
 
-async function recheckRetailerOffers() {
+async function recheckRetailerOffers(auditCutoff?: Date) {
   if (!pool) return;
-  const [rows] = await pool.execute(`SELECT o.id,o.product_id,o.source_url
+  const batchSize = Math.min(1000, Math.max(50, Number(process.env.PRICE_AUDIT_BATCH_SIZE || 350)));
+  const auditFilter = auditCutoff
+    ? 'AND (o.last_checked_at IS NULL OR o.last_checked_at<?)'
+    : 'AND (o.price_verified=FALSE OR o.promotion_end_at<=UTC_TIMESTAMP() OR o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 HOUR))';
+  const [rows] = await pool.execute(`SELECT o.id,o.product_id,o.source_url,o.supplier_sku,o.barcode AS offer_barcode,p.title,p.brand,p.model,p.barcode,p.pack_size
     FROM supplier_offers o JOIN products p ON p.id=o.product_id
     WHERE p.deleted_at IS NULL AND o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
-      AND o.source_url<>'' AND (o.promotion_end_at<=UTC_TIMESTAMP() OR o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 20 HOUR))
-    ORDER BY o.last_checked_at ASC LIMIT 100`);
-  for (const row of rows as { id: number; product_id: number; source_url: string }[]) {
-    if (!isSupportedProductUrl(row.source_url)) continue;
+      AND o.source_url<>'' ${auditFilter}
+    ORDER BY (p.status='published') DESC,o.last_checked_at ASC LIMIT ${batchSize}`, auditCutoff ? [auditCutoff] : []);
+  for (const row of rows as { id: number; product_id: number; source_url: string; supplier_sku: string | null; offer_barcode: string | null; title: string; brand: string; model: string; barcode: string | null; pack_size: string }[]) {
+    if (!isSupportedProductUrl(row.source_url)) {
+      await withTransaction(async (connection) => {
+        await connection.execute("UPDATE supplier_offers SET price_verified=FALSE,last_checked_at=UTC_TIMESTAMP(),last_error='Unsupported supplier URL' WHERE id=?", [row.id]);
+        await connection.execute("UPDATE products SET status='paused',review_reason='unsupported_supplier_url' WHERE id=?", [row.product_id]);
+      });
+      continue;
+    }
     try {
       const imported = await importProductUrl(row.source_url);
       if (imported.currentCost == null) throw new Error('No supplier price was present in public product metadata');
       if (!['in_stock', 'low_stock', 'out_of_stock'].includes(imported.stockStatus)) throw new Error('The retailer page did not confirm stock status');
+      const identityMatches = isSupplierIdentityMatch(
+        { title: row.title, brand: row.brand, model: row.model, barcode: row.barcode || row.offer_barcode, packSize: row.pack_size, supplierSku: row.supplier_sku },
+        { title: imported.title, brand: imported.brand, model: imported.model, barcode: imported.barcode, packSize: imported.packSize, supplierSku: imported.supplierSku },
+      );
+      if (!identityMatches) {
+        await withTransaction(async (connection) => {
+          await connection.execute("UPDATE supplier_offers SET price_verified=FALSE,last_checked_at=UTC_TIMESTAMP(),last_error='Supplier page identity no longer matches the stored product' WHERE id=?", [row.id]);
+          await connection.execute("UPDATE products SET status='paused',review_reason='supplier_identity_mismatch' WHERE id=?", [row.product_id]);
+        });
+        continue;
+      }
       await withTransaction(async (connection) => {
         const [lockedRows] = await connection.execute('SELECT current_cost,price_verified,promotion_end_at FROM supplier_offers WHERE id=? FOR UPDATE', [row.id]);
         const locked = (lockedRows as { current_cost: number | null; price_verified: boolean; promotion_end_at: Date | null }[])[0];
         if (!locked) return;
         const changed = locked.current_cost == null || Number(locked.current_cost) !== imported.currentCost;
-        const expired = locked.promotion_end_at && new Date(locked.promotion_end_at).getTime() <= Date.now();
         const [imageRows] = await connection.execute('SELECT url FROM product_images WHERE product_id=? ORDER BY sort_order,id', [row.product_id]);
         const existingImages = new Set((imageRows as { url: string }[]).map((image) => image.url));
         let nextImageOrder = existingImages.size;
@@ -34,18 +54,23 @@ async function recheckRetailerOffers() {
           existingImages.add(url); nextImageOrder += 1;
         }
         await connection.execute('UPDATE products SET gallery_checked_at=UTC_TIMESTAMP(),gallery_image_count=? WHERE id=?', [existingImages.size, row.product_id]);
-        await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=CASE WHEN ? THEN NULL ELSE COALESCE(?,original_displayed_price) END,promotion_end_at=CASE WHEN ? THEN NULL ELSE promotion_end_at END,stock_status=?,fulfilment_type=?,fulfilment_signal=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Daily URL recheck found a supplier price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, Boolean(expired), imported.originalDisplayedPrice, Boolean(expired), imported.stockStatus, imported.fulfilmentType, imported.fulfilmentSignal, imported.sourceConfidence, changed ? false : imported.sourceConfidence === 'high', changed, changed, row.id]);
+        const verified = imported.sourceConfidence === 'high';
+        await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=COALESCE(?,supplier_sku),current_cost=?,original_displayed_price=?,promotion_end_at=NULL,promotion_end_provided=FALSE,stock_status=?,fulfilment_type=?,fulfilment_signal=?,last_checked_at=UTC_TIMESTAMP(),source_confidence=?,price_verified=?,price_updated_at=CASE WHEN ? THEN UTC_TIMESTAMP() ELSE price_updated_at END,price_change_reason=CASE WHEN ? THEN 'Verified supplier URL recheck found a price change' ELSE price_change_reason END,last_error=NULL WHERE id=?`, [imported.retailer, imported.sourceUrl, imported.supplierSku || null, imported.currentCost, imported.originalDisplayedPrice, imported.stockStatus, imported.fulfilmentType, imported.fulfilmentSignal, imported.sourceConfidence, verified, changed, changed, row.id]);
         if (changed) {
           await connection.execute("INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason) SELECT id,?,?,selling_price,'Daily URL recheck found a supplier price change' FROM products WHERE id=?", [row.id, imported.currentCost, row.product_id]);
-          await connection.execute("UPDATE products SET status='pending_review',review_reason='Supplier price changed during daily URL recheck' WHERE id=?", [row.product_id]);
+          if (!verified) await connection.execute("UPDATE products SET status='paused',review_reason='supplier_price_unverified' WHERE id=?", [row.product_id]);
         } else if (!['in_stock', 'low_stock'].includes(imported.stockStatus)) {
           await connection.execute("UPDATE products SET status='paused',review_reason='Supplier stock changed during daily URL recheck' WHERE id=? AND status='published'", [row.product_id]);
         }
       });
     } catch (error) {
-      await pool.execute('UPDATE supplier_offers SET last_error=? WHERE id=?', [(error instanceof Error ? error.message : String(error)).slice(0, 2000), row.id]);
+      await withTransaction(async (connection) => {
+        await connection.execute('UPDATE supplier_offers SET price_verified=FALSE,last_checked_at=UTC_TIMESTAMP(),last_error=? WHERE id=?', [(error instanceof Error ? error.message : String(error)).slice(0, 2000), row.id]);
+        await connection.execute("UPDATE products SET status='paused',review_reason='supplier_check_failed' WHERE id=?", [row.product_id]);
+      });
     }
   }
+  return (rows as unknown[]).length;
 }
 
 async function backfillProductGalleries() {
@@ -87,7 +112,7 @@ async function repriceVerifiedOffers() {
   const [rows] = await pool.execute(`SELECT p.id FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1
     WHERE p.deleted_at IS NULL AND p.status IN ('published','paused','pending_review') AND o.price_verified=TRUE AND o.stock_status IN ('in_stock','low_stock')
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL s.supplier_stale_hours HOUR)
-      AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 1200`);
+      AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP()) LIMIT 5000`);
   for (const row of rows as { id: number }[]) await withTransaction(async (connection) => {
     const [lockedRows] = await connection.execute(`SELECT p.status,p.review_reason,p.selling_price,p.minimum_profit,p.estimated_customer_delivery_cost,p.gallery_image_count,i.url AS image_url,o.id AS offer_id,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.stock_status,o.last_checked_at,o.promotion_end_at,o.price_verified,s.standard_markup_percent,s.minimum_profit AS global_minimum_profit,s.minimum_margin_percent,s.free_delivery_threshold,s.standard_customer_delivery,s.supplier_stale_hours
       FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) JOIN pricing_settings s ON s.id=1 WHERE p.id=? FOR UPDATE`, [row.id]);
@@ -125,18 +150,33 @@ async function dailyRun() {
   }
 }
 
+async function fullCataloguePriceAudit() {
+  if (!pool) return;
+  const cutoff = new Date();
+  let checked = 0;
+  while (true) {
+    const batch = Number(await recheckRetailerOffers(cutoff) || 0);
+    checked += batch;
+    if (batch === 0) break;
+    await repriceVerifiedOffers();
+    console.log(`Full supplier price audit progress: ${checked} listings checked.`);
+  }
+  console.log(`Full supplier price audit completed: ${checked} listings checked.`);
+}
+
 async function promotionEndRecheck() {
   if (!pool) return;
   const [rows] = await pool.execute("SELECT COUNT(*) AS due FROM supplier_offers WHERE promotion_end_at BETWEEN UTC_TIMESTAMP() AND DATE_ADD(UTC_TIMESTAMP(),INTERVAL 65 MINUTE)");
   if (Number((rows as { due: number }[])[0]?.due) > 0) await dailyRun();
 }
 
-async function runClaimedJob(jobName: string, minimumMinutes: number, task: () => Promise<unknown>) {
+async function runClaimedJob(jobName: string, minimumMinutes: number, task: () => Promise<unknown>, onlyOnce = false) {
   if (!pool) return;
   const claimed = await withTransaction(async (connection) => {
     await connection.execute('INSERT IGNORE INTO worker_job_runs (job_name) VALUES (?)', [jobName]);
     const [rows] = await connection.execute('SELECT last_started_at,last_completed_at FROM worker_job_runs WHERE job_name=? FOR UPDATE', [jobName]);
     const current = (rows as { last_started_at: Date | null; last_completed_at: Date | null }[])[0];
+    if (onlyOnce && current?.last_completed_at) return false;
     const mostRecent = current?.last_completed_at || current?.last_started_at;
     if (mostRecent && Date.now() - new Date(mostRecent).getTime() < minimumMinutes * 60_000) return false;
     await connection.execute('UPDATE worker_job_runs SET last_started_at=UTC_TIMESTAMP(),last_error=NULL WHERE job_name=?', [jobName]);
@@ -199,5 +239,6 @@ if (process.argv.includes('--scheduled-once')) {
     const result = await processEmailOutbox();
     console.log(`Initial email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
   })().catch((error) => console.error('Initial email delivery failed:', error));
-  void dailyRun().catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
+  void runClaimedJob('full_catalogue_price_audit_v1', 55, fullCataloguePriceAudit, true)
+    .catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
 }

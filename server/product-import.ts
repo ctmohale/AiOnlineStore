@@ -158,6 +158,9 @@ export async function importProductUrl(rawUrl: string) {
   const description = plainText(product?.description || metaValue(html, 'og:description'));
   const imageUrl = imageUrls[0] || '';
   const price = numberValue(offer.price ?? offer.lowPrice ?? product?.price ?? metaValue(html, 'product:price:amount'));
+  const comparisonCandidates = [offer.highPrice, product?.highPrice, metaValue(html, 'product:original_price:amount'), metaValue(html, 'product:price:standard_amount')]
+    .map(numberValue).filter((value): value is number => value != null);
+  const originalDisplayedPrice = price == null ? null : comparisonCandidates.find((value) => value > price * 1.01 && value <= price * 2.5) || null;
   const model = plainText(product?.model || product?.mpn || product?.sku || '');
   const sku = plainText(product?.sku || '');
   const barcode = plainText(product?.gtin13 || product?.gtin14 || product?.gtin12 || '');
@@ -167,7 +170,7 @@ export async function importProductUrl(rawUrl: string) {
   return {
     title, category: plainText(product?.category || 'Uncategorised'), brand, model, barcode, packSize: '1 unit', description,
     imageUrl, imageUrls, retailer: retailerHosts.get(finalUrl.hostname.toLowerCase()) || '', sourceUrl: finalUrl.toString(), supplierSku: sku,
-    currentCost: price, originalDisplayedPrice: null, stockStatus: stockFromAvailability(offer.availability) === 'unknown' ? stockFromPage(html) : stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
+    currentCost: price, originalDisplayedPrice, stockStatus: stockFromAvailability(offer.availability) === 'unknown' ? stockFromPage(html) : stockFromAvailability(offer.availability), lastCheckedAt: new Date().toISOString(),
     fulfilmentType: fulfilment.type, fulfilmentSignal: fulfilment.signal,
     promotionStartAt: null, promotionEndAt: null, promotionTerms: '', quantityLimit: '', supplierDeliveryCost: 0,
     sourceConfidence: product ? 'high' : 'medium', supplierPriceVerified: false, priceUpdatedAt: price ? new Date().toISOString() : null,

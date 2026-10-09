@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateProfit, customerDeliveryCharge, isExactProductMatch, offerReviewReason } from './domain';
+import { calculateProfit, customerDeliveryCharge, isExactProductMatch, isSupplierIdentityMatch, offerReviewReason } from './domain';
 
 describe('pricing', () => {
   it('subtracts every attributable cost from revenue and delivery charged', () => {
@@ -26,6 +26,17 @@ describe('exact matching', () => {
   });
   it('matches equal barcodes even when labels differ', () => {
     expect(isExactProductMatch({ barcode: '6001234567890', brand: 'A', model: 'X', packSize: '1' }, { barcode: '6001234567890', brand: 'B', model: 'Y', packSize: '2' })).toBe(true);
+  });
+  it('accepts a stable supplier SKU and rejects a redirected product SKU', () => {
+    const stored = { title: 'Goldair 8 L Air Fryer GAFS-008', brand: 'Goldair', model: 'GAFS-008', packSize: '8 L', supplierSku: 'GAFS-008' };
+    expect(isSupplierIdentityMatch(stored, { ...stored, title: 'Goldair Digital Air Fryer 8L' })).toBe(true);
+    expect(isSupplierIdentityMatch(stored, { ...stored, title: 'Goldair Air Fryer 8L', supplierSku: 'GAF-800', model: 'GAF-800' })).toBe(false);
+  });
+  it('rejects title variants with different capacities when no strong identifier exists', () => {
+    expect(isSupplierIdentityMatch(
+      { title: 'Goldair Digital Air Fryer 8 L', brand: 'Goldair', model: '', packSize: '8 L' },
+      { title: 'Goldair Digital Air Fryer 6 L', brand: 'Goldair', model: '', packSize: '6 L' },
+    )).toBe(false);
   });
 });
 

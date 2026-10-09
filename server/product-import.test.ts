@@ -29,6 +29,15 @@ describe('product URL import', () => {
     expect(result.imageUrls).toEqual(['https://cdn.example.test/kettle-front.jpg', 'https://cdn.example.test/kettle-side.jpg', 'https://cdn.example.test/kettle-back.jpg']);
   });
 
+  it('accepts a plausible structured comparison price and rejects an implausible one', async () => {
+    const product = { '@type': 'Product', name: 'Goldair Air Fryer', offers: { price: 7999, highPrice: 9999, availability: 'https://schema.org/InStock' } };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(`<script type="application/ld+json">${JSON.stringify(product)}</script>`, { status: 200, headers: { 'content-type': 'text/html' } }))));
+    expect(await importProductUrl('https://www.makro.co.za/product/air-fryer')).toMatchObject({ currentCost: 7999, originalDisplayedPrice: 9999 });
+
+    product.offers.highPrice = 74999;
+    expect(await importProductUrl('https://www.makro.co.za/product/air-fryer')).toMatchObject({ currentCost: 7999, originalDisplayedPrice: null });
+  });
+
   it('collects distinct gallery images from the main product section only', async () => {
     const product = { '@type': 'Product', name: 'Test TV', image: 'https://cdn.example.test/product/tv-front.jpg', offers: { price: 4999, availability: 'https://schema.org/InStock' } };
     const html = `<html><head><script type="application/ld+json">${JSON.stringify(product)}</script></head><body>

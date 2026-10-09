@@ -46,15 +46,15 @@ describe('publish pricing', () => {
     db.freeDeliveryThreshold = 500;
   });
 
-  it('rejects an arbitrary price and accepts the half-discount promotion price', async () => {
+  it('rejects an arbitrary price and accepts the configured-markup promotion price', async () => {
     const review = (sellingPrice: number) => fetch(`${base}/api/admin/products/5/review`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signAdminToken({ sub: '1', email: 'admin@example.test', role: 'admin' })}` },
       body: JSON.stringify({ status: 'published', sellingPrice, checklist: { exactProductMatch: true, supplierPriceChecked: true, stockChecked: true, promotionDatesChecked: true, imagesChecked: true, descriptionChecked: true } }),
     });
     const wrong = await review(920);
     expect(wrong.status).toBe(422);
-    expect((await wrong.json()).error).toContain('R825.00');
-    const right = await review(825);
+    expect((await wrong.json()).error).toContain('R849.99');
+    const right = await review(849.99);
     expect(right.status).toBe(200);
     expect((await right.json()).status).toBe('published');
     expect(db.updates).toBe(2);
