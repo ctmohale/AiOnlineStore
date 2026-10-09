@@ -17,6 +17,7 @@
     "worker:import-csv": "tsx worker/import-csv.ts",
     "catalogue:import-public": "node scripts/import-public-retailer-catalogue.mjs",
     "catalogue:import-production": "node scripts/import-production-catalogue.mjs",
+    "catalogue:publish-reviewed": "node scripts/publish-reviewed-products.mjs",
     "db:migrate": "tsx server/db/migrate.ts",
     "db:seed": "tsx server/db/seed.ts",
     "preview": "vite preview",
