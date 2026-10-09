@@ -98,11 +98,9 @@ async function repriceVerifiedOffers() {
       return;
     }
     const minimumProfit = Math.max(20, Number(item.minimum_profit ?? item.global_minimum_profit));
-    const minimumMargin = Math.max(5, Number(item.minimum_margin_percent));
-    const { sellingPrice, salePricingApplied } = profitProtectedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent), minimumProfit, minimumMargin);
+    const { sellingPrice } = profitProtectedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent), minimumProfit);
     const profit = sellingPrice - Number(item.current_cost);
-    const margin = profit / sellingPrice * 100;
-    if (profit + 0.001 < minimumProfit || (!salePricingApplied && margin + 0.000001 < minimumMargin)) {
+    if (profit + 0.001 < minimumProfit) {
       await connection.execute("UPDATE products SET status='pending_review',review_reason='New price does not cover estimated costs' WHERE id=?", [row.id]);
       return;
     }

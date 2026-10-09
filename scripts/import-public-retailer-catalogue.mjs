@@ -43,9 +43,9 @@ function findMakroProducts(value, products = new Map()) {
 const clean = (value, maximum = 255) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, maximum);
 const price = (value) => Math.round(Number(value) * 100) / 100;
 const sellingPrice = (cost, original) => {
-  const onSale = original > cost;
-  const sourcePrice = onSale ? price(cost + (original - cost) / 2) : price(cost * 1.07);
-  return Math.ceil(Math.max(sourcePrice, cost + 20, ...(onSale ? [] : [cost / 0.95])) * 100) / 100;
+  const onSale = original > cost && cost >= original * 0.4;
+  const sourcePrice = onSale ? price(cost + (original - cost) / 2) : price(cost * 1.05);
+  return Math.ceil(Math.max(sourcePrice, cost + 20) * 100) / 100;
 };
 const makroImage = (value) => String(value || '').replace('{@width}', '1000').replace('{@height}', '1000').replace('{@quality}', '95');
 const sourceKey = (value) => { try { const url = new URL(value); return `${url.hostname}${url.pathname}`.toLowerCase(); } catch { return value.toLowerCase(); } };

@@ -201,12 +201,11 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   if (now - new Date(product.last_checked_at as string | Date).getTime() > Number(product.supplier_stale_hours) * 3_600_000) throw Object.assign(new Error('The supplier check is stale; recheck it before publishing'), { status: 422 });
   if (product.promotion_end_at && new Date(product.promotion_end_at as string | Date).getTime() <= now) throw Object.assign(new Error('The supplier promotion has ended; recheck the price before publishing'), { status: 422 });
   const publicationMinimumProfit = Math.max(20, Number(product.minimum_profit ?? product.global_minimum_profit));
-  const publicationMinimumMargin = Math.max(5, Number(product.minimum_margin_percent));
-  const target = profitProtectedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent), publicationMinimumProfit, publicationMinimumMargin);
+  const target = profitProtectedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent), publicationMinimumProfit);
   if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
   const productProfit = Number(product.selling_price) - Number(product.current_cost);
   const productMargin = productProfit / Number(product.selling_price) * 100;
-  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit + 0.001 >= publicationMinimumProfit && (target.salePricingApplied || productMargin + 0.000001 >= publicationMinimumMargin) };
+  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit + 0.001 >= publicationMinimumProfit };
   if (!pricing.passes) throw Object.assign(new Error(`Product profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit; delivery is excluded)`), { status: 422 });
   return pricing;
 }
@@ -295,13 +294,13 @@ app.get('/api/products', async (request, response, next) => {
     if (category) { terms.push('p.category = ?'); params.push(category); }
     const ids = String(request.query.ids || '').split(',').map(Number).filter((id) => Number.isInteger(id) && id > 0).slice(0, 24);
     if (ids.length) { terms.push(`p.id IN (${ids.map(() => '?').join(',')})`); params.push(...ids); }
-    const [rows] = await pool.execute(`SELECT COALESCE(demand.units_sold,0) AS units_sold,COALESCE(demand.recent_units,0) AS recent_units,COALESCE(demand.trending_units,0) AS trending_units,p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.promotion_start_at,o.promotion_end_at,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 LEFT JOIN (
+    const [rows] = await pool.execute(`SELECT COALESCE(demand.units_sold,0) AS units_sold,COALESCE(demand.recent_units,0) AS recent_units,COALESCE(demand.trending_units,0) AS trending_units,p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,CASE WHEN o.original_displayed_price>o.current_cost AND o.current_cost>=o.original_displayed_price*0.4 THEN o.original_displayed_price ELSE NULL END AS original_displayed_price,o.promotion_start_at,o.promotion_end_at,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC LIMIT 1) LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1 LEFT JOIN (
       SELECT oi.product_id,SUM(oi.quantity) AS units_sold,
         SUM(CASE WHEN orders.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 30 DAY) THEN oi.quantity ELSE 0 END) AS recent_units,
         SUM(CASE WHEN orders.created_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 7 DAY) THEN oi.quantity ELSE 0 END) AS trending_units
       FROM order_items oi JOIN order_requests orders ON orders.id=oi.order_request_id
       WHERE orders.is_test=FALSE AND orders.deleted_at IS NULL AND orders.status IN ('paid','purchasing','shipped','delivered') GROUP BY oi.product_id
-    ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price IS NOT NULL AND o.original_displayed_price>o.current_cost) DESC,p.updated_at DESC,p.id DESC LIMIT 3000 OFFSET ?`, [...params, offset]);
+    ) demand ON demand.product_id=p.id WHERE ${terms.join(' AND ')} ORDER BY COALESCE(demand.trending_units,0) DESC,COALESCE(demand.recent_units,0) DESC,COALESCE(demand.units_sold,0) DESC, (o.original_displayed_price>o.current_cost AND o.current_cost>=o.original_displayed_price*0.4) DESC,p.updated_at DESC,p.id DESC LIMIT 3000 OFFSET ?`, [...params, offset]);
     const products = await withProductImages(withDeliveryEstimates(rows as RowDataPacket[], String(request.query.province || '')));
     response.json(sanitizePublicProducts(products));
   } catch (error) { next(error); }
@@ -318,7 +317,7 @@ app.get('/api/seo/sitemap', async (_request, response, next) => {
 app.get('/api/products/:slug', async (request, response, next) => {
   try {
     if (!pool) return response.status(503).json({ error: 'Database not configured' });
-    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,o.original_displayed_price,o.promotion_start_at,o.promotion_end_at,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url
+    const [rows] = await pool.execute(`SELECT p.id,p.slug,p.title,p.brand,p.model,p.pack_size,p.category,p.description,p.specifications,p.selling_price,CASE WHEN o.original_displayed_price>o.current_cost AND o.current_cost>=o.original_displayed_price*0.4 THEN o.original_displayed_price ELSE NULL END AS original_displayed_price,o.promotion_start_at,o.promotion_end_at,o.retailer,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,(o.last_checked_at IS NULL OR o.last_checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)) AS supplier_check_required,i.url AS image_url
       FROM products p JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN pricing_settings s ON s.id=1
       WHERE (p.slug=? OR EXISTS (SELECT 1 FROM product_slug_aliases alias WHERE alias.product_id=p.id AND alias.slug=?))

@@ -1,7 +1,6 @@
 import mysql from 'mysql2/promise';
 
 const MINIMUM_PROFIT = Math.max(20, Number(process.env.MINIMUM_PUBLICATION_PROFIT || 20));
-const MINIMUM_MARGIN_PERCENT = Math.max(5, Number(process.env.MINIMUM_PUBLICATION_MARGIN_PERCENT || 5));
 const APPLY = process.env.PUBLISH_LIVE === 'true';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -14,16 +13,14 @@ const profitExpression = `(p.selling_price-o.current_cost)`;
 
 const promotionExpression = `(o.original_displayed_price IS NOT NULL
     AND o.original_displayed_price > o.current_cost
+    AND o.current_cost >= o.original_displayed_price*0.4
     AND (o.promotion_end_at IS NULL OR o.promotion_end_at > UTC_TIMESTAMP()))`;
 const expectedPriceExpression = `(CASE
   WHEN ${promotionExpression}
   THEN ROUND(o.current_cost+(o.original_displayed_price-o.current_cost)/2,2)
   ELSE ROUND(o.current_cost * (1 + s.standard_markup_percent / 100), 2)
 END)`;
-const protectedPriceExpression = `(CASE WHEN ${promotionExpression}
-  THEN CEIL(GREATEST(${expectedPriceExpression},o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)))*100)/100
-  ELSE CEIL(GREATEST(${expectedPriceExpression},o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)),o.current_cost/(1-GREATEST(?,s.minimum_margin_percent)/100))*100)/100
-END)`;
+const protectedPriceExpression = `CEIL(GREATEST(${expectedPriceExpression},o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)))*100)/100`;
 
 try {
   await connection.beginTransaction();
@@ -60,8 +57,7 @@ try {
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)
       AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP())
       AND ABS(p.selling_price-${protectedPriceExpression})<=0.001
-      AND ${profitExpression}>=GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit))
-      AND (${promotionExpression} OR (${profitExpression}/p.selling_price*100)>=GREATEST(?,s.minimum_margin_percent))`, [MINIMUM_PROFIT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
+      AND ${profitExpression}>=GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit))`, [MINIMUM_PROFIT, MINIMUM_PROFIT]);
 
   const [summaryRows] = await connection.query(`SELECT COUNT(*) AS eligible_count,
       ROUND(MIN(estimated_profit),2) AS minimum_profit,
@@ -75,7 +71,7 @@ try {
 
   if (!APPLY) {
     await connection.rollback();
-    process.stdout.write(`${JSON.stringify({ mode: 'dry-run', minimumPublicationProfit: MINIMUM_PROFIT, minimumPublicationMarginPercent: MINIMUM_MARGIN_PERCENT, ...summary, retailers: retailerRows }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ mode: 'dry-run', minimumPublicationProfit: MINIMUM_PROFIT, regularPricing: 'configured supplier-price markup (minimum 5%)', salePricing: '50% of valid supplier discount', ...summary, retailers: retailerRows }, null, 2)}\n`);
     process.exitCode = 0;
   } else {
     const [adminRows] = await connection.query("SELECT id,email FROM admins WHERE role='admin' ORDER BY id LIMIT 1");
@@ -96,10 +92,10 @@ try {
       (product_id,admin_id,previous_status,decision,checklist,notes)
       SELECT eligible.product_id,?,'pending_review','published',?,CONCAT(?,
         '; automated publication gates passed; estimated profit R',
-        FORMAT(eligible.estimated_profit,2),' product profit (minimum R',FORMAT(?,2),'; regular minimum ',FORMAT(?,2),'% or 50% of an active supplier discount; delivery excluded)')
+        FORMAT(eligible.estimated_profit,2),' product profit (minimum R',FORMAT(?,2),'; configured regular markup or 50% of a valid active supplier discount; delivery excluded)')
       FROM eligible_product_publication eligible
       JOIN products p ON p.id=eligible.product_id AND p.status='pending_review'`,
-    [admin.id, checklist, batchReference, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
+    [admin.id, checklist, batchReference, MINIMUM_PROFIT]);
 
     const [updateResult] = await connection.query(`UPDATE products p
       JOIN eligible_product_publication eligible ON eligible.product_id=p.id
@@ -126,7 +122,8 @@ try {
       batchReference,
       approvingAdmin: admin.email,
       minimumPublicationProfit: MINIMUM_PROFIT,
-      minimumPublicationMarginPercent: MINIMUM_MARGIN_PERCENT,
+      regularPricing: 'configured supplier-price markup (minimum 5%)',
+      salePricing: '50% of valid supplier discount',
       ...summary,
       retailers: retailerRows,
       auditRowsCreated: reviewResult.affectedRows,

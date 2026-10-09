@@ -20,23 +20,26 @@ describe('source pricing', () => {
     expect(() => recommendedSellingPrice({ cost: 0 })).toThrow('positive supplier price');
     expect(() => recommendedSellingPrice({ cost: 100 }, 11)).toThrow('between 5% and 10%');
   });
+
+  it('rejects implausible supplier discounts above 60%', () => {
+    expect(recommendedSellingPrice({ cost: 6499, originalPrice: 74999 }, 7, now)).toEqual({ sellingPrice: 6953.93, promotionActive: false });
+  });
 });
 
 describe('profit-protected product pricing', () => {
   const now = new Date('2026-10-01T08:00:00Z');
 
-  it('enforces product profit and margin without using delivery charges or costs', () => {
-    expect(profitProtectedSellingPrice({ cost: 100 }, 5, 10, 5, now).sellingPrice).toBe(110);
-    expect(profitProtectedSellingPrice({ cost: 1000 }, 5, 10, 6, now).sellingPrice).toBe(1063.83);
+  it('adds 5% to a regular supplier price and excludes delivery', () => {
+    expect(profitProtectedSellingPrice({ cost: 5000 }, 5, 20, now).sellingPrice).toBe(5250);
+    expect(profitProtectedSellingPrice({ cost: 100 }, 5, 20, now).sellingPrice).toBe(120);
   });
 
   it('uses half of a supplier sale discount while retaining the absolute profit floor', () => {
-    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 1000 }, 7, 20, 5, now)).toEqual({ sellingPrice: 900, promotionActive: true, salePricingApplied: true });
-    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 7, 20, 5, now)).toEqual({ sellingPrice: 820, promotionActive: false, salePricingApplied: true });
+    expect(profitProtectedSellingPrice({ cost: 4000, originalPrice: 5000 }, 5, 20, now)).toEqual({ sellingPrice: 4500, promotionActive: true, salePricingApplied: true });
+    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 5, 20, now)).toEqual({ sellingPrice: 820, promotionActive: false, salePricingApplied: true });
   });
 
   it('rejects invalid product profit guardrails', () => {
-    expect(() => profitProtectedSellingPrice({ cost: 100 }, 7, -1, 4, now)).toThrow('Minimum profit');
-    expect(() => profitProtectedSellingPrice({ cost: 100 }, 7, 10, 100, now)).toThrow('Minimum margin');
+    expect(() => profitProtectedSellingPrice({ cost: 100 }, 7, -1, now)).toThrow('Minimum profit');
   });
 });
