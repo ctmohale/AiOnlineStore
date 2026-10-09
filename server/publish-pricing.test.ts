@@ -1,20 +1,20 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
 
-const db = vi.hoisted(() => ({ sellingPrice: 0, updates: 0 }));
+const db = vi.hoisted(() => ({ sellingPrice: 0, updates: 0, currentCost: 800, originalPrice: 850 as number | null, freeDeliveryThreshold: 500 }));
 vi.mock('./db/pool.js', () => ({
   pool: { execute: vi.fn() },
   withTransaction: async (callback: (connection: { execute: (sql: string, params: unknown[]) => Promise<unknown[]> }) => Promise<unknown>) => callback({
     execute: async (sql: string, params: unknown[]) => {
-      if (sql.startsWith('SELECT p.selling_price,p.status')) return [[{ selling_price: db.sellingPrice, status: 'pending_review', offer_id: 1, current_cost: 800 }]];
+      if (sql.startsWith('SELECT p.selling_price,p.status')) return [[{ selling_price: db.sellingPrice, status: 'pending_review', offer_id: 1, current_cost: db.currentCost }]];
       if (sql.startsWith('INSERT INTO price_history')) return [{ affectedRows: 1 }];
       if (sql.startsWith('UPDATE products SET selling_price=')) { db.sellingPrice = Number(params[0]); db.updates++; return [{ affectedRows: 1 }]; }
       if (sql.startsWith('SELECT p.title,p.category')) return [[{
         title: 'Test blender', category: 'Appliances', model: 'ABC', pack_size: '1', image_url: 'https://www.makro.co.za/image.jpg', image_count: 3, selling_price: db.sellingPrice,
-        offer_id: 1, source_url: 'https://www.makro.co.za/product', current_cost: 800, original_displayed_price: 850,
+        offer_id: 1, source_url: 'https://www.makro.co.za/product', current_cost: db.currentCost, original_displayed_price: db.originalPrice,
         stock_status: 'in_stock', last_checked_at: new Date(), promotion_end_at: null, price_verified: true,
         supplier_delivery_cost: 0, estimated_customer_delivery_cost: 0, minimum_profit: null,
-        global_minimum_profit: 0, minimum_margin_percent: 0, standard_markup_percent: 7, free_delivery_threshold: 500, standard_customer_delivery: 89, supplier_stale_hours: 24,
+        global_minimum_profit: 0, minimum_margin_percent: 0, standard_markup_percent: 7, free_delivery_threshold: db.freeDeliveryThreshold, standard_customer_delivery: 89, supplier_stale_hours: 24,
       }]];
       if (sql.startsWith('UPDATE products SET status=')) return [{ affectedRows: 1 }];
       if (sql.startsWith('INSERT INTO product_reviews')) return [{ affectedRows: 1 }];
@@ -38,6 +38,13 @@ describe('publish pricing', () => {
     base = `http://127.0.0.1:${address.port}`;
   });
   afterAll(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); });
+  beforeEach(() => {
+    db.sellingPrice = 0;
+    db.updates = 0;
+    db.currentCost = 800;
+    db.originalPrice = 850;
+    db.freeDeliveryThreshold = 500;
+  });
 
   it('rejects an arbitrary price and accepts the capped promotion price', async () => {
     const review = (sellingPrice: number) => fetch(`${base}/api/admin/products/5/review`, {
@@ -51,5 +58,18 @@ describe('publish pricing', () => {
     expect(right.status).toBe(200);
     expect((await right.json()).status).toBe('published');
     expect(db.updates).toBe(2);
+  });
+
+  it('enforces an R10 publication profit floor even when configuration is lower', async () => {
+    db.currentCost = 100;
+    db.originalPrice = null;
+    db.freeDeliveryThreshold = 0;
+    const response = await fetch(`${base}/api/admin/products/5/review`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signAdminToken({ sub: '1', email: 'admin@example.test', role: 'admin' })}` },
+      body: JSON.stringify({ status: 'published', sellingPrice: 107, checklist: { exactProductMatch: true, supplierPriceChecked: true, stockChecked: true, promotionDatesChecked: true, imagesChecked: true, descriptionChecked: true } }),
+    });
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).error).toContain('R7.00 profit');
   });
 });
