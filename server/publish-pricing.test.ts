@@ -70,6 +70,6 @@ describe('publish pricing', () => {
     });
 
     expect(response.status).toBe(422);
-    expect((await response.json()).error).toContain('R7.00 profit');
+    expect((await response.json()).error).toContain('R110.00');
   });
 });

@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 
 const MINIMUM_PROFIT = Math.max(10, Number(process.env.MINIMUM_PUBLICATION_PROFIT || 10));
+const MINIMUM_MARGIN_PERCENT = Math.max(4, Number(process.env.MINIMUM_PUBLICATION_MARGIN_PERCENT || 4));
 const APPLY = process.env.PUBLISH_LIVE === 'true';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -9,11 +10,7 @@ if (!Number.isFinite(MINIMUM_PROFIT)) throw new Error('MINIMUM_PUBLICATION_PROFI
 const connection = await mysql.createConnection(process.env.DATABASE_URL);
 const batchReference = `bulk-profit-approval-${new Date().toISOString()}`;
 
-const profitExpression = `(p.selling_price
-  + IF(p.selling_price >= s.free_delivery_threshold, 0, s.standard_customer_delivery)
-  - o.current_cost
-  - COALESCE(o.supplier_delivery_cost, 0)
-  - COALESCE(p.estimated_customer_delivery_cost, 0))`;
+const profitExpression = `(p.selling_price-o.current_cost)`;
 
 const expectedPriceExpression = `(CASE
   WHEN o.original_displayed_price IS NOT NULL
@@ -22,6 +19,11 @@ const expectedPriceExpression = `(CASE
   THEN LEAST(ROUND(o.current_cost * 1.15, 2), ROUND(o.original_displayed_price, 2) - 0.01)
   ELSE ROUND(o.current_cost * (1 + s.standard_markup_percent / 100), 2)
 END)`;
+const protectedPriceExpression = `(CEIL(GREATEST(
+  ${expectedPriceExpression},
+  o.current_cost+GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit)),
+  o.current_cost/(1-GREATEST(?,s.minimum_margin_percent)/100)
+)*100)/100)`;
 
 try {
   await connection.beginTransaction();
@@ -57,9 +59,9 @@ try {
       AND o.last_checked_at IS NOT NULL
       AND o.last_checked_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL COALESCE(s.supplier_stale_hours,24) HOUR)
       AND (o.promotion_end_at IS NULL OR o.promotion_end_at>UTC_TIMESTAMP())
-      AND ABS(p.selling_price-${expectedPriceExpression})<=0.001
+      AND ABS(p.selling_price-${protectedPriceExpression})<=0.001
       AND ${profitExpression}>=GREATEST(?,COALESCE(p.minimum_profit,s.minimum_profit))
-      AND (${profitExpression}/p.selling_price*100)>=s.minimum_margin_percent`, [MINIMUM_PROFIT]);
+      AND (${profitExpression}/p.selling_price*100)>=GREATEST(?,s.minimum_margin_percent)`, [MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
 
   const [summaryRows] = await connection.query(`SELECT COUNT(*) AS eligible_count,
       ROUND(MIN(estimated_profit),2) AS minimum_profit,
@@ -73,7 +75,7 @@ try {
 
   if (!APPLY) {
     await connection.rollback();
-    process.stdout.write(`${JSON.stringify({ mode: 'dry-run', minimumPublicationProfit: MINIMUM_PROFIT, ...summary, retailers: retailerRows }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ mode: 'dry-run', minimumPublicationProfit: MINIMUM_PROFIT, minimumPublicationMarginPercent: MINIMUM_MARGIN_PERCENT, ...summary, retailers: retailerRows }, null, 2)}\n`);
     process.exitCode = 0;
   } else {
     const [adminRows] = await connection.query("SELECT id,email FROM admins WHERE role='admin' ORDER BY id LIMIT 1");
@@ -94,10 +96,10 @@ try {
       (product_id,admin_id,previous_status,decision,checklist,notes)
       SELECT eligible.product_id,?,'pending_review','published',?,CONCAT(?,
         '; automated publication gates passed; estimated profit R',
-        FORMAT(eligible.estimated_profit,2),' (minimum R',FORMAT(?,2),')')
+        FORMAT(eligible.estimated_profit,2),' product profit (minimum R',FORMAT(?,2),' and ',FORMAT(?,2),'%; delivery excluded)')
       FROM eligible_product_publication eligible
       JOIN products p ON p.id=eligible.product_id AND p.status='pending_review'`,
-    [admin.id, checklist, batchReference, MINIMUM_PROFIT]);
+    [admin.id, checklist, batchReference, MINIMUM_PROFIT, MINIMUM_MARGIN_PERCENT]);
 
     const [updateResult] = await connection.query(`UPDATE products p
       JOIN eligible_product_publication eligible ON eligible.product_id=p.id
@@ -124,6 +126,7 @@ try {
       batchReference,
       approvingAdmin: admin.email,
       minimumPublicationProfit: MINIMUM_PROFIT,
+      minimumPublicationMarginPercent: MINIMUM_MARGIN_PERCENT,
       ...summary,
       retailers: retailerRows,
       auditRowsCreated: reviewResult.affectedRows,

@@ -16,7 +16,10 @@ if (!DRY_RUN && (!DIRECT_DB || !process.env.DATABASE_URL)) {
 
 const clean = (value, maximum = 255) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, maximum);
 const price = (value) => Math.round(Number(value) * 100) / 100;
-const sellingPrice = (cost, original) => original > cost ? Math.min(price(cost * 1.15), price(original) - 0.01) : price(cost * 1.05);
+const sellingPrice = (cost, original) => {
+  const sourcePrice = original > cost ? Math.min(price(cost * 1.15), price(original) - 0.01) : price(cost * 1.05);
+  return Math.ceil(Math.max(sourcePrice, cost + 10, cost / 0.96) * 100) / 100;
+};
 const sourceKey = (value) => { try { const url = new URL(value); return `${url.hostname}${url.pathname}`.toLowerCase(); } catch { return String(value || '').toLowerCase(); } };
 const identityKey = (title, packSize) => `${clean(title).toLowerCase()}|${clean(packSize).toLowerCase()}`;
 const decodeXml = (value) => String(value).replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'").replaceAll('&lt;', '<').replaceAll('&gt;', '>');

@@ -29,6 +29,18 @@ export function recommendedSellingPrice(source: SourcePrice, standardMarkupPerce
   return { sellingPrice: Math.round(sellingPrice * 100) / 100, promotionActive };
 }
 
+export function profitProtectedSellingPrice(source: SourcePrice, standardMarkupPercent = 7, minimumProfit = 10, minimumMarginPercent = 4, now = new Date()) {
+  if (!Number.isFinite(minimumProfit) || minimumProfit < 0) throw new Error('Minimum profit must be zero or greater');
+  if (!Number.isFinite(minimumMarginPercent) || minimumMarginPercent < 0 || minimumMarginPercent >= 100) throw new Error('Minimum margin must be between 0% and 99.99%');
+  const sourcePrice = recommendedSellingPrice(source, standardMarkupPercent, now);
+  const cost = Number(source.cost);
+  const marginRate = minimumMarginPercent / 100;
+  const minimumPrice = Math.max(sourcePrice.sellingPrice, cost + minimumProfit, cost / (1 - marginRate));
+  const sellingPrice = Math.ceil((minimumPrice - Number.EPSILON) * 100) / 100;
+  const original = source.originalPrice == null ? null : Number(source.originalPrice);
+  return { sellingPrice, promotionActive: sourcePrice.promotionActive && original != null && sellingPrice < original };
+}
+
 export function isExactProductMatch(a: MatchableProduct, b: MatchableProduct) {
   if (a.barcode && b.barcode) return normalise(a.barcode) === normalise(b.barcode);
   return normalise(a.brand) === normalise(b.brand) && normalise(a.model) === normalise(b.model) && normalise(a.packSize) === normalise(b.packSize);

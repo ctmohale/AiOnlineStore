@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import type { RowDataPacket } from 'mysql2';
 import type { PoolConnection } from 'mysql2/promise';
-import { calculateProfit, passesPricingRules, recommendedSellingPrice } from '../shared/domain.js';
+import { calculateProfit, passesPricingRules, profitProtectedSellingPrice } from '../shared/domain.js';
 import { addBusinessDays, deliveryEstimate } from '../shared/delivery.js';
 import { publicProductSlugBase, sanitizePublicProductName, sanitizePublicProductSpecs, sanitizePublicProductText } from '../shared/public-product.js';
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
@@ -200,12 +200,14 @@ async function assertProductPublishable(connection: PoolConnection, productId: n
   const now = Date.now();
   if (now - new Date(product.last_checked_at as string | Date).getTime() > Number(product.supplier_stale_hours) * 3_600_000) throw Object.assign(new Error('The supplier check is stale; recheck it before publishing'), { status: 422 });
   if (product.promotion_end_at && new Date(product.promotion_end_at as string | Date).getTime() <= now) throw Object.assign(new Error('The supplier promotion has ended; recheck the price before publishing'), { status: 422 });
-  const target = recommendedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent));
-  if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
-  const deliveryCharged = Number(product.selling_price) >= Number(product.free_delivery_threshold) ? 0 : Number(product.standard_customer_delivery);
   const publicationMinimumProfit = Math.max(10, Number(product.minimum_profit ?? product.global_minimum_profit));
-  const pricing = passesPricingRules({ productRevenue: Number(product.selling_price), customerDeliveryCharged: deliveryCharged, supplierProductCost: Number(product.current_cost), supplierDelivery: Number(product.supplier_delivery_cost || 0), customerDeliveryCost: Number(product.estimated_customer_delivery_cost || 0), packaging: 0, paymentFees: 0, advertisingCost: 0 }, publicationMinimumProfit, Number(product.minimum_margin_percent));
-  if (!pricing.passes || pricing.profit <= 0) throw Object.assign(new Error(`Estimated profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit)`), { status: 422 });
+  const publicationMinimumMargin = Math.max(4, Number(product.minimum_margin_percent));
+  const target = profitProtectedSellingPrice({ cost: Number(product.current_cost), originalPrice: product.original_displayed_price == null ? null : Number(product.original_displayed_price), promotionEndAt: product.promotion_end_at as Date | null }, Number(product.standard_markup_percent), publicationMinimumProfit, publicationMinimumMargin);
+  if (Math.abs(Number(product.selling_price) - target.sellingPrice) > 0.001) throw Object.assign(new Error(`Selling price must follow the source pricing rule: R${target.sellingPrice.toFixed(2)}`), { status: 422 });
+  const productProfit = Number(product.selling_price) - Number(product.current_cost);
+  const productMargin = productProfit / Number(product.selling_price) * 100;
+  const pricing = { profit: productProfit, margin: productMargin, passes: productProfit >= publicationMinimumProfit && productMargin >= publicationMinimumMargin };
+  if (!pricing.passes) throw Object.assign(new Error(`Product profit is below the product guardrail (${pricing.margin.toFixed(1)}% margin, R${pricing.profit.toFixed(2)} profit; delivery is excluded)`), { status: 422 });
   return pricing;
 }
 

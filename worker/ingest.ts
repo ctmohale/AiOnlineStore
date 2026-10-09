@@ -1,5 +1,5 @@
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
-import { isExactProductMatch, offerReviewReason, recommendedSellingPrice } from '../shared/domain.js';
+import { isExactProductMatch, offerReviewReason, profitProtectedSellingPrice } from '../shared/domain.js';
 import { pool, withTransaction } from '../server/db/pool.js';
 import type { CandidateProduct, SourceAdapter } from './adapters/types.js';
 
@@ -38,9 +38,9 @@ async function upsertCandidate(candidate: CandidateProduct) {
     let created = false;
     if (!productId) {
       const slugBase = `${candidate.brand}-${candidate.model}-${candidate.packSize}`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      const [settingsRows] = await connection.execute('SELECT standard_markup_percent FROM pricing_settings WHERE id=1');
-      const markup = Number((settingsRows as { standard_markup_percent: number }[])[0]?.standard_markup_percent ?? 7);
-      const price = recommendedSellingPrice({ cost: candidate.price, originalPrice: candidate.originalDisplayedPrice, promotionEndAt: candidate.saleEndDate }, markup).sellingPrice;
+      const [settingsRows] = await connection.execute('SELECT standard_markup_percent,minimum_profit,minimum_margin_percent FROM pricing_settings WHERE id=1');
+      const settings = (settingsRows as { standard_markup_percent: number; minimum_profit: number; minimum_margin_percent: number }[])[0];
+      const price = profitProtectedSellingPrice({ cost: candidate.price, originalPrice: candidate.originalDisplayedPrice, promotionEndAt: candidate.saleEndDate }, Number(settings?.standard_markup_percent ?? 7), Math.max(10, Number(settings?.minimum_profit ?? 10)), Math.max(4, Number(settings?.minimum_margin_percent ?? 4))).sellingPrice;
       const [result] = await connection.execute("INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,status,review_reason) VALUES (?,?,?,?,?,?,'Uncategorised','Description pending rights-cleared authoring',JSON_OBJECT(),?,'pending_review','New candidate requires human review')", [`${slugBase}-${Date.now().toString(36)}`, candidate.title, candidate.brand, candidate.model, candidate.barcode || null, candidate.packSize, price]);
       productId = (result as ResultSetHeader).insertId; created = true;
     }

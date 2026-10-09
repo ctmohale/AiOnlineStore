@@ -18,6 +18,7 @@
     "catalogue:import-public": "node scripts/import-public-retailer-catalogue.mjs",
     "catalogue:import-production": "node scripts/import-production-catalogue.mjs",
     "catalogue:publish-reviewed": "node scripts/publish-reviewed-products.mjs",
+    "catalogue:reprice-product-margins": "tsx scripts/reprice-product-margins.ts",
     "db:migrate": "tsx server/db/migrate.ts",
     "db:seed": "tsx server/db/seed.ts",
     "preview": "vite preview",

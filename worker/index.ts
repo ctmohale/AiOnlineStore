@@ -2,7 +2,7 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import { pool, withTransaction } from '../server/db/pool.js';
 import { importProductUrl, isSupportedProductUrl } from '../server/product-import.js';
-import { recommendedSellingPrice } from '../shared/domain.js';
+import { profitProtectedSellingPrice } from '../shared/domain.js';
 import { PermittedRetailerFeedAdapter } from './adapters/retailerFeed.js';
 import { ingest } from './ingest.js';
 import { backfillTransactionalEmails, inspectEmailAuthenticationDns, isEmailConfigured, processEmailOutbox, queueConfiguredEmailTest, verifyEmailTransport } from '../server/email.js';
@@ -97,11 +97,12 @@ async function repriceVerifiedOffers() {
       await connection.execute("UPDATE products SET status='paused',review_reason='gallery_incomplete' WHERE id=?", [row.id]);
       return;
     }
-    const { sellingPrice } = recommendedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent));
-    const customerDelivery = sellingPrice >= Number(item.free_delivery_threshold) ? 0 : Number(item.standard_customer_delivery);
-    const profit = sellingPrice + customerDelivery - Number(item.current_cost) - Number(item.supplier_delivery_cost || 0) - Number(item.estimated_customer_delivery_cost || 0);
+    const minimumProfit = Math.max(10, Number(item.minimum_profit ?? item.global_minimum_profit));
+    const minimumMargin = Math.max(4, Number(item.minimum_margin_percent));
+    const { sellingPrice } = profitProtectedSellingPrice({ cost: Number(item.current_cost), originalPrice: item.original_displayed_price == null ? null : Number(item.original_displayed_price), promotionEndAt: item.promotion_end_at as Date | null }, Number(item.standard_markup_percent), minimumProfit, minimumMargin);
+    const profit = sellingPrice - Number(item.current_cost);
     const margin = profit / sellingPrice * 100;
-    if (profit <= 0 || profit < Number(item.minimum_profit ?? item.global_minimum_profit) || margin < Number(item.minimum_margin_percent)) {
+    if (profit < minimumProfit || margin < minimumMargin) {
       await connection.execute("UPDATE products SET status='pending_review',review_reason='New price does not cover estimated costs' WHERE id=?", [row.id]);
       return;
     }

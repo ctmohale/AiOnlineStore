@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recommendedSellingPrice } from './domain';
+import { profitProtectedSellingPrice, recommendedSellingPrice } from './domain';
 
 describe('source pricing', () => {
   const now = new Date('2026-10-01T08:00:00Z');
@@ -19,5 +19,23 @@ describe('source pricing', () => {
   it('rejects an invalid markup or missing source cost', () => {
     expect(() => recommendedSellingPrice({ cost: 0 })).toThrow('positive supplier price');
     expect(() => recommendedSellingPrice({ cost: 100 }, 11)).toThrow('between 5% and 10%');
+  });
+});
+
+describe('profit-protected product pricing', () => {
+  const now = new Date('2026-10-01T08:00:00Z');
+
+  it('enforces product profit and margin without using delivery charges or costs', () => {
+    expect(profitProtectedSellingPrice({ cost: 100 }, 5, 10, 4, now).sellingPrice).toBe(110);
+    expect(profitProtectedSellingPrice({ cost: 1000 }, 5, 10, 6, now).sellingPrice).toBe(1063.83);
+  });
+
+  it('raises a capped supplier promotion price when it cannot satisfy the product margin', () => {
+    expect(profitProtectedSellingPrice({ cost: 800, originalPrice: 810 }, 7, 10, 4, now)).toEqual({ sellingPrice: 833.34, promotionActive: false });
+  });
+
+  it('rejects invalid product profit guardrails', () => {
+    expect(() => profitProtectedSellingPrice({ cost: 100 }, 7, -1, 4, now)).toThrow('Minimum profit');
+    expect(() => profitProtectedSellingPrice({ cost: 100 }, 7, 10, 100, now)).toThrow('Minimum margin');
   });
 });
