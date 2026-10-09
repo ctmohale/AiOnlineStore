@@ -18,13 +18,14 @@ async function recheckRetailerOffers(auditCutoff?: Date) {
     WHERE p.deleted_at IS NULL AND o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1)
       AND o.source_url<>'' ${auditFilter}
     ORDER BY (p.status='published') DESC,o.last_checked_at ASC LIMIT ${batchSize}`, auditCutoff ? [auditCutoff] : []);
-  for (const row of rows as { id: number; product_id: number; source_url: string; supplier_sku: string | null; offer_barcode: string | null; title: string; brand: string; model: string; barcode: string | null; pack_size: string }[]) {
+  const typedRows = rows as { id: number; product_id: number; source_url: string; supplier_sku: string | null; offer_barcode: string | null; title: string; brand: string; model: string; barcode: string | null; pack_size: string }[];
+  for (let offset = 0; offset < typedRows.length; offset += 6) await Promise.all(typedRows.slice(offset, offset + 6).map(async (row) => {
     if (!isSupportedProductUrl(row.source_url)) {
       await withTransaction(async (connection) => {
         await connection.execute("UPDATE supplier_offers SET price_verified=FALSE,last_checked_at=UTC_TIMESTAMP(),last_error='Unsupported supplier URL' WHERE id=?", [row.id]);
         await connection.execute("UPDATE products SET status='paused',review_reason='unsupported_supplier_url' WHERE id=?", [row.product_id]);
       });
-      continue;
+      return;
     }
     try {
       const imported = await importProductUrl(row.source_url);
@@ -39,7 +40,7 @@ async function recheckRetailerOffers(auditCutoff?: Date) {
           await connection.execute("UPDATE supplier_offers SET price_verified=FALSE,last_checked_at=UTC_TIMESTAMP(),last_error='Supplier page identity no longer matches the stored product' WHERE id=?", [row.id]);
           await connection.execute("UPDATE products SET status='paused',review_reason='supplier_identity_mismatch' WHERE id=?", [row.product_id]);
         });
-        continue;
+        return;
       }
       await withTransaction(async (connection) => {
         const [lockedRows] = await connection.execute('SELECT current_cost,price_verified,promotion_end_at FROM supplier_offers WHERE id=? FOR UPDATE', [row.id]);
@@ -69,8 +70,8 @@ async function recheckRetailerOffers(auditCutoff?: Date) {
         await connection.execute("UPDATE products SET status='paused',review_reason='supplier_check_failed' WHERE id=?", [row.product_id]);
       });
     }
-  }
-  return (rows as unknown[]).length;
+  }));
+  return typedRows.length;
 }
 
 async function backfillProductGalleries() {
@@ -198,7 +199,7 @@ async function scheduledRun() {
   const result = await processEmailOutbox();
   if (result.sent || result.failed) console.log(`Email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
   await runClaimedJob('promotion_end_recheck', 55, promotionEndRecheck);
-  await runClaimedJob('full_catalogue_price_audit_v1', 55, fullCataloguePriceAudit, true);
+  await runClaimedJob('full_catalogue_price_audit_v2', 55, fullCataloguePriceAudit, true);
   await runClaimedJob('daily_catalogue_maintenance', 20 * 60, dailyRun);
 }
 
@@ -240,6 +241,6 @@ if (process.argv.includes('--scheduled-once')) {
     const result = await processEmailOutbox();
     console.log(`Initial email outbox processed: ${result.sent} sent, ${result.failed} failed.`);
   })().catch((error) => console.error('Initial email delivery failed:', error));
-  void runClaimedJob('full_catalogue_price_audit_v1', 55, fullCataloguePriceAudit, true)
+  void runClaimedJob('full_catalogue_price_audit_v2', 55, fullCataloguePriceAudit, true)
     .catch((error) => { console.error(error); setTimeout(() => void dailyRun().catch(console.error), 60_000); });
 }
