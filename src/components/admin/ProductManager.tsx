@@ -165,13 +165,13 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
     if (file.size > 20 * 1024 * 1024) { notify('Choose a product file smaller than 20 MB.', 'error'); return; }
     const extension = file.name.toLowerCase().split('.').pop();
     if (!['csv', 'xlsx'].includes(extension || '')) { notify('Choose a .csv or .xlsx product file.', 'error'); return; }
-    const approved = await confirm({ title: 'Import product data?', message: `Import “${file.name}”? Rows with an id update that product; rows with a blank id create a product. Published rows return to pending review for safety.`, confirmLabel: 'Import products' });
+    const approved = await confirm({ title: 'Import and update product data?', message: `Import “${file.name}”? Each row will override a matching product using its id, barcode, supplier SKU, supplier URL, or exact brand/model/pack size. Only unmatched rows create new products. Products not listed in this file stay unchanged, and published updates return to pending review.`, confirmLabel: 'Import and update' });
     if (!approved) return;
     setImportingFile(true);
     try {
       const isExcel = extension === 'xlsx';
       const body = isExcel ? await file.arrayBuffer() : await file.text();
-      const result = await adminFileUpload<{ imported: number; created: number; updated: number; pendingReview: number }>('/products-import', body, isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv');
+      const result = await adminFileUpload<{ imported: number; created: number; updated: number; pendingReview: number; matchedBy: Record<string, number> }>('/products-import', body, isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv');
       await load(); onChanged?.();
       const reviewMessage = result.pendingReview ? ` ${result.pendingReview} previously published row${result.pendingReview === 1 ? '' : 's'} now need publication review.` : '';
       notify(`${result.imported} rows imported: ${result.created} created and ${result.updated} updated.${reviewMessage}`, 'success', 'Product import complete');

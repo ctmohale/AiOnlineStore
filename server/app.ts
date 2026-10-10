@@ -740,21 +740,54 @@ app.post('/api/admin/products-import', requireAdmin, express.text({ type: 'text/
       let created = 0;
       let updated = 0;
       let pendingReview = 0;
+      const matchedBy = { id: 0, barcode: 0, supplierSku: 0, sourceUrl: 0, exactProduct: 0, title: 0 };
+      const importedProductIds = new Set<number>();
       for (const row of rows) {
         const input = row.input;
         let productId = row.id;
+        let matchType: keyof typeof matchedBy | null = productId == null ? null : 'id';
+        const findUniqueProduct = async (sql: string, values: (string | number | null)[], label: string) => {
+          const [matches] = await connection.execute(sql, values);
+          const ids = [...new Set((matches as (RowDataPacket & { id: number })[]).map((match) => Number(match.id)))];
+          if (ids.length > 1) throw Object.assign(new Error(`Row ${row.rowNumber}: ${label} matches more than one product; add the exact product id to the file`), { status: 422 });
+          return ids[0] || null;
+        };
+        if (productId == null && input.barcode) {
+          productId = await findUniqueProduct('SELECT id FROM products WHERE barcode=? AND deleted_at IS NULL LIMIT 2', [input.barcode], `barcode ${input.barcode}`);
+          if (productId) matchType = 'barcode';
+        }
+        if (productId == null && input.supplier?.supplierSku) {
+          const retailer = input.supplier.retailer || '';
+          productId = await findUniqueProduct(`SELECT DISTINCT p.id FROM products p JOIN supplier_offers o ON o.product_id=p.id WHERE o.supplier_sku=? AND (?='' OR LOWER(o.retailer)=LOWER(?)) AND p.deleted_at IS NULL LIMIT 2`, [input.supplier.supplierSku, retailer, retailer], `supplier SKU ${input.supplier.supplierSku}`);
+          if (productId) matchType = 'supplierSku';
+        }
+        if (productId == null && input.supplier?.sourceUrl) {
+          productId = await findUniqueProduct('SELECT DISTINCT p.id FROM products p JOIN supplier_offers o ON o.product_id=p.id WHERE o.source_url=? AND p.deleted_at IS NULL LIMIT 2', [input.supplier.sourceUrl], `supplier URL ${input.supplier.sourceUrl}`);
+          if (productId) matchType = 'sourceUrl';
+        }
+        if (productId == null && (input.model || input.packSize)) {
+          productId = await findUniqueProduct('SELECT id FROM products WHERE LOWER(brand)=LOWER(?) AND LOWER(model)=LOWER(?) AND LOWER(pack_size)=LOWER(?) AND deleted_at IS NULL LIMIT 2', [input.brand, input.model, input.packSize], `brand/model/pack combination for “${input.title}”`);
+          if (productId) matchType = 'exactProduct';
+        }
+        if (productId == null) {
+          productId = await findUniqueProduct('SELECT id FROM products WHERE LOWER(title)=LOWER(?) AND deleted_at IS NULL LIMIT 2', [input.title], `product name “${input.title}”`);
+          if (productId) matchType = 'title';
+        }
+        if (productId != null && importedProductIds.has(productId)) throw Object.assign(new Error(`Row ${row.rowNumber}: this product is already represented by another row in the file`), { status: 422 });
         if (productId != null) {
           const [existingRows] = await connection.execute('SELECT id FROM products WHERE id=? AND deleted_at IS NULL FOR UPDATE', [productId]);
-          if (!(existingRows as RowDataPacket[]).length) throw Object.assign(new Error(`Row ${row.rowNumber}: product id ${productId} was not found; clear the id cell to create it as a new product`), { status: 422 });
+          if (!(existingRows as RowDataPacket[]).length) throw Object.assign(new Error(`Row ${row.rowNumber}: product id ${productId} was not found; clear the id cell so the importer can match it by product data or create it`), { status: 422 });
           await connection.execute(`UPDATE products SET title=?,brand=?,model=?,barcode=?,pack_size=?,category=?,description=?,specifications=?,selling_price=?,minimum_profit=?,estimated_customer_delivery_cost=?,delivery_time=?,item_weight_size=?,internal_review_notes=?,status=?,review_reason=? WHERE id=?`,
             [input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.minimumProfit ?? null, input.estimatedCustomerDeliveryCost ?? 0, input.deliveryTime || null, input.itemWeightSize || null, input.reviewNotes || null, input.status, row.status === 'published' ? 'Imported data requires publication review' : row.reviewReason, productId]);
           updated++;
+          if (matchType) matchedBy[matchType]++;
         } else {
           const [insert] = await connection.execute(`INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,minimum_profit,estimated_customer_delivery_cost,delivery_time,item_weight_size,internal_review_notes,status,review_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [productSlug(input.title), input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.minimumProfit ?? null, input.estimatedCustomerDeliveryCost ?? 0, input.deliveryTime || null, input.itemWeightSize || null, input.reviewNotes || null, input.status, row.status === 'published' ? 'Imported data requires publication review' : row.reviewReason || 'Imported product requires supplier verification']);
           productId = Number((insert as { insertId: number }).insertId);
           created++;
         }
+        importedProductIds.add(productId);
         await replaceProductImages(connection, productId, input.title, row.imageUrls);
         let offerId: number | null = null;
         if (input.supplier) {
@@ -772,7 +805,7 @@ app.post('/api/admin/products-import', requireAdmin, express.text({ type: 'text/
         await connection.execute('INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason,changed_by_admin_id) VALUES (?,?,?,?,?,?)', [productId, offerId, input.supplier?.currentCost ?? null, input.sellingPrice, 'CSV/Excel product import', response.locals.admin.sub]);
         if (row.status === 'published') pendingReview++;
       }
-      return { imported: rows.length, created, updated, pendingReview };
+      return { imported: rows.length, created, updated, pendingReview, matchedBy };
     });
     response.json(result);
   } catch (error) { next(error); }
