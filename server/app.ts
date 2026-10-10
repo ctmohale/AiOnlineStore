@@ -13,6 +13,7 @@ import { publicProductSlugBase, sanitizePublicProductName, sanitizePublicProduct
 import { requireAdmin, requireCustomer, signAdminToken, signCustomerToken } from './auth.js';
 import { pool, withTransaction } from './db/pool.js';
 import { importProductUrl } from './product-import.js';
+import { parseProductCsv, parseProductXlsx, productsToCsv, productsToXlsx } from './product-catalogue-files.js';
 import { adminCustomerUpdateSchema, adminPasswordUpdateSchema, adminProductCreateSchema, adminProductUpdateSchema, bulkOrderDeleteSchema, customerCartItemSchema, customerCartSchema, customerEmailVerificationSchema, customerForgotPasswordSchema, customerLoginSchema, customerPasswordResetSchema, customerPasswordUpdateSchema, customerProfileUpdateSchema, customerRegisterSchema, customerVerificationResendSchema, orderFulfilmentSchema, orderSchema, orderStatusSchema, paymentConfirmationSchema, supplierItemVerificationSchema, supportCaseCreateSchema, supportCaseUpdateSchema, paymentLinkSchema, pricingSettingsSchema, productReviewSchema, productUrlImportSchema, quoteSchema } from './validation.js';
 import { createYocoCheckout, expectedYocoMode, isYocoConfigured, verifyYocoWebhook } from './yoco.js';
 import { enqueueAccountEmail, enqueueOrderEmail } from './email.js';
@@ -704,6 +705,77 @@ app.patch('/api/admin/customers/:id', requireAdmin, async (request, response, ne
 
 app.get('/api/admin/products', requireAdmin, async (request, response, next) => {
   try { const offset = Number(request.query.offset || 0); if (!Number.isSafeInteger(offset) || offset < 0) return response.status(400).json({ error: 'Invalid product offset' }); if (!pool) return response.status(503).json({ error: 'Database not configured' }); const [rows] = await pool.query("SELECT p.*,i.url AS image_url,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN product_images i ON i.product_id=p.id AND i.sort_order=0 LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.updated_at DESC,p.id DESC LIMIT 5000 OFFSET ?", [offset]); response.json(await withProductImages(rows as RowDataPacket[])); } catch (error) { next(error); }
+});
+
+app.get('/api/admin/products-export.csv', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.query("SELECT p.*,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.id");
+    const products = await withProductImages(rows as RowDataPacket[]);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date());
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader('Content-Disposition', `attachment; filename="mzansi-products-${date}.csv"`);
+    response.send(productsToCsv(products as Record<string, unknown>[]));
+  } catch (error) { next(error); }
+});
+
+app.get('/api/admin/products-export.xlsx', requireAdmin, async (_request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const [rows] = await pool.query("SELECT p.*,o.retailer,o.source_url,o.supplier_sku,o.current_cost,o.original_displayed_price,o.supplier_delivery_cost,o.promotion_start_at,o.promotion_end_at,o.promotion_end_provided,o.promotion_terms,o.quantity_limit,o.stock_status,o.fulfilment_type,o.fulfilment_signal,o.last_checked_at,o.source_confidence,o.price_verified,o.price_updated_at,o.price_change_reason FROM products p LEFT JOIN supplier_offers o ON o.id=(SELECT id FROM supplier_offers WHERE product_id=p.id ORDER BY last_checked_at DESC,id DESC LIMIT 1) WHERE p.deleted_at IS NULL ORDER BY p.id");
+    const products = await withProductImages(rows as RowDataPacket[]);
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Johannesburg' }).format(new Date());
+    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    response.setHeader('Content-Disposition', `attachment; filename="mzansi-products-${date}.xlsx"`);
+    response.send(await productsToXlsx(products as Record<string, unknown>[]));
+  } catch (error) { next(error); }
+});
+
+app.post('/api/admin/products-import', requireAdmin, express.text({ type: 'text/csv', limit: '20mb' }), express.raw({ type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', limit: '20mb' }), async (request, response, next) => {
+  try {
+    if (!pool) return response.status(503).json({ error: 'Database not configured' });
+    const rows = typeof request.body === 'string' ? parseProductCsv(request.body) : Buffer.isBuffer(request.body) ? await parseProductXlsx(request.body) : null;
+    if (!rows) return response.status(415).json({ error: 'Upload a .csv or .xlsx product file' });
+    const result = await withTransaction(async (connection) => {
+      let created = 0;
+      let updated = 0;
+      let pendingReview = 0;
+      for (const row of rows) {
+        const input = row.input;
+        let productId = row.id;
+        if (productId != null) {
+          const [existingRows] = await connection.execute('SELECT id FROM products WHERE id=? AND deleted_at IS NULL FOR UPDATE', [productId]);
+          if (!(existingRows as RowDataPacket[]).length) throw Object.assign(new Error(`Row ${row.rowNumber}: product id ${productId} was not found; clear the id cell to create it as a new product`), { status: 422 });
+          await connection.execute(`UPDATE products SET title=?,brand=?,model=?,barcode=?,pack_size=?,category=?,description=?,specifications=?,selling_price=?,minimum_profit=?,estimated_customer_delivery_cost=?,delivery_time=?,item_weight_size=?,internal_review_notes=?,status=?,review_reason=? WHERE id=?`,
+            [input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.minimumProfit ?? null, input.estimatedCustomerDeliveryCost ?? 0, input.deliveryTime || null, input.itemWeightSize || null, input.reviewNotes || null, input.status, row.status === 'published' ? 'Imported data requires publication review' : row.reviewReason, productId]);
+          updated++;
+        } else {
+          const [insert] = await connection.execute(`INSERT INTO products (slug,title,brand,model,barcode,pack_size,category,description,specifications,selling_price,minimum_profit,estimated_customer_delivery_cost,delivery_time,item_weight_size,internal_review_notes,status,review_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [productSlug(input.title), input.title, input.brand, input.model, input.barcode || null, input.packSize, input.category, input.description, JSON.stringify(input.specifications), input.sellingPrice, input.minimumProfit ?? null, input.estimatedCustomerDeliveryCost ?? 0, input.deliveryTime || null, input.itemWeightSize || null, input.reviewNotes || null, input.status, row.status === 'published' ? 'Imported data requires publication review' : row.reviewReason || 'Imported product requires supplier verification']);
+          productId = Number((insert as { insertId: number }).insertId);
+          created++;
+        }
+        await replaceProductImages(connection, productId, input.title, row.imageUrls);
+        let offerId: number | null = null;
+        if (input.supplier) {
+          const supplier = input.supplier;
+          const [offerRows] = await connection.execute('SELECT id FROM supplier_offers WHERE product_id=? ORDER BY last_checked_at DESC,id DESC LIMIT 1 FOR UPDATE', [productId]);
+          offerId = Number((offerRows as (RowDataPacket & { id: number })[])[0]?.id || 0) || null;
+          const offerValues = [supplier.retailer || 'Not provided', supplier.sourceUrl || '', supplier.supplierSku || null, input.brand, input.model, input.barcode || null, input.packSize, supplier.currentCost ?? null, supplier.originalDisplayedPrice ?? null, supplier.supplierDeliveryCost ?? 0, supplier.promotionStartAt ?? null, supplier.promotionEndAt ?? null, Boolean(supplier.promotionEndAt || supplier.promotionEndProvided), supplier.promotionTerms || null, supplier.quantityLimit || null, supplier.stockStatus || 'unknown', supplier.fulfilmentType || 'unknown', supplier.fulfilmentSignal || null, supplier.sourceConfidence || 'low', Boolean(supplier.supplierPriceVerified), supplier.lastCheckedAt ?? null, supplier.priceUpdatedAt ?? null, supplier.priceChangeReason || 'Product file import'];
+          if (offerId) {
+            await connection.execute(`UPDATE supplier_offers SET retailer=?,source_url=?,supplier_sku=?,brand=?,model=?,barcode=?,pack_size=?,current_cost=?,original_displayed_price=?,supplier_delivery_cost=?,promotion_start_at=?,promotion_end_at=?,promotion_end_provided=?,promotion_terms=?,quantity_limit=?,stock_status=?,fulfilment_type=?,fulfilment_signal=?,source_confidence=?,price_verified=?,last_checked_at=?,price_updated_at=?,price_change_reason=? WHERE id=?`, [...offerValues, offerId]);
+          } else {
+            const [offerInsert] = await connection.execute(`INSERT INTO supplier_offers (product_id,retailer,source_url,supplier_sku,brand,model,barcode,pack_size,current_cost,original_displayed_price,supplier_delivery_cost,promotion_start_at,promotion_end_at,promotion_end_provided,promotion_terms,quantity_limit,stock_status,fulfilment_type,fulfilment_signal,source_confidence,price_verified,last_checked_at,price_updated_at,price_change_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [productId, ...offerValues]);
+            offerId = Number((offerInsert as { insertId: number }).insertId);
+          }
+        }
+        await connection.execute('INSERT INTO price_history (product_id,supplier_offer_id,supplier_cost,selling_price,reason,changed_by_admin_id) VALUES (?,?,?,?,?,?)', [productId, offerId, input.supplier?.currentCost ?? null, input.sellingPrice, 'CSV/Excel product import', response.locals.admin.sub]);
+        if (row.status === 'published') pendingReview++;
+      }
+      return { imported: rows.length, created, updated, pendingReview };
+    });
+    response.json(result);
+  } catch (error) { next(error); }
 });
 
 app.post('/api/admin/products/import-url', requireAdmin, async (request, response, next) => {

@@ -90,3 +90,27 @@ export async function adminRequest<T>(path: string, options: RequestInit = {}) {
     return body as T;
   } finally { finishLoading(); }
 }
+
+export async function adminDownload(path: string) {
+  const finishLoading = beginLoading();
+  try {
+    const response = await fetch(`${API_URL}/admin${path}`, { headers: { Authorization: `Bearer ${getAdminToken()}` } });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || 'The product file could not be downloaded');
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `products${path.endsWith('xlsx') ? '.xlsx' : '.csv'}`;
+    return { blob: await response.blob(), filename };
+  } finally { finishLoading(); }
+}
+
+export async function adminFileUpload<T>(path: string, body: BodyInit, contentType: string) {
+  const finishLoading = beginLoading();
+  try {
+    const response = await fetch(`${API_URL}/admin${path}`, { method: 'POST', headers: { 'Content-Type': contentType, Authorization: `Bearer ${getAdminToken()}` }, body });
+    const result = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(result?.error || 'The product file could not be imported');
+    return result as T;
+  } finally { finishLoading(); }
+}

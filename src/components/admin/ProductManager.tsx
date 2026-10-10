@@ -1,8 +1,8 @@
-import { Edit3, ExternalLink, Link2, PackagePlus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { Download, Edit3, ExternalLink, Link2, PackagePlus, RefreshCw, Save, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import StatusPill from '../StatusPill';
 import { money } from '../../data/products';
-import { adminRequest } from '../../lib/api';
+import { adminDownload, adminFileUpload, adminRequest } from '../../lib/api';
 import { useFeedback } from '../FeedbackProvider';
 import { profitProtectedSellingPrice } from '../../../shared/domain';
 
@@ -54,12 +54,15 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importingFile, setImportingFile] = useState(false);
+  const [exporting, setExporting] = useState<'csv' | 'xlsx' | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [imageQuality, setImageQuality] = useState<ImageQuality | null>(null);
   const [review, setReview] = useState(blankReview);
   const [pricingRules, setPricingRules] = useState({ standardMarkupPercent: 7, minimumProfit: 20 });
   const [filters, setFilters] = useState<ProductFilters>({ category: '', status: '', stock: '', source: '', profit: '' });
+  const fileInput = useRef<HTMLInputElement>(null);
   const searchText = searchQuery.trim().toLowerCase();
   const filterOptions = useMemo(() => ({
     categories: [...new Set(products.map((product) => product.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -143,8 +146,41 @@ export default function ProductManager({ onChanged, initialEditId, onInitialEdit
     finally { setDeletingId(null); }
   };
 
+  const exportProducts = async (format: 'csv' | 'xlsx') => {
+    setExporting(format);
+    try {
+      const { blob, filename } = await adminDownload(`/products-export.${format}`);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url; anchor.download = filename; document.body.append(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+      notify(`All ${products.length} active products were exported to ${format === 'xlsx' ? 'Excel' : 'CSV'}.`, 'success', 'Product export ready');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be exported', 'error'); }
+    finally { setExporting(null); }
+  };
+
+  const importProducts = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { notify('Choose a product file smaller than 20 MB.', 'error'); return; }
+    const extension = file.name.toLowerCase().split('.').pop();
+    if (!['csv', 'xlsx'].includes(extension || '')) { notify('Choose a .csv or .xlsx product file.', 'error'); return; }
+    const approved = await confirm({ title: 'Import product data?', message: `Import “${file.name}”? Rows with an id update that product; rows with a blank id create a product. Published rows return to pending review for safety.`, confirmLabel: 'Import products' });
+    if (!approved) return;
+    setImportingFile(true);
+    try {
+      const isExcel = extension === 'xlsx';
+      const body = isExcel ? await file.arrayBuffer() : await file.text();
+      const result = await adminFileUpload<{ imported: number; created: number; updated: number; pendingReview: number }>('/products-import', body, isExcel ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv');
+      await load(); onChanged?.();
+      const reviewMessage = result.pendingReview ? ` ${result.pendingReview} previously published row${result.pendingReview === 1 ? '' : 's'} now need publication review.` : '';
+      notify(`${result.imported} rows imported: ${result.created} created and ${result.updated} updated.${reviewMessage}`, 'success', 'Product import complete');
+    } catch (error) { notify(error instanceof Error ? error.message : 'Products could not be imported', 'error'); }
+    finally { setImportingFile(false); }
+  };
+
   return <>
-    <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button type="button" className="outline-button" disabled={loading} onClick={() => void load(true)}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh'}</button><button type="button" className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
+    <section className="admin-card table-card product-manager"><div className="card-heading"><div><p className="kicker">Catalogue and sourcing</p><h2>Products</h2></div><div className="product-actions"><button type="button" className="outline-button" disabled={Boolean(exporting)} onClick={() => void exportProducts('csv')}><Download /> {exporting === 'csv' ? 'Exporting…' : 'CSV'}</button><button type="button" className="outline-button" disabled={Boolean(exporting)} onClick={() => void exportProducts('xlsx')}><Download /> {exporting === 'xlsx' ? 'Exporting…' : 'Excel'}</button><button type="button" className="outline-button" disabled={importingFile} onClick={() => fileInput.current?.click()}><Upload /> {importingFile ? 'Importing…' : 'Import'}</button><input ref={fileInput} className="visually-hidden" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Import product CSV or Excel file" onChange={(event) => void importProducts(event)} /><button type="button" className="outline-button" disabled={loading} onClick={() => void load(true)}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh'}</button><button type="button" className="solid-button" onClick={add}><PackagePlus /> Add product</button></div></div>
       {!loading && products.length > 0 && <div className="product-table-filters" aria-label="Product table filters">
         <label>Category<select aria-label="Product category" value={filters.category} onChange={(event) => filter('category', event.target.value)}><option value="">All categories</option>{filterOptions.categories.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
         <label>Publication status<select aria-label="Publication status" value={filters.status} onChange={(event) => filter('status', event.target.value)}><option value="">All statuses</option>{filterOptions.statuses.map((value) => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}</select></label>
