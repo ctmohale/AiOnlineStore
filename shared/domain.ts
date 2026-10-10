@@ -85,6 +85,16 @@ export function isSupplierIdentityMatch(stored: SupplierIdentity, imported: Supp
   return overlap / Math.max(storedWords.size, importedWords.size, 1) >= 0.85;
 }
 
+export function hasConfirmedSupplierIdentityConflict(stored: SupplierIdentity, imported: SupplierIdentity) {
+  const storedBarcode = meaningful(stored.barcode);
+  const importedBarcode = meaningful(imported.barcode);
+  if (storedBarcode && importedBarcode) return storedBarcode !== importedBarcode;
+
+  const storedSku = meaningful(stored.supplierSku);
+  const importedSku = meaningful(imported.supplierSku);
+  return Boolean(storedSku && importedSku && storedSku !== importedSku);
+}
+
 export function offerReviewReason(signal: SupplierSignal, now = new Date(), staleHours = 24): string | null {
   if (signal.stockStatus === 'out_of_stock') return 'supplier_out_of_stock';
   if (signal.stockStatus === 'unknown') return 'stock_uncertain';
